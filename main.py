@@ -10,13 +10,14 @@ import requests
 from bs4 import BeautifulSoup
 from jobspy import scrape_jobs
 from jobspy.linkedin.constant import headers as linkedin_headers
+from jobspy.linkedin.util import criteria
 from markdownify import markdownify as md
 
 DB_PATH = Path(__file__).parent / "jobs.db"
 
 
 def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
-    """Инициализирует SQLite базу для дедупликации и хранения результатов."""
+    """Инициализирует SQLite базу и выполняет мягкую миграцию новых колонок."""
     conn = sqlite3.connect(db_path, timeout=10.0)
     # WAL позволяет читать базу параллельно во время записи без блокировок
     conn.execute("PRAGMA journal_mode=WAL;")
@@ -28,11 +29,34 @@ def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
             company TEXT,
             url TEXT,
             date_posted TEXT,
+            seniority_level TEXT,
+            employment_type TEXT,
+            job_function TEXT,
+            industry TEXT,
+            salary TEXT,
             matched INTEGER,
+            reject_reason TEXT,
             processed_at TEXT
         )
         """
     )
+
+    # Авто-миграция, если таблица была создана в старой версии без новых колонок
+    existing_cols = {
+        row[1] for row in conn.execute("PRAGMA table_info(processed_jobs)").fetchall()
+    }
+    new_cols = {
+        "seniority_level": "TEXT",
+        "employment_type": "TEXT",
+        "job_function": "TEXT",
+        "industry": "TEXT",
+        "salary": "TEXT",
+        "reject_reason": "TEXT",
+    }
+    for col_name, col_type in new_cols.items():
+        if col_name not in existing_cols:
+            conn.execute(f"ALTER TABLE processed_jobs ADD COLUMN {col_name} {col_type}")
+
     conn.commit()
     return conn
 
@@ -50,11 +74,21 @@ def mark_job_processed(
     url: str,
     date_posted: str,
     matched: bool,
+    reject_reason: str | None = None,
+    seniority_level: str | None = None,
+    employment_type: str | None = None,
+    job_function: str | None = None,
+    industry: str | None = None,
+    salary: str | None = None,
 ) -> None:
     conn.execute(
         """
-        INSERT OR IGNORE INTO processed_jobs (job_id, title, company, url, date_posted, matched, processed_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO processed_jobs (
+            job_id, title, company, url, date_posted,
+            seniority_level, employment_type, job_function, industry, salary,
+            matched, reject_reason, processed_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job_id,
@@ -62,25 +96,31 @@ def mark_job_processed(
             company,
             url,
             date_posted,
+            seniority_level,
+            employment_type,
+            job_function,
+            industry,
+            salary,
             1 if matched else 0,
+            reject_reason,
             datetime.now(timezone.utc).isoformat(),
         ),
     )
     conn.commit()
 
 
-def fetch_job_description(
+def fetch_job_details(
     session: requests.Session,
     job_id: str,
     delay_range: tuple[float, float] = (1.5, 2.5),
     max_retries: int = 3,
-) -> str | None:
+) -> dict[str, str | None] | None:
     """
-    Догружает полное описание вакансии с паузой и ретраями при 429/502/503.
-    Возвращает текст описания (markdown) или None, если карточка временно недоступна.
+    Догружает полное описание вакансии и метаданные карточки (Seniority, Employment type,
+    Job function, Industries, Salary) с паузой и ретраями при 429/502/503.
+    Возвращает словарь с данными или None, если карточка временно недоступна.
     """
     raw_id = job_id.removeprefix("li-")
-    # Пробуем гостевой API карточки (легче и быстрее полной страницы) и фоллбэк на /jobs/view/
     urls = [
         f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{raw_id}",
         f"https://www.linkedin.com/jobs/view/{raw_id}",
@@ -92,15 +132,25 @@ def fetch_job_description(
         try:
             resp = session.get(url, headers=linkedin_headers, timeout=15)
             if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, "html.parser")
-                div = soup.find("div", class_="show-more-less-html__markup")
-                if div:
-                    return md(str(div)).strip()
-                # Если верстка вернулась без блока описания (например, редирект на authwall)
                 if "authwall" in resp.url or "login" in resp.url:
                     print(f"  ⚠️ [{job_id}] Редирект на authwall (попытка {attempt}/{max_retries})")
-                else:
-                    return ""
+                    continue
+
+                soup = BeautifulSoup(resp.text, "html.parser")
+                div = soup.find("div", class_="show-more-less-html__markup")
+                description = md(str(div)).strip() if div else ""
+
+                salary_tag = soup.find("div", class_="compensation__salary")
+                salary_text = " ".join(salary_tag.get_text().split()) if salary_tag else None
+
+                return {
+                    "description": description,
+                    "seniority_level": criteria(soup, "Seniority level"),
+                    "employment_type": criteria(soup, "Employment type"),
+                    "job_function": criteria(soup, "Job function"),
+                    "industry": criteria(soup, "Industries"),
+                    "salary": salary_text,
+                }
             elif resp.status_code in (429, 502, 503, 504):
                 backoff = attempt * 3.0 + random.uniform(1.0, 2.5)
                 print(
@@ -109,7 +159,14 @@ def fetch_job_description(
                 )
                 time.sleep(backoff)
             elif resp.status_code == 404:
-                return ""
+                return {
+                    "description": "",
+                    "seniority_level": None,
+                    "employment_type": None,
+                    "job_function": None,
+                    "industry": None,
+                    "salary": None,
+                }
             else:
                 print(f"  ⚠️ [{job_id}] Неожиданный статус {resp.status_code}")
         except requests.RequestException as e:
@@ -125,6 +182,8 @@ def fetch_and_filter_jobs(
     location: str = "EMEA",
     results_wanted: int = 30,
     hours_old: int = 24,
+    easy_apply: bool | None = None,
+    linkedin_company_ids: list[int] | None = None,
 ) -> list[dict]:
     conn = init_db()
     processed_ids = get_processed_ids(conn)
@@ -138,6 +197,8 @@ def fetch_and_filter_jobs(
         location=location,
         results_wanted=results_wanted,
         hours_old=hours_old,
+        easy_apply=easy_apply,
+        linkedin_company_ids=linkedin_company_ids,
         fetch_description=False,  # Сначала получаем только заголовки и метаданные
     )
 
@@ -176,8 +237,6 @@ def fetch_and_filter_jobs(
     exclude_pattern = "|".join(re.escape(w) for w in exclude_title_words)
     title_mask = ~unseen_jobs["title"].fillna("").str.lower().str.contains(exclude_pattern, regex=True)
 
-    # Вакансии, отсеянные по заголовку, сразу помечаем в БД как обработанные (matched=False),
-    # чтобы больше никогда к ним не возвращаться
     rejected_by_title = unseen_jobs[~title_mask]
     for _, row in rejected_by_title.iterrows():
         mark_job_processed(
@@ -188,6 +247,7 @@ def fetch_and_filter_jobs(
             url=str(row.get("job_url", "")),
             date_posted=str(row.get("date_posted", "")),
             matched=False,
+            reject_reason="excluded_title",
         )
 
     candidates = unseen_jobs[title_mask].copy()
@@ -196,13 +256,16 @@ def fetch_and_filter_jobs(
         f"Кандидатов для загрузки описания: {len(candidates)}"
     )
 
-    # 4. Догружаем описания с паузой 1.5–2.5 сек и ретраями только для кандидатов
-    # Используем границы слов (\b), чтобы 'java' не матчилось внутри 'javascript'
+    # 4. Догружаем описания и критерии карточки с паузой 1.5–2.5 сек
     required_keywords = ["kotlin", "java", "spring", "python", "langgraph", "microservices"]
     required_pattern = re.compile(
         r"\b(?:" + "|".join(re.escape(w) for w in required_keywords) + r")\b",
         re.IGNORECASE,
     )
+
+    # Нежелательные грейды и индустрии из метаданных карточки LinkedIn
+    excluded_seniorities = {"internship", "entry level"}
+    excluded_industries = {"staffing and recruiting"}
 
     results = []
     session = requests.Session()
@@ -214,16 +277,44 @@ def fetch_and_filter_jobs(
         job_url = str(row.get("job_url", ""))
         date_posted = str(row.get("date_posted", ""))
 
-        print(f"📥 [{idx}/{len(candidates)}] Загрузка описания: {title} @ {company} ({job_id})...")
-        description = fetch_job_description(session, job_id)
+        print(f"📥 [{idx}/{len(candidates)}] Загрузка карточки: {title} @ {company} ({job_id})...")
+        details = fetch_job_details(session, job_id)
 
-        if description is None:
-            # Если даже после ретраев LinkedIn не отдал карточку — НЕ записываем в БД,
-            # чтобы попробовать снова при следующем запуске
-            print(f"  ❌ Не удалось загрузить описание для {job_id}, оставляем на следующий запуск.")
+        if details is None:
+            print(f"  ❌ Не удалось загрузить карточку {job_id}, оставляем на следующий запуск.")
             continue
 
-        is_match = bool(required_pattern.search(description))
+        description = details["description"] or ""
+        seniority = details["seniority_level"]
+        employment_type = details["employment_type"]
+        job_function = details["job_function"]
+        industry = details["industry"]
+        salary = details["salary"]
+
+        meta_info = " | ".join(
+            f"{k}: {v}"
+            for k, v in [
+                ("Level", seniority),
+                ("Type", employment_type),
+                ("Industry", industry),
+                ("Salary", salary),
+            ]
+            if v
+        )
+        if meta_info:
+            print(f"  ℹ️  {meta_info}")
+
+        # Проверяем критерии карточки (Seniority, Industry) и стек в описании
+        reject_reason = None
+        if seniority and seniority.strip().lower() in excluded_seniorities:
+            reject_reason = f"excluded_seniority:{seniority}"
+        elif industry and industry.strip().lower() in excluded_industries:
+            reject_reason = f"excluded_industry:{industry}"
+        elif not required_pattern.search(description):
+            reject_reason = "missing_keywords"
+
+        is_match = reject_reason is None
+
         mark_job_processed(
             conn,
             job_id=job_id,
@@ -232,6 +323,12 @@ def fetch_and_filter_jobs(
             url=job_url,
             date_posted=date_posted,
             matched=is_match,
+            reject_reason=reject_reason,
+            seniority_level=seniority,
+            employment_type=employment_type,
+            job_function=job_function,
+            industry=industry,
+            salary=salary,
         )
 
         if is_match:
@@ -243,12 +340,16 @@ def fetch_and_filter_jobs(
                     "company": company,
                     "url": job_url,
                     "date_posted": date_posted,
+                    "seniority_level": seniority,
+                    "employment_type": employment_type,
+                    "industry": industry,
+                    "salary": salary,
                     "description_snippet": clean_snippet + ("..." if len(clean_snippet) >= 300 else ""),
                 }
             )
-            print(f"  ✅ Подходит по стеку!")
+            print("  ✅ Подходит!")
         else:
-            print(f"  ➖ Стек не совпал.")
+            print(f"  ➖ Отклонено ({reject_reason}).")
 
     conn.close()
     return results
@@ -258,6 +359,11 @@ if __name__ == "__main__":
     matched = fetch_and_filter_jobs()
     print(f"\n🎯 Итого новых подходящих вакансий за этот запуск: {len(matched)}\n")
     for job in matched:
+        meta = " • ".join(
+            filter(None, [job.get("seniority_level"), job.get("employment_type"), job.get("industry"), job.get("salary")])
+        )
         print(f"🔥 {job['title']} @ {job['company']} ({job['date_posted']})")
+        if meta:
+            print(f"🏷️  {meta}")
         print(f"🔗 {job['url']}")
         print(f"📝 {job['description_snippet']}\n")
