@@ -138,11 +138,16 @@ def enrich_job_with_agy(
     timeout_sec: int = 90,
 ) -> JobEnrichment:
     prompt = build_enrich_prompt(title, company, location, description)
+    schema_str = json.dumps(JobEnrichment.model_json_schema())
     cmd = [
         AGY_BIN,
         "--model",
         model,
         "--disable-slash-commands",
+        "--output-format",
+        "json",
+        "--json-schema",
+        schema_str,
         "-p",
         prompt,
     ]
@@ -160,6 +165,13 @@ def enrich_job_with_agy(
     if not raw:
         raise RuntimeError("agy returned empty response")
 
-    data = extract_json_object(raw)
+    envelope = extract_json_object(raw)
+    if isinstance(envelope, dict) and "structured_output" in envelope and envelope["structured_output"]:
+        data = envelope["structured_output"]
+    elif isinstance(envelope, dict) and "response" in envelope and isinstance(envelope["response"], str):
+        data = extract_json_object(envelope["response"])
+    else:
+        data = envelope
+
     return JobEnrichment.model_validate(data)
 
