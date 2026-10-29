@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LinkedIn AI Vacancy Filter & Enricher</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .card { background-color: #1e293b; border: 1px solid #334155; }
+    .badge-top { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+    .badge-good { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .badge-low { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+    .chip-match { background: rgba(16, 185, 129, 0.12); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .chip-miss { background: rgba(245, 158, 11, 0.12); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.3); }
+  </style>
+</head>
+<body class="min-h-screen pb-16">
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <h1 class="text-xl font-bold text-white flex items-center gap-2">
+          <span>🎯 LinkedIn AI Filter</span>
+          <span class="text-xs font-normal px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+            agy CLI + Hirify Skill Scorer
+          </span>
+        </h1>
+        <p class="text-xs text-slate-400 mt-0.5">
+          Кандидат: Владислав Ярыгин • AI Agentic & Senior Backend (Java, Kotlin, Python) • Удалёнка из Грузии (B2B)
+        </p>
+      </div>
+
+      <!-- Быстрые копировалки для форм откликов (из preferences.md) -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button onclick="copySnippet('workAuth')" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          📋 Копировать Work Auth (Georgia B2B)
+        </button>
+        <button onclick="copySnippet('usAuthNote')" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          📋 Копировать ответ про визу / B2B
+        </button>
+        <button onclick="copySnippet('linkedin')" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          🔗 LinkedIn профиль
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 mt-6 space-y-6">
+    <!-- Панель управления запуском пайплайна -->
+    <section class="card rounded-xl p-5 shadow-lg">
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+        <div class="md:col-span-4">
+          <label class="block text-xs text-slate-400 mb-1">Поисковые запросы (через запятую)</label>
+          <input id="searchTerms" type="text" value="Agentic Engineer Remote, AI Agent Engineer Remote, Software Engineer Remote"
+            class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-xs text-slate-400 mb-1">Локация</label>
+          <input id="location" type="text" value="EMEA"
+            class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div class="md:col-span-1">
+          <label class="block text-xs text-slate-400 mb-1">Часов</label>
+          <input id="hoursOld" type="number" value="4" min="1" max="168"
+            class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div class="md:col-span-1">
+          <label class="block text-xs text-slate-400 mb-1">Лимит ИИ</label>
+          <input id="llmLimit" type="number" value="15" min="1" max="100"
+            class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div class="md:col-span-1 flex items-center h-[38px]">
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-slate-200 bg-slate-900 border border-slate-700 hover:border-indigo-500 px-2.5 py-2 rounded-lg w-full justify-center" title="Искать только вакансии с быстрым откликом LinkedIn Easy Apply">
+            <input id="easyApply" type="checkbox" class="rounded bg-slate-800 border-slate-600 text-indigo-600 focus:ring-indigo-500" />
+            <span>⚡ Easy Apply</span>
+          </label>
+        </div>
+        <div class="md:col-span-3 flex gap-2">
+          <button id="btnRunFull" onclick="startPipeline(false)"
+            class="flex-1 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition shadow">
+            🚀 Собрать + ИИ-фильтр
+          </button>
+          <button id="btnRunEnrich" onclick="startPipeline(true)" title="Обогатить через agy CLI уже скачанные в БД вакансии без нового парсинга LinkedIn"
+            class="px-3 py-2 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white font-medium text-sm transition">
+            🧠 Только ИИ
+          </button>
+        </div>
+      </div>
+
+      <!-- Лог выполнения в реальном времени -->
+      <div id="logContainer" class="hidden mt-4">
+        <div class="flex items-center justify-between mb-1">
+          <span id="pipelineBadge" class="text-xs font-medium text-indigo-400 flex items-center gap-1.5">
+            <span class="animate-ping inline-block w-2 h-2 rounded-full bg-indigo-400"></span>
+            Выполняется пайплайн...
+          </span>
+          <button onclick="document.getElementById('logContainer').classList.add('hidden')" class="text-xs text-slate-400 hover:text-white">
+            Скрыть лог
+          </button>
+        </div>
+        <pre id="logOutput" class="bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-300 font-mono max-h-56 overflow-y-auto whitespace-pre-wrap"></pre>
+      </div>
+    </section>
+
+    <!-- Табы и статистика -->
+    <section class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
+      <div class="flex flex-wrap gap-2" id="tabsBar">
+        <button data-tab="actionable" onclick="switchTab('actionable')" class="tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 text-white">
+          🎯 Сухой остаток (<span id="cntActionable">0</span>)
+        </button>
+        <button data-tab="top" onclick="switchTab('top')" class="tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+          🟢 Top Match ≥70 (<span id="cntTop">0</span>)
+        </button>
+        <button data-tab="good" onclick="switchTab('good')" class="tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+          🟡 Good 50–69 (<span id="cntGood">0</span>)
+        </button>
+        <button data-tab="pending" onclick="switchTab('pending')" class="tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+          ⏳ Ждут ИИ-разбора (<span id="cntPending">0</span>)
+        </button>
+        <button data-tab="applied" onclick="switchTab('applied')" class="tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+          ✅ Откликнулся (<span id="cntApplied">0</span>)
+        </button>
+        <button data-tab="rejected" onclick="switchTab('rejected')" class="tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+          🗑️ Отсеянные (<span id="cntRejected">0</span>)
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button onclick="rescoreAll()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">
+          🔄 Пересчитать скоринг
+        </button>
+        <span class="text-xs text-slate-400">Всего в БД: <strong id="cntTotal" class="text-slate-200">0</strong></span>
+      </div>
+    </section>
+
+    <!-- Список карточек вакансий -->
+    <section id="jobsList" class="space-y-4"></section>
+  </main>
+
+  <!-- Toast уведомление -->
+  <div id="toast" class="fixed bottom-5 right-5 hidden bg-emerald-600 text-white text-sm px-4 py-2.5 rounded-lg shadow-xl z-50"></div>
+
+  <script>
+    let currentTab = 'actionable';
+    let pollTimer = null;
+    let logCursor = 0;
+
+    const SNIPPETS = {
+      workAuth: "I am legally authorized to work from Georgia (country) and do not require visa sponsorship. I am seeking remote-only roles (e.g., via B2B contract, independent contractor, or Employer of Record/EOR) and do not require work authorization in the employer’s country (such as the US).",
+      usAuthNote: "No, but I am seeking remote engagement from Georgia (country) as an independent contractor / B2B, which does not require US/local work authorization or visa sponsorship.",
+      linkedin: "https://www.linkedin.com/in/iarygin-vladislav"
+    };
+
+    function showToast(text) {
+      const t = document.getElementById('toast');
+      t.textContent = text;
+      t.classList.remove('hidden');
+      setTimeout(() => t.classList.add('hidden'), 2600);
+    }
+
+    function copySnippet(key) {
+      navigator.clipboard.writeText(SNIPPETS[key]);
+      showToast('Скопировано в буфер обмена!');
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        if (btn.dataset.tab === tab) {
+          btn.className = 'tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 text-white';
+        } else {
+          btn.className = 'tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-300 hover:bg-slate-700';
+        }
+      });
+      loadJobs();
+    }
+
+    async function setJobStatus(jobId, status) {
+      await fetch(`/api/jobs/${encodeURIComponent(jobId)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_status: status })
+      });
+      showToast(status === 'applied' ? 'Отмечено как «Откликнулся» ✅' : 'Статус обновлен');
+      loadJobs();
+    }
+
+    async function rescoreAll() {
+      const res = await fetch('/api/jobs/rescore', { method: 'POST' });
+      const data = await res.json();
+      showToast(`Пересчитан скоринг для ${data.rescored} вакансий`);
+      loadJobs();
+    }
+
+    async function startPipeline(enrichOnly) {
+      const termsRaw = document.getElementById('searchTerms').value;
+      const searchTerms = termsRaw.split(',').map(s => s.trim()).filter(Boolean);
+      const location = document.getElementById('location').value.trim() || 'EMEA';
+      const hoursOld = parseInt(document.getElementById('hoursOld').value || '4', 10);
+      const llmLimit = parseInt(document.getElementById('llmLimit').value || '15', 10);
+      const easyApply = document.getElementById('easyApply').checked;
+
+      document.getElementById('logContainer').classList.remove('hidden');
+      document.getElementById('logOutput').textContent = '';
+      logCursor = 0;
+
+      await fetch('/api/pipeline/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          search_terms: searchTerms,
+          location: location,
+          results_wanted: 25,
+          hours_old: hoursOld,
+          easy_apply: easyApply,
+          llm_limit: llmLimit,
+          enrich_only: enrichOnly
+        })
+      });
+
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(pollPipelineStatus, 1500);
+      pollPipelineStatus();
+    }
+
+    async function pollPipelineStatus() {
+      const res = await fetch(`/api/pipeline/status?since=${logCursor}`);
+      const data = await res.json();
+      const pre = document.getElementById('logOutput');
+      if (data.logs && data.logs.length > 0) {
+        pre.textContent += data.logs.join('\n') + '\n';
+        pre.scrollTop = pre.scrollHeight;
+        logCursor = data.next_index;
+        loadJobs();
+      }
+      const badge = document.getElementById('pipelineBadge');
+      if (!data.running) {
+        badge.innerHTML = '✅ Пайплайн завершен';
+        badge.className = 'text-xs font-medium text-emerald-400';
+        clearInterval(pollTimer);
+        pollTimer = null;
+        loadJobs();
+      } else {
+        badge.innerHTML = '<span class="animate-ping inline-block w-2 h-2 rounded-full bg-indigo-400"></span> Выполняется пайплайн...';
+        badge.className = 'text-xs font-medium text-indigo-400 flex items-center gap-1.5';
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function renderJobCard(job) {
+      const e = job.enrichment || {};
+      const sd = job.score_details || {};
+      const score = job.score;
+      const isTop = score !== null && score >= 70;
+      const isGood = score !== null && score >= 50 && score < 70;
+
+      const scoreBadgeClass = isTop ? 'badge-top' : isGood ? 'badge-good' : 'badge-low';
+      const scoreLabel = score !== null ? `🎯 Score: ${score}/100` : '⏳ Без ИИ-оценки';
+
+      const matched = (sd.matched_skills || (e.resume_fit && e.resume_fit.matched_required) || []);
+      const missing = (sd.missing_skills || (e.resume_fit && e.resume_fit.missing_required) || []);
+      const breakdown = (sd.breakdown || []).join(', ');
+      const responsibilities = (e.responsibilities || []).slice(0, 5);
+      const requirements = (e.requirements || []).slice(0, 5);
+      const locRestrictions = (e.location_restrictions || []).join(', ');
+      const remoteDetail = e.remote_policy_detail || '';
+      const fitSummary = (e.resume_fit && e.resume_fit.summary) ? e.resume_fit.summary : '';
+
+      return `
+        <article class="card rounded-xl p-5 shadow transition hover:border-slate-600">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="space-y-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs font-bold px-2.5 py-1 rounded-md ${scoreBadgeClass}">
+                  ${isTop ? '🟢 TOP MATCH • ' : isGood ? '🟡 GOOD MATCH • ' : ''}${scoreLabel}
+                </span>
+                ${job.tier ? `<span class="text-xs px-2.5 py-1 rounded-md bg-slate-800 text-slate-200 border border-slate-700">${escapeHtml(job.tier)}</span>` : ''}
+                ${job.seniority_level ? `<span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400">${escapeHtml(job.seniority_level)}</span>` : ''}
+                ${job.salary ? `<span class="text-xs px-2.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">💰 ${escapeHtml(job.salary)}</span>` : ''}
+                ${job.reject_reason ? `<span class="text-xs px-2 py-0.5 rounded bg-red-950 text-red-300 border border-red-800">Причина: ${escapeHtml(job.reject_reason)}</span>` : ''}
+              </div>
+
+              <h2 class="text-lg font-bold text-white pt-1">
+                <a href="${escapeHtml(job.url)}" target="_blank" rel="noopener" class="hover:text-indigo-400 underline decoration-slate-600 underline-offset-4">
+                  ${escapeHtml(job.title)}
+                </a>
+                <span class="text-slate-400 font-normal text-base"> @ ${escapeHtml(job.company || 'Unknown')}</span>
+              </h2>
+
+              <div class="text-xs text-slate-400 flex flex-wrap gap-3 items-center">
+                <span>📅 ${escapeHtml(job.date_posted || '')}</span>
+                <code class="text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded">${escapeHtml(job.url)}</code>
+                ${job.industry ? `<span>🏢 ${escapeHtml(job.industry)}</span>` : ''}
+              </div>
+            </div>
+
+            <!-- Кнопки действий для заполнения откликов -->
+            <div class="flex items-center gap-2">
+              <a href="${escapeHtml(job.url)}" target="_blank" rel="noopener"
+                class="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition">
+                🔗 Открыть в LinkedIn ↗
+              </a>
+              ${job.user_status !== 'applied' ? `
+                <button onclick="setJobStatus('${escapeHtml(job.job_id)}', 'applied')"
+                  class="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 text-xs font-medium transition">
+                  ✅ Откликнулся
+                </button>
+              ` : `
+                <button onclick="setJobStatus('${escapeHtml(job.job_id)}', 'new')"
+                  class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition">
+                  ↩ Вернуть в новые
+                </button>
+              `}
+              ${job.user_status !== 'hidden' ? `
+                <button onclick="setJobStatus('${escapeHtml(job.job_id)}', 'hidden')"
+                  class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-red-950/60 text-slate-400 hover:text-red-300 border border-slate-700 text-xs transition">
+                  🗑️
+                </button>
+              ` : ''}
+            </div>
+          </div>
+
+          ${fitSummary ? `
+            <div class="mt-3 text-sm text-indigo-200 bg-indigo-950/40 border border-indigo-800/50 rounded-lg px-3 py-2">
+              💡 <strong>Резюме-фит:</strong> ${escapeHtml(fitSummary)}
+            </div>
+          ` : ''}
+
+          <!-- Совпавшие и недостающие навыки -->
+          ${(matched.length > 0 || missing.length > 0) ? `
+            <div class="mt-3 space-y-1.5 text-xs">
+              ${matched.length > 0 ? `
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="text-slate-400 font-medium">✅ Совпало (${matched.length}):</span>
+                  ${matched.map(s => `<span class="px-2 py-0.5 rounded chip-match font-mono">${escapeHtml(s)}</span>`).join('')}
+                </div>
+              ` : ''}
+              ${missing.length > 0 ? `
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="text-slate-400 font-medium">⚠️ Не указано в резюме (${missing.length}):</span>
+                  ${missing.map(s => `<span class="px-2 py-0.5 rounded chip-miss font-mono">${escapeHtml(s)}</span>`).join('')}
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
+
+          ${breakdown ? `
+            <div class="mt-2 text-xs text-slate-400 italic">
+              📊 Скоринг детали: ${escapeHtml(breakdown)}
+            </div>
+          ` : ''}
+
+          ${(locRestrictions || remoteDetail) ? `
+            <div class="mt-2 text-xs text-slate-300 bg-slate-900/70 rounded-lg px-3 py-1.5 border border-slate-800">
+              📍 <strong>Условия локации / Remote:</strong>
+              ${locRestrictions ? `Ограничения: <span class="text-amber-300">${escapeHtml(locRestrictions)}</span>` : ''}
+              ${remoteDetail ? ` • Формат: <span class="text-emerald-300">${escapeHtml(remoteDetail)}</span>` : ''}
+            </div>
+          ` : ''}
+
+          <!-- Структурированная выжимка из JobEnrichment -->
+          ${(responsibilities.length > 0 || requirements.length > 0) ? `
+            <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-slate-800 text-xs text-slate-300">
+              ${responsibilities.length > 0 ? `
+                <div>
+                  <h4 class="font-semibold text-slate-200 mb-1">🛠️ Чем предстоит заниматься:</h4>
+                  <ul class="list-disc list-inside space-y-0.5 text-slate-400">
+                    ${responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
+                  </ul>
+                </div>
+              ` : ''}
+              ${requirements.length > 0 ? `
+                <div>
+                  <h4 class="font-semibold text-slate-200 mb-1">📋 Ключевые требования:</h4>
+                  <ul class="list-disc list-inside space-y-0.5 text-slate-400">
+                    ${requirements.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
+                  </ul>
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
+
+          <!-- Спойлер с полным текстом описания -->
+          ${job.description ? `
+            <details class="mt-3 pt-2 border-t border-slate-800/60 text-xs">
+              <summary class="cursor-pointer text-slate-400 hover:text-slate-200 select-none">
+                📄 Показать оригинальный текст вакансии
+              </summary>
+              <pre class="mt-2 p-3 rounded-lg bg-slate-950 text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-96 overflow-y-auto">${escapeHtml(job.description)}</pre>
+            </details>
+          ` : ''}
+        </article>
+      `;
+    }
+
+    async function loadJobs() {
+      const res = await fetch(`/api/jobs?tab=${encodeURIComponent(currentTab)}`);
+      const data = await res.json();
+      const s = data.stats || {};
+
+      document.getElementById('cntTotal').textContent = s.total_in_db || 0;
+      document.getElementById('cntActionable').textContent = (s.top_match || 0) + (s.good_match || 0);
+      document.getElementById('cntTop').textContent = s.top_match || 0;
+      document.getElementById('cntGood').textContent = s.good_match || 0;
+      document.getElementById('cntPending').textContent = s.pending_llm || 0;
+      document.getElementById('cntApplied').textContent = s.applied || 0;
+      document.getElementById('cntRejected').textContent = s.rejected || 0;
+
+      const container = document.getElementById('jobsList');
+      if (!data.jobs || data.jobs.length === 0) {
+        container.innerHTML = `
+          <div class="card rounded-xl p-10 text-center text-slate-400">
+            <p class="text-base">В этой вкладке пока нет вакансий.</p>
+            ${s.pending_llm > 0 ? `<p class="text-xs mt-2 text-indigo-400">В базе есть ${s.pending_llm} скачанных вакансий, ожидающих ИИ-разбора — нажми кнопку <strong>«🧠 Только ИИ»</strong> выше!</p>` : ''}
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = data.jobs.map(renderJobCard).join('');
+    }
+
+    loadJobs();
+  </script>
+</body>
+</html>
+

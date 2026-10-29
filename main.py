@@ -1,25 +1,31 @@
+from collections.abc import Callable
+from datetime import datetime, timezone
+import json
+from pathlib import Path
 import random
 import re
 import sqlite3
 import time
-from datetime import datetime, timezone
-from pathlib import Path
 
-import pandas as pd
-import requests
 from bs4 import BeautifulSoup
 from jobspy import scrape_jobs
 from jobspy.linkedin.constant import headers as linkedin_headers
 from jobspy.linkedin.util import criteria
 from markdownify import markdownify as md
+import pandas as pd
+import requests
+
+from agy_enrich import DEFAULT_MODEL, enrich_job_with_agy
+from enrichment_schema import JobEnrichment
+from skill_scorer import SkillScoreResult, score_vacancy_by_skill
 
 DB_PATH = Path(__file__).parent / "jobs.db"
 
 
 def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
     """Инициализирует SQLite базу и выполняет мягкую миграцию новых колонок."""
-    conn = sqlite3.connect(db_path, timeout=10.0)
-    # WAL позволяет читать базу параллельно во время записи без блокировок
+    conn = sqlite3.connect(db_path, timeout=15.0)
+    conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute(
         """
@@ -34,14 +40,19 @@ def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
             job_function TEXT,
             industry TEXT,
             salary TEXT,
+            description TEXT,
             matched INTEGER,
             reject_reason TEXT,
-            processed_at TEXT
+            processed_at TEXT,
+            enrichment_json TEXT,
+            score INTEGER,
+            tier TEXT,
+            score_details_json TEXT,
+            user_status TEXT DEFAULT 'new'
         )
         """
     )
 
-    # Авто-миграция, если таблица была создана в старой версии без новых колонок
     existing_cols = {
         row[1] for row in conn.execute("PRAGMA table_info(processed_jobs)").fetchall()
     }
@@ -51,7 +62,13 @@ def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
         "job_function": "TEXT",
         "industry": "TEXT",
         "salary": "TEXT",
+        "description": "TEXT",
         "reject_reason": "TEXT",
+        "enrichment_json": "TEXT",
+        "score": "INTEGER",
+        "tier": "TEXT",
+        "score_details_json": "TEXT",
+        "user_status": "TEXT DEFAULT 'new'",
     }
     for col_name, col_type in new_cols.items():
         if col_name not in existing_cols:
@@ -80,15 +97,25 @@ def mark_job_processed(
     job_function: str | None = None,
     industry: str | None = None,
     salary: str | None = None,
+    description: str | None = None,
+    enrichment_json: str | None = None,
+    score: int | None = None,
+    tier: str | None = None,
+    score_details_json: str | None = None,
 ) -> None:
+    # Сохраняем существующий user_status, если запись обновляется
+    cur = conn.execute("SELECT user_status FROM processed_jobs WHERE job_id = ?", (job_id,)).fetchone()
+    user_status = (cur[0] if cur and cur[0] else "new")
+
     conn.execute(
         """
         INSERT OR REPLACE INTO processed_jobs (
             job_id, title, company, url, date_posted,
             seniority_level, employment_type, job_function, industry, salary,
-            matched, reject_reason, processed_at
+            description, matched, reject_reason, processed_at,
+            enrichment_json, score, tier, score_details_json, user_status
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job_id,
@@ -101,9 +128,54 @@ def mark_job_processed(
             job_function,
             industry,
             salary,
+            description,
             1 if matched else 0,
             reject_reason,
             datetime.now(timezone.utc).isoformat(),
+            enrichment_json,
+            score,
+            tier,
+            score_details_json,
+            user_status,
+        ),
+    )
+    conn.commit()
+
+
+def update_job_enrichment_and_score(
+    conn: sqlite3.Connection,
+    job_id: str,
+    enrichment: JobEnrichment,
+    score_res: SkillScoreResult,
+) -> None:
+    reject_reason = None
+    matched = 1
+    if not score_res.geo_passed:
+        matched = 0
+        reject_reason = score_res.geo_reject_reason or "rejected_geo"
+    elif score_res.score < 50:
+        matched = 0
+        reject_reason = f"low_score:{score_res.score}"
+
+    conn.execute(
+        """
+        UPDATE processed_jobs
+        SET enrichment_json = ?,
+            score = ?,
+            tier = ?,
+            score_details_json = ?,
+            matched = ?,
+            reject_reason = COALESCE(?, reject_reason)
+        WHERE job_id = ?
+        """,
+        (
+            enrichment.model_dump_json(),
+            score_res.score,
+            score_res.tier,
+            score_res.model_dump_json(),
+            matched,
+            reject_reason,
+            job_id,
         ),
     )
     conn.commit()
@@ -118,7 +190,6 @@ def fetch_job_details(
     """
     Догружает полное описание вакансии и метаданные карточки (Seniority, Employment type,
     Job function, Industries, Salary) с паузой и ретраями при 429/502/503.
-    Возвращает словарь с данными или None, если карточка временно недоступна.
     """
     raw_id = job_id.removeprefix("li-")
     urls = [
@@ -177,193 +248,280 @@ def fetch_job_details(
     return None
 
 
+def enrich_and_score_pending_jobs(
+    conn: sqlite3.Connection,
+    model: str = DEFAULT_MODEL,
+    limit: int = 30,
+    on_progress: Callable[[str], None] | None = None,
+) -> int:
+    """
+    Находит в БД вакансии, прошедшие базовый фильтр (matched=1 и description IS NOT NULL),
+    у которых еще нет enrichment_json, прогоняет их через локальный agy CLI (JobEnrichment)
+    и оценивает по скиллу hirify-vacancy-filter.
+    """
+    def emit(msg: str) -> None:
+        print(msg)
+        if on_progress:
+            on_progress(msg)
+
+    rows = conn.execute(
+        """
+        SELECT job_id, title, company, url, date_posted, seniority_level, industry, salary, description
+        FROM processed_jobs
+        WHERE description IS NOT NULL
+          AND description != ''
+          AND enrichment_json IS NULL
+          AND (reject_reason IS NULL OR reject_reason = '')
+        ORDER BY processed_at DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+
+    if not rows:
+        emit("✨ Все кандидаты в базе уже обогащены через LLM.")
+        return 0
+
+    emit(f"🤖 Запуск LLM-обогащения ({model}) и скоринга для {len(rows)} вакансий...")
+    enriched_count = 0
+
+    for idx, row in enumerate(rows, start=1):
+        job_id = row["job_id"]
+        title = row["title"] or ""
+        company = row["company"] or ""
+        desc = row["description"] or ""
+
+        emit(f"🧠 [{idx}/{len(rows)}] ИИ-разбор: {title} @ {company} ({job_id})...")
+        try:
+            enrichment = enrich_job_with_agy(
+                title=title,
+                company=company,
+                location="EMEA / Remote",
+                description=desc,
+                model=model,
+            )
+            score_res = score_vacancy_by_skill(
+                title=title,
+                company=company,
+                date_posted=row["date_posted"],
+                seniority_level=row["seniority_level"],
+                industry=row["industry"],
+                salary_text=row["salary"],
+                description=desc,
+                enrichment=enrichment,
+            )
+            update_job_enrichment_and_score(conn, job_id, enrichment, score_res)
+            enriched_count += 1
+            badge = (
+                "🟢 TOP"
+                if score_res.match_category == "top"
+                else "🟡 GOOD"
+                if score_res.match_category == "good"
+                else "🔴 LOW/GEO"
+            )
+            emit(
+                f"  ↳ {badge} | Score: {score_res.score}/100 | {score_res.tier} | "
+                f"Совпало: {len(score_res.matched_skills)}, Пробелов: {len(score_res.missing_skills)}"
+            )
+        except Exception as e:
+            emit(f"  ⚠️ Ошибка LLM для {job_id}: {e}")
+
+    return enriched_count
+
+
 def fetch_and_filter_jobs(
-    search_term: str = "Software Engineer Remote",
+    search_terms: str | list[str] = (
+        "Agentic Engineer Remote",
+        "AI Agent Engineer Remote",
+        "Software Engineer Remote",
+    ),
     location: str = "EMEA",
     results_wanted: int = 30,
-    hours_old: int = 24,
+    hours_old: int = 4,
     easy_apply: bool | None = None,
     linkedin_company_ids: list[int] | None = None,
+    run_llm_enrichment: bool = True,
+    llm_model: str = DEFAULT_MODEL,
+    llm_limit: int = 25,
+    on_progress: Callable[[str], None] | None = None,
 ) -> list[dict]:
+    def emit(msg: str) -> None:
+        print(msg)
+        if on_progress:
+            on_progress(msg)
+
     conn = init_db()
     processed_ids = get_processed_ids(conn)
-    print(f"🗄️ В базе уже обработано вакансий: {len(processed_ids)}")
+    emit(f"🗄️ В базе уже обработано вакансий: {len(processed_ids)}")
 
-    # 1. Запрашиваем список вакансий БЕЗ полных описаний (fetch_description=False)
-    print(f"🔍 Поиск вакансий '{search_term}' в '{location}' (за последние {hours_old}ч)...")
-    jobs: pd.DataFrame = scrape_jobs(
-        site_name=["linkedin"],
-        search_term=search_term,
-        location=location,
-        results_wanted=results_wanted,
-        hours_old=hours_old,
-        easy_apply=easy_apply,
-        linkedin_company_ids=linkedin_company_ids,
-        fetch_description=False,  # Сначала получаем только заголовки и метаданные
-    )
+    if isinstance(search_terms, str):
+        terms = [t.strip() for t in search_terms.split(",") if t.strip()]
+    else:
+        terms = list(search_terms)
 
-    if jobs.empty:
-        print("Новых вакансий не найдено.")
-        conn.close()
-        return []
-
-    print(f"📦 Найдено карточек в поиске: {len(jobs)}")
-
-    # 2. Дедупликация по job_id и по паре (title, company) — компании часто постят
-    # одну и ту же Remote-вакансию на 10 разных стран EMEA с разными job_id
-    jobs = jobs.drop_duplicates(subset=["id"]).copy()
-    jobs["_dedup_key"] = (
-        jobs["title"].fillna("").str.strip().str.lower()
-        + "::"
-        + jobs["company"].fillna("").str.strip().str.lower()
-    )
-    jobs = jobs.drop_duplicates(subset=["_dedup_key"]).drop(columns=["_dedup_key"]).copy()
-
-    new_jobs_mask = ~jobs["id"].astype(str).isin(processed_ids)
-    unseen_jobs = jobs[new_jobs_mask].copy()
-    skipped_seen = len(jobs) - len(unseen_jobs)
-    if skipped_seen:
-        print(f"⏭️ Пропущено уже обработанных ранее вакансий (из БД): {skipped_seen}")
-
-    if unseen_jobs.empty:
-        print("Все найденные вакансии уже были обработаны ранее.")
-        conn.close()
-        return []
-
-    # 3. Первичная фильтрация по заголовку ДО скачивания описания
-    exclude_title_words = [
-        "intern", "junior", "php", "c++", "wordpress", ".net", "c#", "golang", "rust", "ios", "macos", "android"
-    ]
-    exclude_pattern = "|".join(re.escape(w) for w in exclude_title_words)
-    title_mask = ~unseen_jobs["title"].fillna("").str.lower().str.contains(exclude_pattern, regex=True)
-
-    rejected_by_title = unseen_jobs[~title_mask]
-    for _, row in rejected_by_title.iterrows():
-        mark_job_processed(
-            conn,
-            job_id=str(row.get("id")),
-            title=str(row.get("title", "")),
-            company=str(row.get("company", "")),
-            url=str(row.get("job_url", "")),
-            date_posted=str(row.get("date_posted", "")),
-            matched=False,
-            reject_reason="excluded_title",
-        )
-
-    candidates = unseen_jobs[title_mask].copy()
-    print(
-        f"🧹 Отсеяно по заголовку: {len(rejected_by_title)} | "
-        f"Кандидатов для загрузки описания: {len(candidates)}"
-    )
-
-    # 4. Догружаем описания и критерии карточки с паузой 1.5–2.5 сек
-    required_keywords = ["kotlin", "java", "spring", "python", "langgraph", "microservices"]
-    required_pattern = re.compile(
-        r"\b(?:" + "|".join(re.escape(w) for w in required_keywords) + r")\b",
-        re.IGNORECASE,
-    )
-
-    # Нежелательные грейды и индустрии из метаданных карточки LinkedIn
-    excluded_seniorities = {"internship", "entry level"}
-    excluded_industries = {"staffing and recruiting"}
-
-    results = []
-    session = requests.Session()
-
-    for idx, (_, row) in enumerate(candidates.iterrows(), start=1):
-        job_id = str(row.get("id"))
-        title = str(row.get("title", ""))
-        company = str(row.get("company", ""))
-        job_url = str(row.get("job_url", ""))
-        date_posted = str(row.get("date_posted", ""))
-
-        print(f"📥 [{idx}/{len(candidates)}] Загрузка карточки: {title} @ {company} ({job_id})...")
-        details = fetch_job_details(session, job_id)
-
-        if details is None:
-            print(f"  ❌ Не удалось загрузить карточку {job_id}, оставляем на следующий запуск.")
-            continue
-
-        description = details["description"] or ""
-        seniority = details["seniority_level"]
-        employment_type = details["employment_type"]
-        job_function = details["job_function"]
-        industry = details["industry"]
-        salary = details["salary"]
-
-        meta_info = " | ".join(
-            f"{k}: {v}"
-            for k, v in [
-                ("Level", seniority),
-                ("Type", employment_type),
-                ("Industry", industry),
-                ("Salary", salary),
-            ]
-            if v
-        )
-        if meta_info:
-            print(f"  ℹ️  {meta_info}")
-
-        # Проверяем критерии карточки (Seniority, Industry) и стек в описании
-        reject_reason = None
-        if seniority and seniority.strip().lower() in excluded_seniorities:
-            reject_reason = f"excluded_seniority:{seniority}"
-        elif industry and industry.strip().lower() in excluded_industries:
-            reject_reason = f"excluded_industry:{industry}"
-        elif not required_pattern.search(description):
-            reject_reason = "missing_keywords"
-
-        is_match = reject_reason is None
-
-        mark_job_processed(
-            conn,
-            job_id=job_id,
-            title=title,
-            company=company,
-            url=job_url,
-            date_posted=date_posted,
-            matched=is_match,
-            reject_reason=reject_reason,
-            seniority_level=seniority,
-            employment_type=employment_type,
-            job_function=job_function,
-            industry=industry,
-            salary=salary,
-        )
-
-        if is_match:
-            clean_snippet = " ".join(description.split())[:300]
-            results.append(
-                {
-                    "id": job_id,
-                    "title": title,
-                    "company": company,
-                    "url": job_url,
-                    "date_posted": date_posted,
-                    "seniority_level": seniority,
-                    "employment_type": employment_type,
-                    "industry": industry,
-                    "salary": salary,
-                    "description_snippet": clean_snippet + ("..." if len(clean_snippet) >= 300 else ""),
-                }
+    # 1. Запрашиваем список вакансий по каждому запросу БЕЗ полных описаний (fetch_description=False)
+    frames: list[pd.DataFrame] = []
+    easy_label = " [⚡ Только Easy Apply]" if easy_apply else ""
+    for idx, term in enumerate(terms):
+        if idx > 0:
+            time.sleep(random.uniform(2.0, 4.0))
+        emit(f"🔍 Поиск вакансий '{term}' в '{location}' (за последние {hours_old}ч){easy_label}...")
+        try:
+            df: pd.DataFrame = scrape_jobs(
+                site_name=["linkedin"],
+                search_term=term,
+                location=location,
+                results_wanted=results_wanted,
+                hours_old=hours_old,
+                easy_apply=easy_apply,
+                linkedin_company_ids=linkedin_company_ids,
+                fetch_description=False,
             )
-            print("  ✅ Подходит!")
-        else:
-            print(f"  ➖ Отклонено ({reject_reason}).")
+        except Exception as e:
+            emit(f"  ⚠️ Ошибка поиска для '{term}': {e}")
+            df = pd.DataFrame()
 
+        if not df.empty:
+            emit(f"  ↳ Найдено по запросу '{term}': {len(df)}")
+            frames.append(df)
+        else:
+            emit(f"  ↳ По запросу '{term}' вакансий не найдено.")
+
+    if frames:
+        jobs = pd.concat(frames, ignore_index=True)
+        emit(f"📦 Суммарно карточек со всех запросов: {len(jobs)}")
+
+        # 2. Дедупликация по job_id и по паре (title, company)
+        jobs = jobs.drop_duplicates(subset=["id"]).copy()
+        jobs["_dedup_key"] = (
+            jobs["title"].fillna("").str.strip().str.lower()
+            + "::"
+            + jobs["company"].fillna("").str.strip().str.lower()
+        )
+        jobs = jobs.drop_duplicates(subset=["_dedup_key"]).drop(columns=["_dedup_key"]).copy()
+
+        new_jobs_mask = ~jobs["id"].astype(str).isin(processed_ids)
+        unseen_jobs = jobs[new_jobs_mask].copy()
+        skipped_seen = len(jobs) - len(unseen_jobs)
+        if skipped_seen:
+            emit(f"⏭️ Пропущено уже обработанных ранее вакансий (из БД): {skipped_seen}")
+
+        if not unseen_jobs.empty:
+            # 3. Первичная фильтрация по заголовку ДО скачивания описания
+            exclude_title_words = [
+                "intern", "junior", "php", "c++", "wordpress", ".net", "c#", "golang", "rust", "ios", "macos", "android"
+            ]
+            exclude_pattern = "|".join(re.escape(w) for w in exclude_title_words)
+            title_mask = ~unseen_jobs["title"].fillna("").str.lower().str.contains(exclude_pattern, regex=True)
+
+            rejected_by_title = unseen_jobs[~title_mask]
+            for _, row in rejected_by_title.iterrows():
+                mark_job_processed(
+                    conn,
+                    job_id=str(row.get("id")),
+                    title=str(row.get("title", "")),
+                    company=str(row.get("company", "")),
+                    url=str(row.get("job_url", "")),
+                    date_posted=str(row.get("date_posted", "")),
+                    matched=False,
+                    reject_reason="excluded_title",
+                )
+
+            candidates = unseen_jobs[title_mask].copy()
+            emit(
+                f"🧹 Отсеяно по заголовку: {len(rejected_by_title)} | "
+                f"Кандидатов для загрузки описания: {len(candidates)}"
+            )
+
+            # 4. Догружаем описания и критерии карточки с паузой 1.5–2.5 сек
+            required_keywords = ["kotlin", "java", "spring", "python", "langgraph", "microservices", "llm", "agentic", "rag"]
+            required_pattern = re.compile(
+                r"\b(?:" + "|".join(re.escape(w) for w in required_keywords) + r")\b",
+                re.IGNORECASE,
+            )
+
+            excluded_seniorities = {"internship", "entry level"}
+            excluded_industries = {"staffing and recruiting"}
+
+            session = requests.Session()
+
+            for idx, (_, row) in enumerate(candidates.iterrows(), start=1):
+                job_id = str(row.get("id"))
+                title = str(row.get("title", ""))
+                company = str(row.get("company", ""))
+                job_url = str(row.get("job_url", ""))
+                date_posted = str(row.get("date_posted", ""))
+
+                emit(f"📥 [{idx}/{len(candidates)}] Загрузка карточки: {title} @ {company} ({job_id})...")
+                details = fetch_job_details(session, job_id)
+
+                if details is None:
+                    emit(f"  ❌ Не удалось загрузить карточку {job_id}, оставляем на следующий запуск.")
+                    continue
+
+                description = details["description"] or ""
+                seniority = details["seniority_level"]
+                employment_type = details["employment_type"]
+                job_function = details["job_function"]
+                industry = details["industry"]
+                salary = details["salary"]
+
+                reject_reason = None
+                if seniority and seniority.strip().lower() in excluded_seniorities:
+                    reject_reason = f"excluded_seniority:{seniority}"
+                elif industry and industry.strip().lower() in excluded_industries:
+                    reject_reason = f"excluded_industry:{industry}"
+                elif not required_pattern.search(description):
+                    reject_reason = "missing_keywords"
+
+                is_match = reject_reason is None
+
+                mark_job_processed(
+                    conn,
+                    job_id=job_id,
+                    title=title,
+                    company=company,
+                    url=job_url,
+                    date_posted=date_posted,
+                    matched=is_match,
+                    reject_reason=reject_reason,
+                    seniority_level=seniority,
+                    employment_type=employment_type,
+                    job_function=job_function,
+                    industry=industry,
+                    salary=salary,
+                    description=description,
+                )
+
+                if is_match:
+                    emit(f"  ✅ Прошла базовый фильтр ({seniority or 'N/A'} | {industry or 'N/A'})")
+                else:
+                    emit(f"  ➖ Отклонено ({reject_reason}).")
+        else:
+            emit("Все найденные карточки из поиска уже были в БД.")
+    else:
+        emit("Поисковая выдача пуста.")
+
+    # 5. Запускаем Шаг 1 (JobEnrichment через agy CLI) + Шаг 2 (Скоринг по скиллу)
+    if run_llm_enrichment:
+        enrich_and_score_pending_jobs(conn, model=llm_model, limit=llm_limit, on_progress=on_progress)
+
+    # Возвращаем отранжированный сухой остаток
+    final_rows = conn.execute(
+        """
+        SELECT * FROM processed_jobs
+        WHERE matched = 1 AND score IS NOT NULL AND score >= 50
+        ORDER BY score DESC, date_posted DESC
+        """
+    ).fetchall()
+    results = [dict(r) for r in final_rows]
     conn.close()
     return results
 
 
 if __name__ == "__main__":
     matched = fetch_and_filter_jobs()
-    print(f"\n🎯 Итого новых подходящих вакансий за этот запуск: {len(matched)}\n")
+    print(f"\n🎯 Итого вакансий в сухом остатке (Score >= 50): {len(matched)}\n")
     for job in matched:
-        meta = " • ".join(
-            filter(None, [job.get("seniority_level"), job.get("employment_type"), job.get("industry"), job.get("salary")])
-        )
-        print(f"🔥 {job['title']} @ {job['company']} ({job['date_posted']})")
-        if meta:
-            print(f"🏷️  {meta}")
-        print(f"🔗 {job['url']}")
-        print(f"📝 {job['description_snippet']}\n")
+        print(f"🔥 [{job.get('score')}/100 | {job.get('tier')}] {job['title']} @ {job['company']} ({job['date_posted']})")
+        print(f"🔗 {job['url']}\n")
