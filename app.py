@@ -36,7 +36,9 @@ class RunPipelineRequest(BaseModel):
         "AI Agent Engineer Remote",
         "Software Engineer Remote",
     ]
+    site_names: list[str] = ["linkedin"]
     location: str = "EMEA"
+    country_indeed: str = "uk"
     results_wanted: int = 20
     hours_old: int = 4
     easy_apply: bool = False
@@ -68,7 +70,9 @@ def _worker_run(req: RunPipelineRequest) -> None:
         else:
             fetch_and_filter_jobs(
                 search_terms=req.search_terms,
+                site_names=req.site_names,
                 location=req.location,
+                country_indeed=req.country_indeed,
                 results_wanted=req.results_wanted,
                 hours_old=req.hours_old,
                 easy_apply=True if req.easy_apply else None,

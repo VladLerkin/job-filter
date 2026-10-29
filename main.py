@@ -31,6 +31,7 @@ def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
         """
         CREATE TABLE IF NOT EXISTS processed_jobs (
             job_id TEXT PRIMARY KEY,
+            site TEXT DEFAULT 'linkedin',
             title TEXT,
             company TEXT,
             url TEXT,
@@ -57,6 +58,7 @@ def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
         row[1] for row in conn.execute("PRAGMA table_info(processed_jobs)").fetchall()
     }
     new_cols = {
+        "site": "TEXT DEFAULT 'linkedin'",
         "seniority_level": "TEXT",
         "employment_type": "TEXT",
         "job_function": "TEXT",
@@ -91,6 +93,7 @@ def mark_job_processed(
     url: str,
     date_posted: str,
     matched: bool,
+    site: str = "linkedin",
     reject_reason: str | None = None,
     seniority_level: str | None = None,
     employment_type: str | None = None,
@@ -110,15 +113,16 @@ def mark_job_processed(
     conn.execute(
         """
         INSERT OR REPLACE INTO processed_jobs (
-            job_id, title, company, url, date_posted,
+            job_id, site, title, company, url, date_posted,
             seniority_level, employment_type, job_function, industry, salary,
             description, matched, reject_reason, processed_at,
             enrichment_json, score, tier, score_details_json, user_status
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job_id,
+            site or "linkedin",
             title,
             company,
             url,
@@ -335,7 +339,9 @@ def fetch_and_filter_jobs(
         "AI Agent Engineer Remote",
         "Software Engineer Remote",
     ),
+    site_names: list[str] | None = None,
     location: str = "EMEA",
+    country_indeed: str = "uk",
     results_wanted: int = 30,
     hours_old: int = 4,
     easy_apply: bool | None = None,
@@ -359,33 +365,65 @@ def fetch_and_filter_jobs(
     else:
         terms = list(search_terms)
 
-    # 1. Запрашиваем список вакансий по каждому запросу БЕЗ полных описаний (fetch_description=False)
+    sites = [s.strip().lower() for s in (site_names or ["linkedin"]) if s.strip()]
+    if not sites:
+        sites = ["linkedin"]
+
+    # 1. Запрашиваем список вакансий по каждому запросу и выбранным провайдерам
     frames: list[pd.DataFrame] = []
     easy_label = " [⚡ Только Easy Apply]" if easy_apply else ""
+    sites_label = ", ".join(sites)
     for idx, term in enumerate(terms):
         if idx > 0:
             time.sleep(random.uniform(2.0, 4.0))
-        emit(f"🔍 Поиск вакансий '{term}' в '{location}' (за последние {hours_old}ч){easy_label}...")
-        try:
-            df: pd.DataFrame = scrape_jobs(
-                site_name=["linkedin"],
-                search_term=term,
-                location=location,
-                results_wanted=results_wanted,
-                hours_old=hours_old,
-                easy_apply=easy_apply,
-                linkedin_company_ids=linkedin_company_ids,
-                fetch_description=False,
-            )
-        except Exception as e:
-            emit(f"  ⚠️ Ошибка поиска для '{term}': {e}")
-            df = pd.DataFrame()
+        emit(f"🔍 Поиск [{sites_label}] '{term}' в '{location}' (за последние {hours_old}ч){easy_label}...")
 
-        if not df.empty:
-            emit(f"  ↳ Найдено по запросу '{term}': {len(df)}")
-            frames.append(df)
-        else:
-            emit(f"  ↳ По запросу '{term}' вакансий не найдено.")
+        # Для LinkedIn используем fetch_description=False (докачиваем сами с паузой после фильтра заголовков).
+        # Для остальных провайдеров (indeed, glassdoor, google, zip_recruiter, bayt, hellowork, naukri, bdjobs)
+        # передаем fetch_description=True, чтобы сразу получить описания из их API/страниц.
+        non_li_sites = [s for s in sites if s != "linkedin"]
+
+        if "linkedin" in sites:
+            try:
+                df_li: pd.DataFrame = scrape_jobs(
+                    site_name=["linkedin"],
+                    search_term=term,
+                    location=location,
+                    results_wanted=results_wanted,
+                    hours_old=hours_old,
+                    easy_apply=easy_apply,
+                    linkedin_company_ids=linkedin_company_ids,
+                    fetch_description=False,
+                )
+                if not df_li.empty:
+                    emit(f"  ↳ [linkedin] Найдено по '{term}': {len(df_li)}")
+                    frames.append(df_li)
+                else:
+                    emit(f"  ↳ [linkedin] По '{term}' вакансий не найдено.")
+            except Exception as e:
+                emit(f"  ⚠️ [linkedin] Ошибка поиска для '{term}': {e}")
+
+        if non_li_sites:
+            try:
+                df_other: pd.DataFrame = scrape_jobs(
+                    site_name=non_li_sites,
+                    search_term=term,
+                    google_search_term=f"{term} jobs in {location} since yesterday",
+                    location=location,
+                    country_indeed=country_indeed,
+                    is_remote=True,
+                    results_wanted=results_wanted,
+                    hours_old=hours_old,
+                    easy_apply=easy_apply,
+                    fetch_description=True,
+                )
+                if not df_other.empty:
+                    emit(f"  ↳ [{', '.join(non_li_sites)}] Найдено по '{term}': {len(df_other)}")
+                    frames.append(df_other)
+                else:
+                    emit(f"  ↳ [{', '.join(non_li_sites)}] По '{term}' вакансий не найдено.")
+            except Exception as e:
+                emit(f"  ⚠️ [{', '.join(non_li_sites)}] Ошибка поиска для '{term}': {e}")
 
     if frames:
         jobs = pd.concat(frames, ignore_index=True)
@@ -419,6 +457,7 @@ def fetch_and_filter_jobs(
                 mark_job_processed(
                     conn,
                     job_id=str(row.get("id")),
+                    site=str(row.get("site") or "linkedin"),
                     title=str(row.get("title", "")),
                     company=str(row.get("company", "")),
                     url=str(row.get("job_url", "")),
@@ -433,7 +472,7 @@ def fetch_and_filter_jobs(
                 f"Кандидатов для загрузки описания: {len(candidates)}"
             )
 
-            # 4. Догружаем описания и критерии карточки с паузой 1.5–2.5 сек
+            # 4. Догружаем описания и критерии карточки (для LinkedIn с паузой 1.5–2.5 сек, для остальных берем из ответа)
             required_keywords = ["kotlin", "java", "spring", "python", "langgraph", "microservices", "llm", "agentic", "rag"]
             required_pattern = re.compile(
                 r"\b(?:" + "|".join(re.escape(w) for w in required_keywords) + r")\b",
@@ -447,24 +486,45 @@ def fetch_and_filter_jobs(
 
             for idx, (_, row) in enumerate(candidates.iterrows(), start=1):
                 job_id = str(row.get("id"))
+                site_val = str(row.get("site") or ("linkedin" if job_id.startswith("li-") else "other"))
                 title = str(row.get("title", ""))
                 company = str(row.get("company", ""))
                 job_url = str(row.get("job_url", ""))
                 date_posted = str(row.get("date_posted", ""))
 
-                emit(f"📥 [{idx}/{len(candidates)}] Загрузка карточки: {title} @ {company} ({job_id})...")
-                details = fetch_job_details(session, job_id)
+                if site_val == "linkedin" or job_id.startswith("li-"):
+                    emit(f"📥 [{idx}/{len(candidates)}] [linkedin] Загрузка карточки: {title} @ {company} ({job_id})...")
+                    details = fetch_job_details(session, job_id)
+                    if details is None:
+                        emit(f"  ❌ Не удалось загрузить карточку {job_id}, оставляем на следующий запуск.")
+                        continue
+                    description = details["description"] or ""
+                    seniority = details["seniority_level"]
+                    employment_type = details["employment_type"]
+                    job_function = details["job_function"]
+                    industry = details["industry"]
+                    salary = details["salary"]
+                else:
+                    emit(f"📥 [{idx}/{len(candidates)}] [{site_val}] Обработка карточки: {title} @ {company} ({job_id})...")
+                    raw_desc = row.get("description")
+                    description = str(raw_desc) if pd.notna(raw_desc) and raw_desc else ""
+                    raw_level = row.get("job_level")
+                    seniority = str(raw_level) if pd.notna(raw_level) and raw_level else None
+                    raw_type = row.get("job_type")
+                    employment_type = str(raw_type) if pd.notna(raw_type) and raw_type else None
+                    raw_func = row.get("job_function")
+                    job_function = str(raw_func) if pd.notna(raw_func) and raw_func else None
+                    raw_ind = row.get("company_industry")
+                    industry = str(raw_ind) if pd.notna(raw_ind) and raw_ind else None
 
-                if details is None:
-                    emit(f"  ❌ Не удалось загрузить карточку {job_id}, оставляем на следующий запуск.")
-                    continue
-
-                description = details["description"] or ""
-                seniority = details["seniority_level"]
-                employment_type = details["employment_type"]
-                job_function = details["job_function"]
-                industry = details["industry"]
-                salary = details["salary"]
+                    min_amt = row.get("min_amount")
+                    max_amt = row.get("max_amount")
+                    curr = row.get("currency") or "$"
+                    interval = row.get("interval") or "yr"
+                    if pd.notna(min_amt) and pd.notna(max_amt) and (min_amt or max_amt):
+                        salary = f"{curr}{min_amt:,.0f} - {curr}{max_amt:,.0f}/{interval}"
+                    else:
+                        salary = None
 
                 reject_reason = None
                 if seniority and seniority.strip().lower() in excluded_seniorities:
@@ -479,6 +539,7 @@ def fetch_and_filter_jobs(
                 mark_job_processed(
                     conn,
                     job_id=job_id,
+                    site=site_val,
                     title=title,
                     company=company,
                     url=job_url,

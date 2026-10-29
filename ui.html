@@ -48,7 +48,7 @@
 
   <main class="max-w-7xl mx-auto px-4 mt-6 space-y-6">
     <!-- Панель управления запуском пайплайна -->
-    <section class="card rounded-xl p-5 shadow-lg">
+    <section class="card rounded-xl p-5 shadow-lg space-y-4">
       <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
         <div class="md:col-span-4">
           <label class="block text-xs text-slate-400 mb-1">Поисковые запросы (через запятую)</label>
@@ -71,7 +71,7 @@
             class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
         </div>
         <div class="md:col-span-1 flex items-center h-[38px]">
-          <label class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-slate-200 bg-slate-900 border border-slate-700 hover:border-indigo-500 px-2.5 py-2 rounded-lg w-full justify-center" title="Искать только вакансии с быстрым откликом LinkedIn Easy Apply">
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-slate-200 bg-slate-900 border border-slate-700 hover:border-indigo-500 px-2.5 py-2 rounded-lg w-full justify-center" title="Искать только вакансии с быстрым откликом Easy Apply">
             <input id="easyApply" type="checkbox" class="rounded bg-slate-800 border-slate-600 text-indigo-600 focus:ring-indigo-500" />
             <span>⚡ Easy Apply</span>
           </label>
@@ -81,10 +81,60 @@
             class="flex-1 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition shadow">
             🚀 Собрать + ИИ-фильтр
           </button>
-          <button id="btnRunEnrich" onclick="startPipeline(true)" title="Обогатить через agy CLI уже скачанные в БД вакансии без нового парсинга LinkedIn"
+          <button id="btnRunEnrich" onclick="startPipeline(true)" title="Обогатить через agy CLI уже скачанные в БД вакансии без нового парсинга"
             class="px-3 py-2 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white font-medium text-sm transition">
             🧠 Только ИИ
           </button>
+        </div>
+      </div>
+
+      <!-- Выбор провайдеров JobSpy -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80 text-xs">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-slate-400 font-medium mr-1">🌐 Источники (JobSpy):</span>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none">
+            <input type="checkbox" name="siteProvider" value="linkedin" checked class="rounded bg-slate-800 border-slate-600 text-indigo-600" />
+            <span class="text-slate-200 font-medium">LinkedIn</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="Лучший фильтр Remote + мало рейт-лимитов">
+            <input type="checkbox" name="siteProvider" value="indeed" class="rounded bg-slate-800 border-slate-600 text-indigo-600" />
+            <span class="text-slate-200 font-medium">Indeed</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="Отлично для вилок зарплат и отзывов">
+            <input type="checkbox" name="siteProvider" value="glassdoor" class="rounded bg-slate-800 border-slate-600 text-indigo-600" />
+            <span class="text-slate-200 font-medium">Glassdoor</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="Агрегатор Google Jobs со всех ATS (Greenhouse, Lever, Ashby)">
+            <input type="checkbox" name="siteProvider" value="google" class="rounded bg-slate-800 border-slate-600 text-indigo-600" />
+            <span class="text-slate-200 font-medium">Google Jobs</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="США / Global Remote">
+            <input type="checkbox" name="siteProvider" value="zip_recruiter" class="rounded bg-slate-800 border-slate-600 text-indigo-600" />
+            <span class="text-slate-300">ZipRecruiter</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="Европа / Франция">
+            <input type="checkbox" name="siteProvider" value="hellowork" class="rounded bg-slate-800 border-slate-600 text-indigo-600" />
+            <span class="text-slate-300">HelloWork (EU)</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="ОАЭ / Дубай / MENA">
+            <input type="checkbox" name="siteProvider" value="bayt" class="rounded bg-slate-800 border-slate-600 text-indigo-600" />
+            <span class="text-slate-300">Bayt (MENA)</span>
+          </label>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <label class="text-slate-400">Страна для Indeed/Glassdoor:</label>
+          <select id="countryIndeed" class="px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 text-slate-200 focus:outline-none focus:border-indigo-500">
+            <option value="uk" selected>🇬🇧 UK</option>
+            <option value="germany">🇩🇪 Germany</option>
+            <option value="netherlands">🇳🇱 Netherlands</option>
+            <option value="poland">🇵🇱 Poland</option>
+            <option value="spain">🇪🇸 Spain</option>
+            <option value="france">🇫🇷 France</option>
+            <option value="ireland">🇮🇪 Ireland</option>
+            <option value="switzerland">🇨🇭 Switzerland</option>
+            <option value="usa">🇺🇸 USA</option>
+          </select>
         </div>
       </div>
 
@@ -200,6 +250,11 @@
       const hoursOld = parseInt(document.getElementById('hoursOld').value || '4', 10);
       const llmLimit = parseInt(document.getElementById('llmLimit').value || '15', 10);
       const easyApply = document.getElementById('easyApply').checked;
+      const countryIndeed = document.getElementById('countryIndeed').value || 'uk';
+      const siteNames = Array.from(document.querySelectorAll('input[name="siteProvider"]:checked')).map(el => el.value);
+      if (siteNames.length === 0) {
+        siteNames.push('linkedin');
+      }
 
       document.getElementById('logContainer').classList.remove('hidden');
       document.getElementById('logOutput').textContent = '';
@@ -210,7 +265,9 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           search_terms: searchTerms,
+          site_names: siteNames,
           location: location,
+          country_indeed: countryIndeed,
           results_wanted: 25,
           hours_old: hoursOld,
           easy_apply: easyApply,
@@ -279,6 +336,7 @@
                 <span class="text-xs font-bold px-2.5 py-1 rounded-md ${scoreBadgeClass}">
                   ${isTop ? '🟢 TOP MATCH • ' : isGood ? '🟡 GOOD MATCH • ' : ''}${scoreLabel}
                 </span>
+                <span class="text-xs px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 uppercase font-semibold">${escapeHtml(job.site || 'linkedin')}</span>
                 ${job.tier ? `<span class="text-xs px-2.5 py-1 rounded-md bg-slate-800 text-slate-200 border border-slate-700">${escapeHtml(job.tier)}</span>` : ''}
                 ${job.seniority_level ? `<span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400">${escapeHtml(job.seniority_level)}</span>` : ''}
                 ${job.salary ? `<span class="text-xs px-2.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">💰 ${escapeHtml(job.salary)}</span>` : ''}

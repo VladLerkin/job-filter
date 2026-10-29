@@ -118,10 +118,28 @@ def build_enrich_prompt(
 
 def extract_json_object(text: str) -> dict:
     text = text.strip()
+    # Сначала пробуем распарсить как есть (особенно когда agy вызван с --output-format json)
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+
+    # Если вывод содержит несколько строк NDJSON или прогресс, ищем последнюю валидную JSON-строку
+    for line in reversed(text.splitlines()):
+        line_s = line.strip()
+        if line_s.startswith("{") and line_s.endswith("}"):
+            try:
+                parsed = json.loads(line_s)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                continue
+
     fence = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
     if fence:
         text = fence.group(1).strip()
-    # Находим первую '{' и последнюю '}'
     start = text.find("{")
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
