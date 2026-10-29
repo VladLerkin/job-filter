@@ -116,6 +116,43 @@ def classify_geo_tier(
     ).lower()
 
     full_lower = (loc_text + "\n" + (description or "")[:3000]).lower()
+    restrictions_joined = " | ".join(enrichment.location_restrictions).lower()
+    remote_low = (enrichment.remote_policy_detail or "").lower()
+    fit_summary_low = ((enrichment.resume_fit.summary if enrichment.resume_fit else "") or "").lower()
+    has_relocation = enrichment.relocation_assistance == "yes"
+
+    # Сначала проверяем жесткие single-country ограничения, которые извлекла LLM в location_restrictions и remote_policy_detail,
+    # потому что в описании может быть маркетинговая фраза про "global company", но нанимают только в 1 стране!
+    has_broad_emea = any(
+        w in restrictions_joined
+        for w in ("emea", "europe", "cet", "utc+", "gmt+", "global", "worldwide", "anywhere", "multi", "georgia")
+    )
+
+    single_country_names = (
+        "uk", "united kingdom", "great britain", "england", "london",
+        "spain", "bulgaria", "poland", "germany", "france", "italy",
+        "romania", "ukraine", "portugal", "netherlands", "ireland",
+        "hungary", "czech", "austria", "switzerland", "belgium", "sweden",
+        "norway", "finland", "denmark", "greece", "lithuania", "latvia", "estonia",
+    )
+    for country_name in single_country_names:
+        if re.search(
+            rf"\b{re.escape(country_name)}(?:\s+only|-based|\s+residents?\s+only)\b|\b(?:within|across)\s+(?:the\s+)?{re.escape(country_name)}\b",
+            f"{restrictions_joined} | {remote_low}",
+        ) and not has_relocation:
+            label = f"{country_name.upper()}-only" if country_name == "uk" else f"{country_name.title()}-only"
+            return False, f"Rejected: {label}", f"single_country_lock:{label}"
+
+        if not has_broad_emea and not has_relocation:
+            if re.search(rf"\b{re.escape(country_name)}\b", restrictions_joined):
+                label = f"{country_name.upper()}-only" if country_name == "uk" else f"{country_name.title()}-only"
+                return False, f"Rejected: {label}", f"single_country_lock:{label}"
+
+    if re.search(
+        r"(?:требует|ограничена)\s+(?:проживания|базирования|локацией)\s+в\s+(?:великобритании|uk|испании|болгарии|польше|германии|франции|сша)",
+        fit_summary_low,
+    ) and not has_relocation:
+        return False, "Rejected: Single-country residency required", "single_country_lock:residency"
 
     # Если явно разрешены Georgia / Worldwide / Anywhere / Global B2B
     if any(
@@ -154,13 +191,57 @@ def classify_geo_tier(
         if re.search(pat, full_lower):
             return False, "Rejected: Russia-only", "ru_only_lock"
 
+    # Проверка жестких ограничений по типу контракта (против B2B / Contractor из Грузии, согласно preferences.md)
+    contract_locks = [
+        (r"\bw-?2 only\b|\bno c2c\b|\bno corp-to-corp\b", "W2-only (No B2B/C2C)"),
+        (r"\binside ir35\b", "UK Inside IR35"),
+        (r"\bpaye only\b", "UK PAYE-only (No B2B)"),
+        (r"\bno b2b\b|\bno contractors\b", "No B2B / Contractors"),
+    ]
+    for pat, label in contract_locks:
+        if re.search(pat, full_lower):
+            return False, f"Rejected: {label}", f"contract_lock:{label}"
+
     # Проверка single-country lock в location_restrictions (если нет relocation и нет EMEA/Global)
-    restrictions_joined = " ".join(enrichment.location_restrictions).lower()
+    restrictions_joined = " | ".join(enrichment.location_restrictions).lower()
+    remote_low = (enrichment.remote_policy_detail or "").lower()
+    fit_summary_low = ((enrichment.resume_fit.summary if enrichment.resume_fit else "") or "").lower()
+
     has_broad_emea = any(
-        w in loc_text
-        for w in ("emea", "europe", "cet", "utc+", "gmt+", "global", "worldwide", "anywhere", "multi")
+        w in restrictions_joined
+        for w in ("emea", "europe", "cet", "utc+", "gmt+", "global", "worldwide", "anywhere", "multi", "georgia")
     )
     has_relocation = enrichment.relocation_assistance == "yes"
+
+    # Если LLM в location_restrictions явно поставила одну страну без EMEA/Europe/Global (например ['Bulgaria'], ['UK only'], ['Spain only'], ['UK-based'])
+    single_country_names = (
+        "uk", "united kingdom", "great britain", "england", "london",
+        "spain", "bulgaria", "poland", "germany", "france", "italy",
+        "romania", "ukraine", "portugal", "netherlands", "ireland",
+        "hungary", "czech", "austria", "switzerland", "belgium", "sweden",
+        "norway", "finland", "denmark", "greece", "lithuania", "latvia", "estonia",
+    )
+    for country_name in single_country_names:
+        # 1) Если в location_restrictions или remote_policy написано "<country> only" / "within <country>" / "<country>-based"
+        if re.search(
+            rf"\b{re.escape(country_name)}(?:\s+only|-based|\s+residents?\s+only)\b|\b(?:within|across)\s+(?:the\s+)?{re.escape(country_name)}\b",
+            f"{restrictions_joined} | {remote_low}",
+        ) and not has_relocation:
+            label = f"{country_name.upper()}-only" if country_name == "uk" else f"{country_name.title()}-only"
+            return False, f"Rejected: {label}", f"single_country_lock:{label}"
+
+        # 2) Если в location_restrictions указана только эта страна (и нет широкого EMEA/Europe/Worldwide)
+        if not has_broad_emea and not has_relocation:
+            if re.search(rf"\b{re.escape(country_name)}\b", restrictions_joined):
+                label = f"{country_name.upper()}-only" if country_name == "uk" else f"{country_name.title()}-only"
+                return False, f"Rejected: {label}", f"single_country_lock:{label}"
+
+    # 3) Если сама LLM в resume_fit.summary прямо написала, что роль требует проживания/базирования в одной стране (UK, Испании, Болгарии и т.д.)
+    if re.search(
+        r"(?:требует|ограничена)\s+(?:проживания|базирования|локацией)\s+в\s+(?:великобритании|uk|испании|болгарии|польше|германии|франции|сша)",
+        fit_summary_low,
+    ) and not has_relocation:
+        return False, "Rejected: Single-country residency required", "single_country_lock:residency"
 
     single_country_locks = [
         (r"\b(?:uk|united kingdom) only\b", "UK-only"),
@@ -319,13 +400,22 @@ def score_vacancy_by_skill(
         score += 10
         breakdown.append("Tier 2 EMEA/Europe (+10)")
 
-    # 4. Salary Match (+5 neutral if unstated, +10 if >= $5k/mo)
+    # 4. Salary Match vs preferences.md ($6,000 - $8,000/mo or $72,000 - $96,000/yr)
     if salary_text:
         nums = [float(x.replace(",", "")) for x in re.findall(r"\d[\d,]*(?:\.\d+)?", salary_text)]
         max_num = max(nums) if nums else 0
-        if max_num >= 60000 or (1000 <= max_num and max_num >= 5000 and "/mo" in salary_text.lower()):
+        # Конвертация GBP/EUR в USD приблизительно для оценки порога $72k/yr ($6k/mo)
+        mult = 1.28 if "£" in salary_text or "gbp" in salary_text.lower() else (1.08 if "€" in salary_text or "eur" in salary_text.lower() else 1.0)
+        adj_max = max_num * mult
+
+        if adj_max >= 72000 or (1000 <= adj_max < 25000 and adj_max >= 6000 and "/mo" in salary_text.lower()):
             score += 10
-            breakdown.append(f"Salary {salary_text} (+10)")
+            breakdown.append(f"Salary {salary_text} >= $6k/mo (+10)")
+        elif adj_max >= 55000 or (1000 <= adj_max < 25000 and adj_max >= 4500 and "/mo" in salary_text.lower()):
+            score += 5
+            breakdown.append(f"Salary {salary_text} (+5)")
+        elif adj_max >= 1000:
+            breakdown.append(f"Salary below $6k/mo target: {salary_text} (+0)")
         else:
             score += 5
             breakdown.append(f"Salary {salary_text} (+5)")

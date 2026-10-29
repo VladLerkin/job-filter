@@ -8,7 +8,9 @@ from enrichment_schema import JobEnrichment
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 RESUME_PATH = PROJECT_ROOT / "resume" / "resume.md"
+PREFERENCES_PATH = PROJECT_ROOT / "resume" / "preferences.md"
 EXTERNAL_RESUME_PATH = Path("/Users/vlad/IdeaProjects/hirify-filter-bot-export-skill/resume/resume.md")
+EXTERNAL_PREFERENCES_PATH = Path("/Users/vlad/IdeaProjects/hirify-filter-bot-export-skill/resume/preferences.md")
 
 AGY_BIN = shutil.which("agy") or "/Users/vlad/.local/bin/agy"
 DEFAULT_MODEL = "gemini-3.8-flash-low"
@@ -74,11 +76,22 @@ Rules for constraints (CRITICAL for remote candidate in Georgia/Tbilisi):
 
 
 def load_resume_text() -> str:
+    resume_text = ""
     for path in (RESUME_PATH, EXTERNAL_RESUME_PATH):
         if path.is_file():
-            text = path.read_text(encoding="utf-8").strip()
-            return text[:10000]
-    return ""
+            resume_text = path.read_text(encoding="utf-8").strip()
+            break
+
+    prefs_text = ""
+    for path in (PREFERENCES_PATH, EXTERNAL_PREFERENCES_PATH):
+        if path.is_file():
+            prefs_text = path.read_text(encoding="utf-8").strip()
+            break
+
+    combined = resume_text
+    if prefs_text:
+        combined += f"\n\n== CANDIDATE PREFERENCES & WORK AUTHORIZATION ==\n{prefs_text}"
+    return combined[:12000]
 
 
 def build_enrich_prompt(
