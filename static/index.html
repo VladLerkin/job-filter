@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Job Filter</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="min-h-screen pb-16">
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <h1 class="text-xl font-bold text-white flex items-center gap-2">
+          <span>🎯 Job Filter</span>
+          <span class="text-xs font-normal px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+            agy CLI + Hirify Skill Scorer
+          </span>
+        </h1>
+        <p class="text-xs text-slate-400 mt-0.5">
+          Кандидат: Владислав Ярыгин • AI Agentic & Senior Backend (Java, Kotlin, Python) • Удалёнка из Грузии (B2B)
+        </p>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 mt-6 space-y-6">
+    <!-- Панель управления запуском пайплайна -->
+    <section class="card rounded-xl p-5 shadow-lg space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+        <div class="md:col-span-4">
+          <label class="block text-xs text-slate-400 mb-1">Поисковые запросы (через запятую)</label>
+          <input id="searchTerms" type="text" value="Agentic Engineer Remote, AI Agent Engineer Remote, Software Engineer Remote"
+            class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div class="md:col-span-2">
+          <label id="locationLabel" class="block text-xs text-slate-400 mb-1">Локация / Регион</label>
+          <select id="location"
+            class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500">
+          </select>
+        </div>
+        <div class="md:col-span-1">
+          <label class="block text-xs text-slate-400 mb-1">Часов</label>
+          <input id="hoursOld" type="number" value="4" min="1" max="168"
+            class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div class="md:col-span-1">
+          <label class="block text-xs text-slate-400 mb-1">Лимит ИИ</label>
+          <input id="llmLimit" type="number" value="15" min="1" max="100"
+            class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div class="md:col-span-1 flex items-center h-[38px]">
+          <label id="easyApplyWrap" class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-slate-200 bg-slate-900 border border-slate-700 hover:border-indigo-500 px-2.5 py-2 rounded-lg w-full justify-center" title="Искать только вакансии с быстрым откликом Easy Apply">
+            <input id="easyApply" type="checkbox" class="rounded bg-slate-800 border-slate-600 text-indigo-600 focus:ring-indigo-500" />
+            <span>⚡ Easy Apply</span>
+          </label>
+        </div>
+        <div class="md:col-span-3 flex gap-2">
+          <button id="btnRunFull" onclick="startPipeline(false)"
+            class="flex-1 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition shadow">
+            🚀 Собрать + ИИ-фильтр
+          </button>
+          <button id="btnRunEnrich" onclick="startPipeline(true)" title="Обогатить через agy CLI уже скачанные в БД вакансии без нового парсинга"
+            class="px-3 py-2 rounded-lg bg-emerald-600/80 hover:bg-emerald-500 text-white font-medium text-sm transition">
+            🧠 Только ИИ
+          </button>
+        </div>
+      </div>
+
+      <!-- Выбор одного провайдера JobSpy -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80 text-xs">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-slate-400 font-medium mr-1">🌐 Источник (выбери один):</span>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none">
+            <input type="radio" name="siteProvider" value="linkedin" checked onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
+            <span class="text-slate-200 font-medium">LinkedIn</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="Лучший фильтр Remote + мало рейт-лимитов">
+            <input type="radio" name="siteProvider" value="indeed" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
+            <span class="text-slate-200 font-medium">Indeed</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="Отлично для вилок зарплат и отзывов">
+            <input type="radio" name="siteProvider" value="glassdoor" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
+            <span class="text-slate-200 font-medium">Glassdoor</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="Агрегатор Google Jobs со всех ATS (Greenhouse, Lever, Ashby)">
+            <input type="radio" name="siteProvider" value="google" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
+            <span class="text-slate-200 font-medium">Google Jobs</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="США / Канада Remote">
+            <input type="radio" name="siteProvider" value="zip_recruiter" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
+            <span class="text-slate-300">ZipRecruiter</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="Европа / Франция (Télétravail)">
+            <input type="radio" name="siteProvider" value="hellowork" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
+            <span class="text-slate-300">HelloWork (FR)</span>
+          </label>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="ОАЭ / Дубай / MENA">
+            <input type="radio" name="siteProvider" value="bayt" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
+            <span class="text-slate-300">Bayt (MENA)</span>
+          </label>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <span id="remoteMechanismBadge" class="px-2.5 py-1 rounded-md bg-emerald-950/70 text-emerald-300 border border-emerald-800/60 font-medium"></span>
+          <span id="providerHint" class="text-slate-400 italic"></span>
+        </div>
+      </div>
+
+      <!-- Лог выполнения в реальном времени -->
+      <div id="logContainer" class="hidden mt-4">
+        <div class="flex items-center justify-between mb-1">
+          <span id="pipelineBadge" class="text-xs font-medium text-indigo-400 flex items-center gap-1.5">
+            <span class="animate-ping inline-block w-2 h-2 rounded-full bg-indigo-400"></span>
+            Выполняется пайплайн...
+          </span>
+          <button onclick="document.getElementById('logContainer').classList.add('hidden')" class="text-xs text-slate-400 hover:text-white">
+            Скрыть лог
+          </button>
+        </div>
+        <pre id="logOutput" class="bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-300 font-mono max-h-56 overflow-y-auto whitespace-pre-wrap"></pre>
+      </div>
+    </section>
+
+    <!-- Табы и статистика -->
+    <section class="flex items-center justify-between gap-2 border-b border-slate-800 pb-3 overflow-x-auto">
+      <div class="flex items-center gap-1.5 whitespace-nowrap" id="tabsBar">
+        <button data-tab="actionable" onclick="switchTab('actionable')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white">
+          🎯 Сухой остаток (<span id="cntActionable">0</span>)
+        </button>
+        <button data-tab="top" onclick="switchTab('top')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+          🟢 Top Match ≥70 (<span id="cntTop">0</span>)
+        </button>
+        <button data-tab="good" onclick="switchTab('good')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+          🟡 Good 50–69 (<span id="cntGood">0</span>)
+        </button>
+        <button data-tab="pending" onclick="switchTab('pending')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+          ⏳ Ждут ИИ-разбора (<span id="cntPending">0</span>)
+        </button>
+        <button data-tab="applied" onclick="switchTab('applied')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+          ✅ Откликнулся (<span id="cntApplied">0</span>)
+        </button>
+        <button data-tab="rejected" onclick="switchTab('rejected')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+          🗑️ Отсеянные (<span id="cntRejected">0</span>)
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2 whitespace-nowrap shrink-0">
+        <button data-tab="blacklist" onclick="switchTab('blacklist')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-red-950/60 text-red-300 hover:bg-red-900/60 border border-red-800/60">
+          ⛔ Чёрный список (<span id="cntBadBoards">2</span>)
+        </button>
+        <button data-tab="skills" onclick="switchTab('skills')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700">
+          🎯 Навыки и Скоринг (<span id="cntSkills">0</span>)
+        </button>
+        <button data-tab="candidate" onclick="switchTab('candidate')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700">
+          👤 Профиль и CV
+        </button>
+        <button onclick="rescoreAll()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">
+          🔄 Пересчитать скоринг
+        </button>
+        <span class="text-xs text-slate-400">Всего в БД: <strong id="cntTotal" class="text-slate-200">0</strong></span>
+      </div>
+    </section>
+
+    <!-- Панель управления черным списком джоб-бордов / ATS (cims.com и др.) -->
+    <section id="blacklistSection" class="hidden card rounded-xl p-6 shadow-lg space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div>
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <span>💩 Чёрный список джоб-бордов и ATS</span>
+            <span class="text-xs font-normal px-2 py-0.5 rounded bg-red-950 text-red-300 border border-red-800">Двойной переход LinkedIn → ATS</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Синхронизировано с расширением <code class="text-slate-200">job-auto-applier</code>. При переходе на забаненный домен (или его <code>&lt;iframe&gt;</code>) в браузере сразу всплывает предупреждение, а компания привязывается к этому борду.
+          </p>
+        </div>
+      </div>
+
+      <!-- Последняя открытая вакансия (для связки после перехода в LinkedIn) -->
+      <div id="lastOpenedBox" class="p-4 rounded-xl bg-slate-900/90 border border-slate-700 flex flex-wrap items-center justify-between gap-3">
+        <div class="text-xs text-slate-300">
+          <span class="text-slate-400 font-semibold">🔗 Последняя открытая вакансия:</span>
+          <span id="lastOpenedText" class="ml-1 text-slate-400 italic">Пока не открывалась в этой сессии</span>
+        </div>
+        <button id="btnBanLastOpened" onclick="openBadBoardModalForLastOpened()" class="hidden px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold transition">
+          ⛔ Добавить последнюю открытую в черный список
+        </button>
+      </div>
+
+      <!-- Добавление нового домена / URL в черный список -->
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end bg-slate-900/50 p-4 rounded-xl border border-slate-800">
+        <div class="md:col-span-5">
+          <label class="block text-xs text-slate-400 mb-1">Домен или полный URL джоб-борда (например, <code>cims.com</code> или ссылка с редиректа)</label>
+          <div class="flex gap-2">
+            <input id="newBadDomainInput" type="text" placeholder="cims.com или https://careers-company.icims.com/..."
+              class="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-red-500" />
+            <button onclick="pasteClipboardToInput('newBadDomainInput')" title="Вставить скопированный URL из буфера обмена"
+              class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs whitespace-nowrap">
+              📋 Из буфера
+            </button>
+          </div>
+        </div>
+        <div class="md:col-span-5">
+          <label class="block text-xs text-slate-400 mb-1">Причина (почему не заполняется)</label>
+          <input id="newBadReasonInput" type="text" value="Невозможно заполнить форму (в чёрном списке)"
+            class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-red-500" />
+        </div>
+        <div class="md:col-span-2">
+          <button onclick="addBadDomainFromPanel()"
+            class="w-full px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold text-sm transition shadow">
+            ➕ В чёрный список
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Список забаненных доменов -->
+        <div>
+          <h3 class="text-sm font-bold text-slate-200 mb-2">🚫 Забаненные домены джоб-бордов / ATS</h3>
+          <div id="badDomainsList" class="space-y-2"></div>
+        </div>
+
+        <!-- Список компаний, у которых уже обнаружен заблокированный борд -->
+        <div>
+          <h3 class="text-sm font-bold text-slate-200 mb-2">🏢 Компании с проблемными ATS/бордами</h3>
+          <div id="badCompaniesList" class="space-y-2"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Редактор профиля и CV кандидата (хранится в jobs.db, как в job-auto-applier) -->
+    <section id="candidateSection" class="hidden card rounded-xl p-6 shadow-lg space-y-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div>
+          <h2 class="text-base font-bold text-white">👤 Данные кандидата в базе <code class="text-indigo-300 text-xs">jobs.db → candidate_settings</code></h2>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Используется ИИ (<code class="text-slate-300">agy_enrich.py</code>) при оценке <code class="text-slate-300">resume_fit</code>. Совместимо с форматом экспорта/импорта <code class="text-slate-300">job-auto-applier</code>.
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <span id="candidateUpdatedAt" class="text-xs text-slate-400 mr-2"></span>
+          <label class="text-xs px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition shadow cursor-pointer flex items-center gap-1.5">
+            <span>📄 Загрузить PDF резюме</span>
+            <input type="file" id="cvPdfFileInput" accept=".pdf,application/pdf" onchange="handleCvPdfUpload(event)" class="hidden" />
+          </label>
+          <button onclick="exportCandidateJson()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+            ⬇️ Экспорт JSON
+          </button>
+          <label class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer">
+            ⬆️ Импорт JSON
+            <input type="file" id="importCandidateFile" accept=".json,application/json" onchange="importCandidateJson(event)" class="hidden" />
+          </label>
+          <button onclick="saveCandidateProfile()" class="text-xs px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition shadow">
+            💾 Сохранить в БД
+          </button>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label for="profileTextInput" class="block text-xs font-semibold text-slate-300 mb-1.5">
+            Your Profile / Preferences (Предпочтения, локация, виза / B2B, зарплатные ожидания):
+          </label>
+          <textarea id="profileTextInput" rows="6"
+            placeholder="E.g., Number of years of experience, address, salary expectations, Work Authorization note..."
+            class="w-full p-3 rounded-lg bg-slate-950 border border-slate-700 text-sm text-slate-200 font-mono focus:outline-none focus:border-indigo-500"></textarea>
+        </div>
+
+        <div>
+          <label for="cvTextInput" class="block text-xs font-semibold text-slate-300 mb-1.5">
+            Your CV / Resume Text (Полный текст резюме для сопоставления навыков):
+          </label>
+          <textarea id="cvTextInput" rows="18"
+            placeholder="Paste your structured CV / Resume text here..."
+            class="w-full p-3 rounded-lg bg-slate-950 border border-slate-700 text-sm text-slate-200 font-mono focus:outline-none focus:border-indigo-500"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- Панель управления матрицей навыков и категориями скоринга -->
+    <section id="skillsSection" class="hidden card rounded-xl p-6 shadow-lg space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div>
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <span>🎯 Матрица навыков и категории скоринга</span>
+            <span class="text-xs font-normal px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">jobs.db → candidate_skills</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Задавайте опыт в годах для каждого навыка. Баллы в скоринге вакансий рассчитываются по формуле: <code class="text-slate-200">баллы = min(годы × множитель, лимит категории)</code> или настраиваются вручную.
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="text-xs px-3 py-1.5 rounded-lg bg-emerald-950/70 hover:bg-emerald-900 text-emerald-200 border border-emerald-700/60 transition shadow cursor-pointer flex items-center gap-1.5" title="Загрузить PDF резюме для авто-распознавания опыта и навыков">
+            <span>📄 Импорт из PDF резюме</span>
+            <input type="file" id="cvPdfFileInputSkills" accept=".pdf,application/pdf" onchange="handleCvPdfUpload(event)" class="hidden" />
+          </label>
+          <button onclick="openCategoryModal()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+            ➕ Добавить категорию
+          </button>
+          <button onclick="openSkillModal()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+            ➕ Добавить навык
+          </button>
+          <button onclick="resetSkillsDefaults()" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 transition" title="Восстановить базовый набор категорий и навыков по умолчанию">
+            ↺ Сбросить к базовым
+          </button>
+          <button onclick="rescoreAll()" class="text-xs px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition shadow">
+            🔄 Пересчитать скоринг вакансий
+          </button>
+        </div>
+      </div>
+
+      <!-- Контейнер карточек категорий и их навыков -->
+      <div id="skillsCategoriesContainer" class="space-y-6"></div>
+    </section>
+
+    <!-- Список карточек вакансий -->
+    <section id="jobsList" class="space-y-4"></section>
+  </main>
+
+  <!-- Модальное окно добавления вакансии / компании в чёрный список -->
+  <div id="badBoardModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="card rounded-xl max-w-lg w-full p-6 shadow-2xl border border-red-800/70 space-y-4">
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <span>⛔ Добавить в чёрный список (проблемная форма)</span>
+          </h3>
+          <p id="modalJobSubtitle" class="text-xs text-slate-400 mt-1"></p>
+        </div>
+        <button onclick="closeBadBoardModal()" class="text-slate-400 hover:text-white text-lg leading-none">&times;</button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs text-slate-300 mb-1.5 font-medium">Быстрый выбор платформы (1 клик):</label>
+          <div class="flex flex-wrap gap-1.5">
+            <button type="button" onclick="selectPresetBadDomain('cims.com')" class="px-2.5 py-1 rounded bg-red-950/90 hover:bg-red-900 text-red-200 border border-red-700/70 text-xs font-mono">
+              cims.com / icims.com
+            </button>
+            <button type="button" onclick="selectPresetBadDomain('myworkdayjobs.com')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 text-xs font-mono">
+              myworkdayjobs.com
+            </button>
+            <button type="button" onclick="selectPresetBadDomain('taleo.net')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 text-xs font-mono">
+              taleo.net
+            </button>
+            <button type="button" onclick="selectPresetBadDomain('successfactors.com')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 text-xs font-mono">
+              successfactors.com
+            </button>
+            <button type="button" onclick="selectPresetBadDomain('')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-600 text-xs">
+              🏢 Только эту компанию
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-300 mb-1 font-medium">
+            URL или домен джоб-борда (куда перекинуло после LinkedIn):
+          </label>
+          <div class="flex gap-2">
+            <input id="modalBadDomainInput" type="text" placeholder="Например: cims.com или вставь URL из браузера"
+              class="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white font-mono focus:outline-none focus:border-red-500" />
+            <button type="button" onclick="pasteClipboardToInput('modalBadDomainInput')"
+              class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs whitespace-nowrap">
+              📋 Вставить URL
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">
+            Если оставить пустым — в чёрный список занесётся сама компания, и все её будущие вакансии будут помечены.
+          </p>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-300 mb-1 font-medium">Причина:</label>
+          <input id="modalBadReasonInput" type="text" value="Невозможно заполнить форму (в чёрном списке)"
+            class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-red-500" />
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+        <button type="button" onclick="closeBadBoardModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">
+          Отмена
+        </button>
+        <button type="button" onclick="confirmBadBoardModal()" class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold shadow">
+          ⛔ Занести в чёрный список и скрыть
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно создания/редактирования категории -->
+  <div id="categoryModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="card rounded-xl max-w-md w-full p-6 shadow-2xl border border-slate-700 space-y-4">
+      <div class="flex items-start justify-between gap-2">
+        <h3 id="categoryModalTitle" class="text-base font-bold text-white">Категория навыков</h3>
+        <button onclick="closeCategoryModal()" class="text-slate-400 hover:text-white text-lg leading-none">&times;</button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs text-slate-300 mb-1">ID категории (латиницей, например <code>ai_agentic</code>):</label>
+          <input id="modalCatId" type="text" placeholder="ai_agentic" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div>
+          <label class="block text-xs text-slate-300 mb-1">Название категории (с эмодзи):</label>
+          <input id="modalCatTitle" type="text" placeholder="🤖 AI & Agentic Systems" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">Множитель (за 1 год):</label>
+            <input id="modalCatMultiplier" type="number" step="0.5" placeholder="15.0" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            <span class="text-[10px] text-slate-500">Отрицательный для штрафов</span>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">Максимум баллов (лимит):</label>
+            <input id="modalCatMaxPoints" type="number" step="1" placeholder="30" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            <span class="text-[10px] text-slate-500">Потолок категории в скоринге</span>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs text-slate-300 mb-1">Порядок сортировки (число):</label>
+          <input id="modalCatSortOrder" type="number" step="1" value="1" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+        <button type="button" onclick="closeCategoryModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">Отмена</button>
+        <button type="button" onclick="saveCategoryFromModal()" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow">💾 Сохранить категорию</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно создания/редактирования навыка -->
+  <div id="skillModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="card rounded-xl max-w-lg w-full p-6 shadow-2xl border border-slate-700 space-y-4">
+      <div class="flex items-start justify-between gap-2">
+        <h3 id="skillModalTitle" class="text-base font-bold text-white">Навык кандидата</h3>
+        <button onclick="closeSkillModal()" class="text-slate-400 hover:text-white text-lg leading-none">&times;</button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs text-slate-300 mb-1">Категория:</label>
+          <select id="modalSkillCatSelect" onchange="onModalCategoryChange()" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500"></select>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">ID навыка (латиницей):</label>
+            <input id="modalSkillId" type="text" placeholder="langgraph" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          </div>
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">Название навыка:</label>
+            <input id="modalSkillName" type="text" placeholder="LangGraph" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">Опыт (в годах):</label>
+            <input id="modalSkillYears" type="number" step="0.5" min="0" placeholder="2.0" oninput="onModalYearsInput()" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          </div>
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">Баллы в скоринге:</label>
+            <input id="modalSkillPoints" type="number" step="1" placeholder="30" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          </div>
+        </div>
+        <div>
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input id="modalSkillPrimary" type="checkbox" class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0" />
+            <span class="text-xs text-slate-300 font-medium">⭐ Ключевой навык (Primary)</span>
+          </label>
+        </div>
+        <div>
+          <label class="block text-xs text-slate-300 mb-1">Синонимы / алиасы (через запятую):</label>
+          <input id="modalSkillAliases" type="text" placeholder="langgraph, langchain, crewai, koog" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+        <button type="button" onclick="closeSkillModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">Отмена</button>
+        <button type="button" onclick="saveSkillFromModal()" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow">💾 Сохранить навык</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно предпросмотра и подтверждения анализа PDF резюме -->
+  <div id="cvAnalysisModal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden items-center justify-center z-50 p-4">
+    <div class="card rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col p-6 shadow-2xl border border-indigo-700/60 space-y-4">
+      <div class="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
+        <div>
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <span>📄 ИИ-разбор резюме и матрица навыков</span>
+            <span id="cvModalFileBadge" class="text-xs font-mono font-normal px-2.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700"></span>
+          </h3>
+          <p class="text-xs text-slate-400 mt-1">
+            ИИ извлек структурированный текст резюме и рассчитал стаж по каждому навыку. Выберите, какие изменения применить в базе.
+          </p>
+        </div>
+        <button onclick="closeCvAnalysisModal()" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
+      </div>
+
+      <!-- Краткое резюме кандидата (Summary) -->
+      <div id="cvModalSummaryBox" class="p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-800/60 flex items-start gap-3">
+        <span class="text-xl">🤖</span>
+        <div class="text-xs">
+          <div class="font-semibold text-indigo-200 mb-0.5">Резюме профиля кандидата:</div>
+          <div id="cvModalSummaryText" class="text-slate-300 leading-relaxed font-sans"></div>
+        </div>
+      </div>
+
+      <!-- Переключатель вкладок внутри модалки: Навыки / Текст CV -->
+      <div class="flex items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+        <div class="flex gap-2">
+          <button id="cvTabBtnSkills" onclick="switchCvModalTab('skills')" class="px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white">
+            🎯 Навыки и стаж (<span id="cvModalSkillsCount">0</span>)
+          </button>
+          <button id="cvTabBtnText" onclick="switchCvModalTab('text')" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-slate-200">
+            📄 Структурированный текст резюме
+          </button>
+        </div>
+        <div id="cvDiffFilterBadges" class="flex items-center gap-1.5 text-xs">
+          <span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/80 text-[11px]">
+            Новых: <strong id="cvCntNew">0</strong>
+          </span>
+          <span class="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800/80 text-[11px]">
+            Обновленных: <strong id="cvCntUpdated">0</strong>
+          </span>
+          <span class="px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800 text-[11px]">
+            Без изменений: <strong id="cvCntUnchanged">0</strong>
+          </span>
+        </div>
+      </div>
+
+      <!-- Контейнер вкладки 1: Таблица Diff навыков -->
+      <div id="cvModalTabSkills" class="flex-1 overflow-y-auto max-h-[46vh] pr-1 space-y-2">
+        <table class="w-full text-left text-xs">
+          <thead class="sticky top-0 bg-slate-950 border-b border-slate-800 text-slate-400 text-[11px] uppercase tracking-wider z-10">
+            <tr>
+              <th class="py-2 px-2 text-center w-8">
+                <input type="checkbox" id="cvDiffSelectAll" checked onchange="toggleSelectAllCvSkills(event)" class="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-0 cursor-pointer" />
+              </th>
+              <th class="py-2 px-2">Статус</th>
+              <th class="py-2 px-2">Навык & Категория</th>
+              <th class="py-2 px-2 text-center" title="Опыт в годах">Стаж (годы)</th>
+              <th class="py-2 px-2 text-center" title="Баллы в скоринге вакансий">Баллы скоринга</th>
+              <th class="py-2 px-2 text-center">Primary</th>
+              <th class="py-2 px-2">Алиасы</th>
+            </tr>
+          </thead>
+          <tbody id="cvDiffTableBody" class="divide-y divide-slate-800/60 font-sans"></tbody>
+        </table>
+      </div>
+
+      <!-- Контейнер вкладки 2: Структурированный текст резюме -->
+      <div id="cvModalTabText" class="hidden flex-1 overflow-y-auto max-h-[46vh] space-y-2">
+        <textarea id="cvModalStructuredText" rows="16" class="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 font-mono leading-relaxed focus:outline-none focus:border-indigo-500"></textarea>
+      </div>
+
+      <!-- Опции применения -->
+      <div class="pt-3 border-t border-slate-800 space-y-2">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-300">
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="applyOptUpdateCv" checked class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0" />
+            <span>📝 Обновить текст резюме в базе (<code class="text-slate-400">cv_text</code>)</span>
+          </label>
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="applyOptUpdateSkills" checked class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0" />
+            <span>🎯 Применить отмеченные навыки в матрицу скоринга</span>
+          </label>
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="applyOptUpdateProfile" class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0" />
+            <span>👤 Добавить summary в предпочтения кандидата</span>
+          </label>
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="applyOptRescore" checked class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0" />
+            <span>🔄 Пересчитать скоринг всех вакансий сразу</span>
+          </label>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-2">
+          <button type="button" onclick="closeCvAnalysisModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">
+            Отмена
+          </button>
+          <button type="button" onclick="confirmApplyCvAnalysis()" id="btnConfirmApplyCv" class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg transition">
+            ✅ Применить выбранные изменения
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Оверлей ожидания ИИ-анализа PDF -->
+  <div id="cvLoadingOverlay" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="card rounded-2xl max-w-sm w-full p-6 text-center space-y-4 border border-indigo-700/60 shadow-2xl">
+      <div class="inline-flex p-3 rounded-full bg-indigo-950/80 text-indigo-400 border border-indigo-800">
+        <svg class="animate-spin h-8 w-8 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+        </svg>
+      </div>
+      <div>
+        <h4 class="text-base font-bold text-white">ИИ анализирует резюме</h4>
+        <p class="text-xs text-slate-400 mt-1">Извлекаем текст из PDF, восстанавливаем структуру карьеры и оцениваем стаж по навыкам...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast уведомление -->
+  <div id="toast" class="fixed bottom-5 right-5 hidden bg-emerald-600 text-white text-sm px-4 py-2.5 rounded-lg shadow-xl z-50"></div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
