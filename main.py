@@ -6,6 +6,7 @@ import random
 import re
 import sqlite3
 import time
+from urllib.parse import parse_qs, unquote, urlparse
 
 from bs4 import BeautifulSoup
 from jobspy import scrape_jobs
@@ -59,6 +60,8 @@ def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
     }
     new_cols = {
         "site": "TEXT DEFAULT 'linkedin'",
+        "location": "TEXT",
+        "is_remote": "INTEGER",
         "seniority_level": "TEXT",
         "employment_type": "TEXT",
         "job_function": "TEXT",
@@ -71,13 +74,402 @@ def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
         "tier": "TEXT",
         "score_details_json": "TEXT",
         "user_status": "TEXT DEFAULT 'new'",
+        "apply_url": "TEXT",
+        "ats_domain": "TEXT",
     }
     for col_name, col_type in new_cols.items():
         if col_name not in existing_cols:
             conn.execute(f"ALTER TABLE processed_jobs ADD COLUMN {col_name} {col_type}")
 
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS blacklisted_boards (
+            domain TEXT PRIMARY KEY,
+            reason TEXT,
+            created_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS company_ats_map (
+            company_key TEXT PRIMARY KEY,
+            company_name TEXT,
+            ats_domain TEXT,
+            sample_url TEXT,
+            updated_at TEXT
+        )
+        """
+    )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    default_bad_domains = [
+        ("cims.com", "iCIMS (cims.com) — невозможно нормально заполнить форму"),
+        ("icims.com", "iCIMS (icims.com) — невозможно нормально заполнить форму"),
+    ]
+    for dom, rsn in default_bad_domains:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO blacklisted_boards (domain, reason, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (dom, rsn, now_iso),
+        )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS candidate_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            profile_text TEXT,
+            cv_text TEXT,
+            updated_at TEXT
+        )
+        """
+    )
+    row = conn.execute("SELECT id FROM candidate_settings WHERE id = 1").fetchone()
+    if not row:
+        conn.execute(
+            """
+            INSERT INTO candidate_settings (id, profile_text, cv_text, updated_at)
+            VALUES (1, '', '', ?)
+            """,
+            (datetime.now(timezone.utc).isoformat(),),
+        )
+
     conn.commit()
     return conn
+
+
+def get_candidate_settings(conn: sqlite3.Connection) -> dict[str, str]:
+    row = conn.execute(
+        "SELECT profile_text, cv_text, updated_at FROM candidate_settings WHERE id = 1"
+    ).fetchone()
+    if not row:
+        return {"profile_text": "", "cv_text": "", "updated_at": ""}
+    return {
+        "profile_text": row["profile_text"] or "",
+        "cv_text": row["cv_text"] or "",
+        "updated_at": row["updated_at"] or "",
+    }
+
+
+def save_candidate_settings(
+    conn: sqlite3.Connection,
+    profile_text: str,
+    cv_text: str,
+) -> dict[str, str]:
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """
+        INSERT INTO candidate_settings (id, profile_text, cv_text, updated_at)
+        VALUES (1, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            profile_text = excluded.profile_text,
+            cv_text = excluded.cv_text,
+            updated_at = excluded.updated_at
+        """,
+        (profile_text, cv_text, now_iso),
+    )
+    conn.commit()
+    return {"profile_text": profile_text, "cv_text": cv_text, "updated_at": now_iso}
+
+
+KNOWN_MULTI_TENANT_ATS = (
+    "icims.com",
+    "cims.com",
+    "myworkdayjobs.com",
+    "workday.com",
+    "taleo.net",
+    "successfactors.com",
+    "successfactors.eu",
+    "greenhouse.io",
+    "lever.co",
+    "ashbyhq.com",
+    "smartrecruiters.com",
+    "workable.com",
+    "breezy.hr",
+    "bamboohr.com",
+    "jobvite.com",
+    "ultipro.com",
+    "dayforcehcm.com",
+    "brassring.com",
+    "oraclecloud.com",
+    "pageuppeople.com",
+    "avature.net",
+    "recruitee.com",
+    "teamtailor.com",
+    "personio.de",
+    "personio.com",
+)
+
+
+def normalize_company_key(company: str | None) -> str:
+    if not company:
+        return ""
+    return re.sub(r"\s+", " ", company.strip().lower())
+
+
+def extract_root_domain(url_or_domain: str | None) -> str | None:
+    """Извлекает базовый домен ATS или сайта из URL или строки домена."""
+    if not url_or_domain:
+        return None
+    raw = url_or_domain.strip()
+    if not raw:
+        return None
+    if "://" not in raw:
+        raw = "https://" + raw
+    try:
+        parsed = urlparse(raw)
+        host = (parsed.hostname or "").lower().strip(".")
+    except Exception:
+        return None
+    if not host:
+        return None
+    if host.startswith("www."):
+        host = host[4:]
+
+    for ats in KNOWN_MULTI_TENANT_ATS:
+        if host == ats or host.endswith("." + ats):
+            return ats
+
+    parts = host.split(".")
+    if len(parts) >= 3 and parts[-2] in ("co", "com", "org", "net", "gov") and len(parts[-1]) == 2:
+        return ".".join(parts[-3:])
+    if len(parts) >= 2:
+        return ".".join(parts[-2:])
+    return host
+
+
+def match_blacklisted_domain(
+    conn: sqlite3.Connection,
+    url_or_domain: str | None,
+) -> dict[str, str] | None:
+    """Проверяет, входит ли URL или домен в черный список говносайтов."""
+    if not url_or_domain:
+        return None
+    raw = url_or_domain.strip()
+    if not raw:
+        return None
+    host = raw.lower()
+    if "://" in raw or "/" in raw:
+        try:
+            host = (urlparse(raw if "://" in raw else "https://" + raw).hostname or "").lower().strip(".")
+        except Exception:
+            pass
+    if host.startswith("www."):
+        host = host[4:]
+    root = extract_root_domain(host) or host
+
+    rows = conn.execute("SELECT domain, reason FROM blacklisted_boards").fetchall()
+    bad_map = {r["domain"].lower(): (r["reason"] or "В черном списке") for r in rows}
+
+    # Эквивалентность cims.com <-> icims.com
+    candidates_to_check = [host, root]
+    if root in ("cims.com", "icims.com") or host.endswith(".cims.com") or host.endswith(".icims.com"):
+        candidates_to_check.extend(["cims.com", "icims.com"])
+
+    for cand in candidates_to_check:
+        if cand in bad_map:
+            return {"domain": cand, "reason": bad_map[cand]}
+    for bad_dom, rsn in bad_map.items():
+        if host == bad_dom or host.endswith("." + bad_dom):
+            return {"domain": bad_dom, "reason": rsn}
+    return None
+
+
+def get_company_ats_info(conn: sqlite3.Connection, company: str | None) -> dict[str, str] | None:
+    key = normalize_company_key(company)
+    if not key:
+        return None
+    row = conn.execute(
+        "SELECT company_name, ats_domain, sample_url, updated_at FROM company_ats_map WHERE company_key = ?",
+        (key,),
+    ).fetchone()
+    if not row:
+        return None
+    return dict(row)
+
+
+def get_blacklist_data(conn: sqlite3.Connection) -> dict:
+    boards = [
+        dict(r)
+        for r in conn.execute(
+            "SELECT domain, reason, created_at FROM blacklisted_boards ORDER BY created_at DESC"
+        ).fetchall()
+    ]
+    companies = [
+        dict(r)
+        for r in conn.execute(
+            "SELECT company_key, company_name, ats_domain, sample_url, updated_at FROM company_ats_map ORDER BY updated_at DESC"
+        ).fetchall()
+    ]
+    return {"boards": boards, "companies": companies}
+
+
+def add_blacklisted_board(
+    conn: sqlite3.Connection,
+    domain_or_url: str | None = None,
+    company: str | None = None,
+    job_id: str | None = None,
+    reason: str = "Невозможно заполнить форму (в чёрном списке)",
+    hide_job: bool = True,
+) -> dict:
+    """
+    Добавляет домен в черный список, привязывает его к компании (если известна)
+    и обновляет все вакансии этой компании / с этим доменом в БД.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    domain = extract_root_domain(domain_or_url) if domain_or_url else None
+
+    if job_id and not company:
+        row = conn.execute("SELECT company, apply_url, ats_domain FROM processed_jobs WHERE job_id = ?", (job_id,)).fetchone()
+        if row:
+            company = row["company"]
+            if not domain:
+                domain = row["ats_domain"] or extract_root_domain(row["apply_url"])
+
+    if not domain and company:
+        # Если пользователь не знает точный домен, но банит компанию как ведущую на говносайт
+        domain = f"company:{normalize_company_key(company)}"
+
+    if domain:
+        conn.execute(
+            """
+            INSERT INTO blacklisted_boards (domain, reason, created_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(domain) DO UPDATE SET
+                reason = excluded.reason
+            """,
+            (domain, reason, now_iso),
+        )
+        # Если банится cims.com — синхронно баним и icims.com
+        if domain == "cims.com":
+            conn.execute(
+                "INSERT OR IGNORE INTO blacklisted_boards (domain, reason, created_at) VALUES (?, ?, ?)",
+                ("icims.com", reason, now_iso),
+            )
+        elif domain == "icims.com":
+            conn.execute(
+                "INSERT OR IGNORE INTO blacklisted_boards (domain, reason, created_at) VALUES (?, ?, ?)",
+                ("cims.com", reason, now_iso),
+            )
+
+    comp_key = normalize_company_key(company)
+    if comp_key and domain:
+        conn.execute(
+            """
+            INSERT INTO company_ats_map (company_key, company_name, ats_domain, sample_url, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(company_key) DO UPDATE SET
+                ats_domain = excluded.ats_domain,
+                sample_url = COALESCE(excluded.sample_url, company_ats_map.sample_url),
+                updated_at = excluded.updated_at
+            """,
+            (comp_key, (company or "").strip(), domain, domain_or_url, now_iso),
+        )
+        conn.execute(
+            """
+            UPDATE processed_jobs
+            SET ats_domain = COALESCE(ats_domain, ?),
+                apply_url = COALESCE(apply_url, ?)
+            WHERE lower(trim(company)) = ?
+            """,
+            (domain, domain_or_url if (domain_or_url and "://" in domain_or_url) else None, comp_key),
+        )
+
+    if job_id:
+        if hide_job:
+            conn.execute(
+                """
+                UPDATE processed_jobs
+                SET user_status = 'hidden',
+                    ats_domain = COALESCE(?, ats_domain),
+                    apply_url = COALESCE(?, apply_url),
+                    reject_reason = COALESCE(reject_reason, ?)
+                WHERE job_id = ?
+                """,
+                (
+                    domain,
+                    domain_or_url if (domain_or_url and "://" in domain_or_url) else None,
+                    f"bad_board:{domain or 'unknown'}",
+                    job_id,
+                ),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE processed_jobs
+                SET ats_domain = COALESCE(?, ats_domain),
+                    apply_url = COALESCE(?, apply_url)
+                WHERE job_id = ?
+                """,
+                (
+                    domain,
+                    domain_or_url if (domain_or_url and "://" in domain_or_url) else None,
+                    job_id,
+                ),
+            )
+
+    conn.commit()
+    return {
+        "domain": domain,
+        "company": company,
+        "job_id": job_id,
+        "reason": reason,
+    }
+
+
+def remove_blacklisted_board(conn: sqlite3.Connection, domain: str) -> None:
+    d = (domain or "").strip().lower()
+    conn.execute("DELETE FROM blacklisted_boards WHERE lower(domain) = ?", (d,))
+    conn.commit()
+
+
+def remove_company_ats_map(conn: sqlite3.Connection, company_key: str) -> None:
+    k = normalize_company_key(company_key)
+    conn.execute("DELETE FROM company_ats_map WHERE company_key = ?", (k,))
+    conn.commit()
+
+
+def extract_linkedin_apply_url(soup: BeautifulSoup) -> str | None:
+    """
+    Пытается извлечь прямую внешнюю ссылку (applyUrl) из гостевой HTML-карточки LinkedIn,
+    если вакансия ведет на внешний ATS (не Easy Apply).
+    """
+    candidates: list[str] = []
+
+    code_tag = soup.find("code", id="applyUrl")
+    if code_tag:
+        raw_html = str(code_tag)
+        m = re.search(r"<!--\s*\"?(https?://[^\s\"<>]+)\"?\s*-->", raw_html)
+        if m:
+            candidates.append(m.group(1))
+        elif code_tag.get_text(strip=True):
+            candidates.append(code_tag.get_text(strip=True).strip('"'))
+
+    for a_tag in soup.find_all("a", href=True):
+        cls = " ".join(a_tag.get("class") or [])
+        trk = str(a_tag.get("data-tracking-control-name") or "")
+        href = str(a_tag["href"])
+        if "apply" in cls.lower() or "apply" in trk.lower() or "externalApply" in href:
+            candidates.append(href)
+
+    for raw_url in candidates:
+        try:
+            parsed = urlparse(raw_url)
+            qs = parse_qs(parsed.query)
+            if "url" in qs and qs["url"]:
+                ext = unquote(qs["url"][0]).strip()
+                ext_host = (urlparse(ext).hostname or "").lower()
+                if ext_host and "linkedin.com" not in ext_host:
+                    return ext
+            host = (parsed.hostname or "").lower()
+            if host and "linkedin.com" not in host:
+                return raw_url
+        except Exception:
+            continue
+
+    return None
 
 
 def get_processed_ids(conn: sqlite3.Connection) -> set[str]:
@@ -94,6 +486,8 @@ def mark_job_processed(
     date_posted: str,
     matched: bool,
     site: str = "linkedin",
+    location: str | None = None,
+    is_remote: bool | None = None,
     reject_reason: str | None = None,
     seniority_level: str | None = None,
     employment_type: str | None = None,
@@ -105,24 +499,41 @@ def mark_job_processed(
     score: int | None = None,
     tier: str | None = None,
     score_details_json: str | None = None,
+    apply_url: str | None = None,
+    ats_domain: str | None = None,
 ) -> None:
-    # Сохраняем существующий user_status, если запись обновляется
-    cur = conn.execute("SELECT user_status FROM processed_jobs WHERE job_id = ?", (job_id,)).fetchone()
-    user_status = (cur[0] if cur and cur[0] else "new")
+    # Сохраняем существующий user_status, apply_url, ats_domain, если запись обновляется
+    cur = conn.execute(
+        "SELECT user_status, apply_url, ats_domain FROM processed_jobs WHERE job_id = ?",
+        (job_id,),
+    ).fetchone()
+    user_status = (cur["user_status"] if cur and cur["user_status"] else "new")
+    existing_apply_url = cur["apply_url"] if cur else None
+    existing_ats_domain = cur["ats_domain"] if cur else None
+
+    final_apply_url = apply_url or existing_apply_url
+    final_ats_domain = ats_domain or extract_root_domain(final_apply_url) or existing_ats_domain
+    if not final_ats_domain and company:
+        comp_info = get_company_ats_info(conn, company)
+        if comp_info:
+            final_ats_domain = comp_info.get("ats_domain")
 
     conn.execute(
         """
         INSERT OR REPLACE INTO processed_jobs (
-            job_id, site, title, company, url, date_posted,
+            job_id, site, location, is_remote, title, company, url, date_posted,
             seniority_level, employment_type, job_function, industry, salary,
             description, matched, reject_reason, processed_at,
-            enrichment_json, score, tier, score_details_json, user_status
+            enrichment_json, score, tier, score_details_json, user_status,
+            apply_url, ats_domain
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job_id,
             site or "linkedin",
+            location,
+            (1 if is_remote else 0) if is_remote is not None else None,
             title,
             company,
             url,
@@ -141,6 +552,8 @@ def mark_job_processed(
             tier,
             score_details_json,
             user_status,
+            final_apply_url,
+            final_ats_domain,
         ),
     )
     conn.commit()
@@ -217,6 +630,7 @@ def fetch_job_details(
 
                 salary_tag = soup.find("div", class_="compensation__salary")
                 salary_text = " ".join(salary_tag.get_text().split()) if salary_tag else None
+                apply_url = extract_linkedin_apply_url(soup)
 
                 return {
                     "description": description,
@@ -225,6 +639,7 @@ def fetch_job_details(
                     "job_function": criteria(soup, "Job function"),
                     "industry": criteria(soup, "Industries"),
                     "salary": salary_text,
+                    "apply_url": apply_url,
                 }
             elif resp.status_code in (429, 502, 503, 504):
                 backoff = attempt * 3.0 + random.uniform(1.0, 2.5)
@@ -241,6 +656,7 @@ def fetch_job_details(
                     "job_function": None,
                     "industry": None,
                     "salary": None,
+                    "apply_url": None,
                 }
             else:
                 print(f"  ⚠️ [{job_id}] Неожиданный статус {resp.status_code}")
@@ -366,26 +782,24 @@ def fetch_and_filter_jobs(
         terms = list(search_terms)
 
     sites = [s.strip().lower() for s in (site_names or ["linkedin"]) if s.strip()]
-    if not sites:
-        sites = ["linkedin"]
+    site = sites[0] if sites else "linkedin"
 
-    # 1. Запрашиваем список вакансий по каждому запросу и выбранным провайдерам
+    # 1. Запрашиваем список вакансий по каждому запросу для выбранного провайдера
     frames: list[pd.DataFrame] = []
     easy_label = " [⚡ Только Easy Apply]" if easy_apply else ""
-    sites_label = ", ".join(sites)
+
     for idx, term in enumerate(terms):
         if idx > 0:
             time.sleep(random.uniform(2.0, 4.0))
-        emit(f"🔍 Поиск [{sites_label}] '{term}' в '{location}' (за последние {hours_old}ч){easy_label}...")
 
-        # Для LinkedIn используем fetch_description=False (докачиваем сами с паузой после фильтра заголовков).
-        # Для остальных провайдеров (indeed, glassdoor, google, zip_recruiter, bayt, hellowork, naukri, bdjobs)
-        # передаем fetch_description=True, чтобы сразу получить описания из их API/страниц.
-        non_li_sites = [s for s in sites if s != "linkedin"]
+        # Для провайдеров с флагом is_remote=True убираем лишнее слово "Remote" из поисковой фразы,
+        # чтобы не требовать буквального вхождения слова "Remote" в заголовок карточки
+        clean_term = re.sub(r"\bremote\b", "", term, flags=re.IGNORECASE).strip() or term
 
-        if "linkedin" in sites:
-            try:
-                df_li: pd.DataFrame = scrape_jobs(
+        try:
+            if site == "linkedin":
+                emit(f"🔍 Поиск [linkedin] '{term}' в '{location}' (за последние {hours_old}ч){easy_label}...")
+                df: pd.DataFrame = scrape_jobs(
                     site_name=["linkedin"],
                     search_term=term,
                     location=location,
@@ -395,20 +809,113 @@ def fetch_and_filter_jobs(
                     linkedin_company_ids=linkedin_company_ids,
                     fetch_description=False,
                 )
-                if not df_li.empty:
-                    emit(f"  ↳ [linkedin] Найдено по '{term}': {len(df_li)}")
-                    frames.append(df_li)
-                else:
-                    emit(f"  ↳ [linkedin] По '{term}' вакансий не найдено.")
-            except Exception as e:
-                emit(f"  ⚠️ [linkedin] Ошибка поиска для '{term}': {e}")
-
-        if non_li_sites:
-            try:
-                df_other: pd.DataFrame = scrape_jobs(
-                    site_name=non_li_sites,
-                    search_term=term,
-                    google_search_term=f"{term} jobs in {location} since yesterday",
+            elif site == "indeed":
+                # В Indeed база выбирается через country_indeed, а пустой location + is_remote=True
+                # ищет все Remote-вакансии по всей выбранной стране без радиуса 50 миль вокруг точки
+                target_country = (location or country_indeed or "uk").strip().lower()
+                emit(
+                    f"🔍 Поиск [indeed] '{clean_term}' (страна: {target_country.upper()}, Remote, за {hours_old}ч){easy_label}..."
+                )
+                df = scrape_jobs(
+                    site_name=["indeed"],
+                    search_term=clean_term,
+                    location=None,
+                    country_indeed=target_country,
+                    is_remote=True,
+                    results_wanted=results_wanted,
+                    hours_old=hours_old,
+                    easy_apply=easy_apply,
+                    fetch_description=True,
+                )
+            elif site == "glassdoor":
+                # В Glassdoor домен выбирается по country_indeed, а location передается как название страны/города
+                gd_country_names = {
+                    "uk": "United Kingdom",
+                    "germany": "Germany",
+                    "netherlands": "Netherlands",
+                    "france": "France",
+                    "spain": "Spain",
+                    "ireland": "Ireland",
+                    "switzerland": "Switzerland",
+                    "austria": "Austria",
+                    "belgium": "Belgium",
+                    "italy": "Italy",
+                    "usa": "United States",
+                    "canada": "Canada",
+                }
+                target_country = (location or country_indeed or "uk").strip().lower()
+                gd_loc = gd_country_names.get(target_country, location)
+                emit(
+                    f"🔍 Поиск [glassdoor] '{clean_term}' в '{gd_loc}' ({target_country.upper()}, Remote, за {hours_old}ч){easy_label}..."
+                )
+                df = scrape_jobs(
+                    site_name=["glassdoor"],
+                    search_term=clean_term,
+                    location=gd_loc,
+                    country_indeed=target_country,
+                    is_remote=True,
+                    results_wanted=results_wanted,
+                    hours_old=hours_old,
+                    easy_apply=easy_apply,
+                    fetch_description=True,
+                )
+            elif site == "google":
+                time_str = "since yesterday" if hours_old <= 24 else "in the last 3 days" if hours_old <= 72 else "in the last week"
+                g_query = f"{clean_term} remote jobs in {location} {time_str}"
+                emit(f"🔍 Поиск [google] '{g_query}'...")
+                df = scrape_jobs(
+                    site_name=["google"],
+                    search_term=clean_term,
+                    google_search_term=g_query,
+                    location=location,
+                    is_remote=True,
+                    results_wanted=results_wanted,
+                    hours_old=hours_old,
+                    fetch_description=True,
+                )
+            elif site == "zip_recruiter":
+                zr_loc = None if location.lower() in ("remote", "usa", "united states") else location
+                emit(f"🔍 Поиск [zip_recruiter] '{clean_term}' в '{location}' (Remote, за {hours_old}ч){easy_label}...")
+                df = scrape_jobs(
+                    site_name=["zip_recruiter"],
+                    search_term=clean_term,
+                    location=zr_loc,
+                    is_remote=True,
+                    results_wanted=results_wanted,
+                    hours_old=hours_old,
+                    easy_apply=easy_apply,
+                    fetch_description=True,
+                )
+            elif site == "hellowork":
+                hw_loc = None if location.lower() in ("france", "remote", "télétravail") else location
+                emit(f"🔍 Поиск [hellowork] '{clean_term}' в '{location}' (Télétravail, за {hours_old}ч)...")
+                df = scrape_jobs(
+                    site_name=["hellowork"],
+                    search_term=clean_term,
+                    location=hw_loc,
+                    is_remote=True,
+                    results_wanted=results_wanted,
+                    hours_old=hours_old,
+                    fetch_description=True,
+                )
+            elif site == "bayt":
+                bayt_loc = None if location.lower() in ("all", "mena", "remote") else location
+                emit(f"🔍 Поиск [bayt] '{clean_term}' в '{location}' (Remote, за {hours_old}ч){easy_label}...")
+                df = scrape_jobs(
+                    site_name=["bayt"],
+                    search_term=clean_term,
+                    location=bayt_loc,
+                    is_remote=True,
+                    results_wanted=results_wanted,
+                    hours_old=hours_old,
+                    easy_apply=easy_apply,
+                    fetch_description=True,
+                )
+            else:
+                emit(f"🔍 Поиск [{site}] '{clean_term}' в '{location}' (за {hours_old}ч)...")
+                df = scrape_jobs(
+                    site_name=[site],
+                    search_term=clean_term,
                     location=location,
                     country_indeed=country_indeed,
                     is_remote=True,
@@ -417,14 +924,20 @@ def fetch_and_filter_jobs(
                     easy_apply=easy_apply,
                     fetch_description=True,
                 )
-                if not df_other.empty:
-                    emit(f"  ↳ [{', '.join(non_li_sites)}] Найдено по '{term}': {len(df_other)}")
-                    frames.append(df_other)
-                else:
-                    emit(f"  ↳ [{', '.join(non_li_sites)}] По '{term}' вакансий не найдено.")
-            except Exception as e:
-                emit(f"  ⚠️ [{', '.join(non_li_sites)}] Ошибка поиска для '{term}': {e}")
 
+            site_errors = (df.attrs or {}).get("errors") or {}
+            for err_site, err_msg in site_errors.items():
+                emit(f"  ⚠️ [{err_site}] Сообщение провайдера: {err_msg}")
+
+            if not df.empty:
+                emit(f"  ↳ [{site}] Найдено по '{term}': {len(df)}")
+                frames.append(df)
+            else:
+                emit(f"  ↳ [{site}] По '{term}' вакансий не найдено.")
+        except Exception as e:
+            emit(f"  ⚠️ [{site}] Ошибка поиска для '{term}': {e}")
+
+    new_matches_count = 0
     if frames:
         jobs = pd.concat(frames, ignore_index=True)
         emit(f"📦 Суммарно карточек со всех запросов: {len(jobs)}")
@@ -454,10 +967,16 @@ def fetch_and_filter_jobs(
 
             rejected_by_title = unseen_jobs[~title_mask]
             for _, row in rejected_by_title.iterrows():
+                raw_loc = row.get("location")
+                loc_str = str(raw_loc) if pd.notna(raw_loc) and raw_loc else None
+                raw_rem = row.get("is_remote")
+                is_rem_val = bool(raw_rem) if pd.notna(raw_rem) else None
                 mark_job_processed(
                     conn,
                     job_id=str(row.get("id")),
                     site=str(row.get("site") or "linkedin"),
+                    location=loc_str,
+                    is_remote=is_rem_val,
                     title=str(row.get("title", "")),
                     company=str(row.get("company", "")),
                     url=str(row.get("job_url", "")),
@@ -487,6 +1006,10 @@ def fetch_and_filter_jobs(
             for idx, (_, row) in enumerate(candidates.iterrows(), start=1):
                 job_id = str(row.get("id"))
                 site_val = str(row.get("site") or ("linkedin" if job_id.startswith("li-") else "other"))
+                raw_loc = row.get("location")
+                loc_str = str(raw_loc) if pd.notna(raw_loc) and raw_loc else None
+                raw_rem = row.get("is_remote")
+                is_rem_val = bool(raw_rem) if pd.notna(raw_rem) else None
                 title = str(row.get("title", ""))
                 company = str(row.get("company", ""))
                 job_url = str(row.get("job_url", ""))
@@ -504,6 +1027,7 @@ def fetch_and_filter_jobs(
                     job_function = details["job_function"]
                     industry = details["industry"]
                     salary = details["salary"]
+                    apply_url = details.get("apply_url")
                 else:
                     emit(f"📥 [{idx}/{len(candidates)}] [{site_val}] Обработка карточки: {title} @ {company} ({job_id})...")
                     raw_desc = row.get("description")
@@ -516,6 +1040,8 @@ def fetch_and_filter_jobs(
                     job_function = str(raw_func) if pd.notna(raw_func) and raw_func else None
                     raw_ind = row.get("company_industry")
                     industry = str(raw_ind) if pd.notna(raw_ind) and raw_ind else None
+                    raw_direct = row.get("job_url_direct")
+                    apply_url = str(raw_direct) if pd.notna(raw_direct) and raw_direct else None
 
                     min_amt = row.get("min_amount")
                     max_amt = row.get("max_amount")
@@ -540,6 +1066,8 @@ def fetch_and_filter_jobs(
                     conn,
                     job_id=job_id,
                     site=site_val,
+                    location=loc_str,
+                    is_remote=is_rem_val,
                     title=title,
                     company=company,
                     url=job_url,
@@ -552,9 +1080,11 @@ def fetch_and_filter_jobs(
                     industry=industry,
                     salary=salary,
                     description=description,
+                    apply_url=apply_url,
                 )
 
                 if is_match:
+                    new_matches_count += 1
                     emit(f"  ✅ Прошла базовый фильтр ({seniority or 'N/A'} | {industry or 'N/A'})")
                 else:
                     emit(f"  ➖ Отклонено ({reject_reason}).")
@@ -563,9 +1093,12 @@ def fetch_and_filter_jobs(
     else:
         emit("Поисковая выдача пуста.")
 
-    # 5. Запускаем Шаг 1 (JobEnrichment через agy CLI) + Шаг 2 (Скоринг по скиллу)
+    # 5. Запускаем Шаг 1 (JobEnrichment через agy CLI) + Шаг 2 (Скоринг по скиллу) только если появились новые кандидаты
     if run_llm_enrichment:
-        enrich_and_score_pending_jobs(conn, model=llm_model, limit=llm_limit, on_progress=on_progress)
+        if new_matches_count > 0:
+            enrich_and_score_pending_jobs(conn, model=llm_model, limit=llm_limit, on_progress=on_progress)
+        else:
+            emit("⏭️ Новых кандидатов для ИИ-оценки не появилось — запуск LLM пропущен.")
 
     # Возвращаем отранжированный сухой остаток
     final_rows = conn.execute(

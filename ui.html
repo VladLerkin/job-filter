@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LinkedIn AI Vacancy Filter & Enricher</title>
+  <title>Job Filter</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -21,7 +21,7 @@
     <div class="max-w-7xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
       <div>
         <h1 class="text-xl font-bold text-white flex items-center gap-2">
-          <span>🎯 LinkedIn AI Filter</span>
+          <span>🎯 Job Filter</span>
           <span class="text-xs font-normal px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
             agy CLI + Hirify Skill Scorer
           </span>
@@ -29,19 +29,6 @@
         <p class="text-xs text-slate-400 mt-0.5">
           Кандидат: Владислав Ярыгин • AI Agentic & Senior Backend (Java, Kotlin, Python) • Удалёнка из Грузии (B2B)
         </p>
-      </div>
-
-      <!-- Быстрые копировалки для форм откликов (из preferences.md) -->
-      <div class="flex flex-wrap items-center gap-2">
-        <button onclick="copySnippet('workAuth')" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
-          📋 Копировать Work Auth (Georgia B2B)
-        </button>
-        <button onclick="copySnippet('usAuthNote')" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
-          📋 Копировать ответ про визу / B2B
-        </button>
-        <button onclick="copySnippet('linkedin')" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
-          🔗 LinkedIn профиль
-        </button>
       </div>
     </div>
   </header>
@@ -56,9 +43,10 @@
             class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
         </div>
         <div class="md:col-span-2">
-          <label class="block text-xs text-slate-400 mb-1">Локация</label>
-          <input id="location" type="text" value="EMEA"
-            class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          <label id="locationLabel" class="block text-xs text-slate-400 mb-1">Локация / Регион</label>
+          <select id="location"
+            class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500">
+          </select>
         </div>
         <div class="md:col-span-1">
           <label class="block text-xs text-slate-400 mb-1">Часов</label>
@@ -71,7 +59,7 @@
             class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
         </div>
         <div class="md:col-span-1 flex items-center h-[38px]">
-          <label class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-slate-200 bg-slate-900 border border-slate-700 hover:border-indigo-500 px-2.5 py-2 rounded-lg w-full justify-center" title="Искать только вакансии с быстрым откликом Easy Apply">
+          <label id="easyApplyWrap" class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-slate-200 bg-slate-900 border border-slate-700 hover:border-indigo-500 px-2.5 py-2 rounded-lg w-full justify-center" title="Искать только вакансии с быстрым откликом Easy Apply">
             <input id="easyApply" type="checkbox" class="rounded bg-slate-800 border-slate-600 text-indigo-600 focus:ring-indigo-500" />
             <span>⚡ Easy Apply</span>
           </label>
@@ -88,53 +76,43 @@
         </div>
       </div>
 
-      <!-- Выбор провайдеров JobSpy -->
+      <!-- Выбор одного провайдера JobSpy -->
       <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80 text-xs">
         <div class="flex flex-wrap items-center gap-2">
-          <span class="text-slate-400 font-medium mr-1">🌐 Источники (JobSpy):</span>
+          <span class="text-slate-400 font-medium mr-1">🌐 Источник (выбери один):</span>
           <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none">
-            <input type="checkbox" name="siteProvider" value="linkedin" checked class="rounded bg-slate-800 border-slate-600 text-indigo-600" />
+            <input type="radio" name="siteProvider" value="linkedin" checked onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
             <span class="text-slate-200 font-medium">LinkedIn</span>
           </label>
           <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="Лучший фильтр Remote + мало рейт-лимитов">
-            <input type="checkbox" name="siteProvider" value="indeed" class="rounded bg-slate-800 border-slate-600 text-indigo-600" />
+            <input type="radio" name="siteProvider" value="indeed" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
             <span class="text-slate-200 font-medium">Indeed</span>
           </label>
           <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="Отлично для вилок зарплат и отзывов">
-            <input type="checkbox" name="siteProvider" value="glassdoor" class="rounded bg-slate-800 border-slate-600 text-indigo-600" />
+            <input type="radio" name="siteProvider" value="glassdoor" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
             <span class="text-slate-200 font-medium">Glassdoor</span>
           </label>
           <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="Агрегатор Google Jobs со всех ATS (Greenhouse, Lever, Ashby)">
-            <input type="checkbox" name="siteProvider" value="google" class="rounded bg-slate-800 border-slate-600 text-indigo-600" />
+            <input type="radio" name="siteProvider" value="google" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
             <span class="text-slate-200 font-medium">Google Jobs</span>
           </label>
-          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="США / Global Remote">
-            <input type="checkbox" name="siteProvider" value="zip_recruiter" class="rounded bg-slate-800 border-slate-600 text-indigo-600" />
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="США / Канада Remote">
+            <input type="radio" name="siteProvider" value="zip_recruiter" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
             <span class="text-slate-300">ZipRecruiter</span>
           </label>
-          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="Европа / Франция">
-            <input type="checkbox" name="siteProvider" value="hellowork" class="rounded bg-slate-800 border-slate-600 text-indigo-600" />
-            <span class="text-slate-300">HelloWork (EU)</span>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="Европа / Франция (Télétravail)">
+            <input type="radio" name="siteProvider" value="hellowork" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
+            <span class="text-slate-300">HelloWork (FR)</span>
           </label>
           <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="ОАЭ / Дубай / MENA">
-            <input type="checkbox" name="siteProvider" value="bayt" class="rounded bg-slate-800 border-slate-600 text-indigo-600" />
+            <input type="radio" name="siteProvider" value="bayt" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
             <span class="text-slate-300">Bayt (MENA)</span>
           </label>
         </div>
 
-        <div class="flex items-center gap-2">
-          <label class="text-slate-400">Страна для Indeed/Glassdoor:</label>
-          <select id="countryIndeed" class="px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 text-slate-200 focus:outline-none focus:border-indigo-500">
-            <option value="uk" selected>🇬🇧 UK</option>
-            <option value="germany">🇩🇪 Germany</option>
-            <option value="netherlands">🇳🇱 Netherlands</option>
-            <option value="poland">🇵🇱 Poland</option>
-            <option value="spain">🇪🇸 Spain</option>
-            <option value="france">🇫🇷 France</option>
-            <option value="ireland">🇮🇪 Ireland</option>
-            <option value="switzerland">🇨🇭 Switzerland</option>
-            <option value="usa">🇺🇸 USA</option>
-          </select>
+        <div class="flex flex-wrap items-center gap-2">
+          <span id="remoteMechanismBadge" class="px-2.5 py-1 rounded-md bg-emerald-950/70 text-emerald-300 border border-emerald-800/60 font-medium"></span>
+          <span id="providerHint" class="text-slate-400 italic"></span>
         </div>
       </div>
 
@@ -154,29 +132,35 @@
     </section>
 
     <!-- Табы и статистика -->
-    <section class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
-      <div class="flex flex-wrap gap-2" id="tabsBar">
-        <button data-tab="actionable" onclick="switchTab('actionable')" class="tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 text-white">
+    <section class="flex items-center justify-between gap-2 border-b border-slate-800 pb-3 overflow-x-auto">
+      <div class="flex items-center gap-1.5 whitespace-nowrap" id="tabsBar">
+        <button data-tab="actionable" onclick="switchTab('actionable')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white">
           🎯 Сухой остаток (<span id="cntActionable">0</span>)
         </button>
-        <button data-tab="top" onclick="switchTab('top')" class="tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+        <button data-tab="top" onclick="switchTab('top')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
           🟢 Top Match ≥70 (<span id="cntTop">0</span>)
         </button>
-        <button data-tab="good" onclick="switchTab('good')" class="tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+        <button data-tab="good" onclick="switchTab('good')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
           🟡 Good 50–69 (<span id="cntGood">0</span>)
         </button>
-        <button data-tab="pending" onclick="switchTab('pending')" class="tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+        <button data-tab="pending" onclick="switchTab('pending')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
           ⏳ Ждут ИИ-разбора (<span id="cntPending">0</span>)
         </button>
-        <button data-tab="applied" onclick="switchTab('applied')" class="tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+        <button data-tab="applied" onclick="switchTab('applied')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
           ✅ Откликнулся (<span id="cntApplied">0</span>)
         </button>
-        <button data-tab="rejected" onclick="switchTab('rejected')" class="tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+        <button data-tab="rejected" onclick="switchTab('rejected')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
           🗑️ Отсеянные (<span id="cntRejected">0</span>)
         </button>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 whitespace-nowrap shrink-0">
+        <button data-tab="blacklist" onclick="switchTab('blacklist')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-red-950/60 text-red-300 hover:bg-red-900/60 border border-red-800/60">
+          ⛔ Чёрный список (<span id="cntBadBoards">2</span>)
+        </button>
+        <button data-tab="candidate" onclick="switchTab('candidate')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700">
+          👤 Профиль и CV
+        </button>
         <button onclick="rescoreAll()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">
           🔄 Пересчитать скоринг
         </button>
@@ -184,9 +168,190 @@
       </div>
     </section>
 
+    <!-- Панель управления черным списком джоб-бордов / ATS (cims.com и др.) -->
+    <section id="blacklistSection" class="hidden card rounded-xl p-6 shadow-lg space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div>
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <span>💩 Чёрный список джоб-бордов и ATS</span>
+            <span class="text-xs font-normal px-2 py-0.5 rounded bg-red-950 text-red-300 border border-red-800">Двойной переход LinkedIn → ATS</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Синхронизировано с расширением <code class="text-slate-200">job-auto-applier</code>. При переходе на забаненный домен (или его <code>&lt;iframe&gt;</code>) в браузере сразу всплывает предупреждение, а компания привязывается к этому борду.
+          </p>
+        </div>
+      </div>
+
+      <!-- Последняя открытая вакансия (для связки после перехода в LinkedIn) -->
+      <div id="lastOpenedBox" class="p-4 rounded-xl bg-slate-900/90 border border-slate-700 flex flex-wrap items-center justify-between gap-3">
+        <div class="text-xs text-slate-300">
+          <span class="text-slate-400 font-semibold">🔗 Последняя открытая вакансия:</span>
+          <span id="lastOpenedText" class="ml-1 text-slate-400 italic">Пока не открывалась в этой сессии</span>
+        </div>
+        <button id="btnBanLastOpened" onclick="openBadBoardModalForLastOpened()" class="hidden px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold transition">
+          ⛔ Добавить последнюю открытую в черный список
+        </button>
+      </div>
+
+      <!-- Добавление нового домена / URL в черный список -->
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end bg-slate-900/50 p-4 rounded-xl border border-slate-800">
+        <div class="md:col-span-5">
+          <label class="block text-xs text-slate-400 mb-1">Домен или полный URL джоб-борда (например, <code>cims.com</code> или ссылка с редиректа)</label>
+          <div class="flex gap-2">
+            <input id="newBadDomainInput" type="text" placeholder="cims.com или https://careers-company.icims.com/..."
+              class="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-red-500" />
+            <button onclick="pasteClipboardToInput('newBadDomainInput')" title="Вставить скопированный URL из буфера обмена"
+              class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs whitespace-nowrap">
+              📋 Из буфера
+            </button>
+          </div>
+        </div>
+        <div class="md:col-span-5">
+          <label class="block text-xs text-slate-400 mb-1">Причина (почему не заполняется)</label>
+          <input id="newBadReasonInput" type="text" value="Невозможно заполнить форму (в чёрном списке)"
+            class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-red-500" />
+        </div>
+        <div class="md:col-span-2">
+          <button onclick="addBadDomainFromPanel()"
+            class="w-full px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold text-sm transition shadow">
+            ➕ В чёрный список
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Список забаненных доменов -->
+        <div>
+          <h3 class="text-sm font-bold text-slate-200 mb-2">🚫 Забаненные домены джоб-бордов / ATS</h3>
+          <div id="badDomainsList" class="space-y-2"></div>
+        </div>
+
+        <!-- Список компаний, у которых уже обнаружен заблокированный борд -->
+        <div>
+          <h3 class="text-sm font-bold text-slate-200 mb-2">🏢 Компании с проблемными ATS/бордами</h3>
+          <div id="badCompaniesList" class="space-y-2"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Редактор профиля и CV кандидата (хранится в jobs.db, как в job-auto-applier) -->
+    <section id="candidateSection" class="hidden card rounded-xl p-6 shadow-lg space-y-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div>
+          <h2 class="text-base font-bold text-white">👤 Данные кандидата в базе <code class="text-indigo-300 text-xs">jobs.db → candidate_settings</code></h2>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Используется ИИ (<code class="text-slate-300">agy_enrich.py</code>) при оценке <code class="text-slate-300">resume_fit</code>. Совместимо с форматом экспорта/импорта <code class="text-slate-300">job-auto-applier</code>.
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <span id="candidateUpdatedAt" class="text-xs text-slate-400 mr-2"></span>
+          <button onclick="exportCandidateJson()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+            ⬇️ Экспорт JSON
+          </button>
+          <label class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer">
+            ⬆️ Импорт JSON
+            <input type="file" id="importCandidateFile" accept=".json,application/json" onchange="importCandidateJson(event)" class="hidden" />
+          </label>
+          <button onclick="saveCandidateProfile()" class="text-xs px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition shadow">
+            💾 Сохранить в БД
+          </button>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label for="profileTextInput" class="block text-xs font-semibold text-slate-300 mb-1.5">
+            Your Profile / Preferences (Предпочтения, локация, виза / B2B, зарплатные ожидания):
+          </label>
+          <textarea id="profileTextInput" rows="6"
+            placeholder="E.g., Number of years of experience, address, salary expectations, Work Authorization note..."
+            class="w-full p-3 rounded-lg bg-slate-950 border border-slate-700 text-sm text-slate-200 font-mono focus:outline-none focus:border-indigo-500"></textarea>
+        </div>
+
+        <div>
+          <label for="cvTextInput" class="block text-xs font-semibold text-slate-300 mb-1.5">
+            Your CV / Resume Text (Полный текст резюме для сопоставления навыков):
+          </label>
+          <textarea id="cvTextInput" rows="18"
+            placeholder="Paste your structured CV / Resume text here..."
+            class="w-full p-3 rounded-lg bg-slate-950 border border-slate-700 text-sm text-slate-200 font-mono focus:outline-none focus:border-indigo-500"></textarea>
+        </div>
+      </div>
+    </section>
+
     <!-- Список карточек вакансий -->
     <section id="jobsList" class="space-y-4"></section>
   </main>
+
+  <!-- Модальное окно добавления вакансии / компании в чёрный список -->
+  <div id="badBoardModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="card rounded-xl max-w-lg w-full p-6 shadow-2xl border border-red-800/70 space-y-4">
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <span>⛔ Добавить в чёрный список (проблемная форма)</span>
+          </h3>
+          <p id="modalJobSubtitle" class="text-xs text-slate-400 mt-1"></p>
+        </div>
+        <button onclick="closeBadBoardModal()" class="text-slate-400 hover:text-white text-lg leading-none">&times;</button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs text-slate-300 mb-1.5 font-medium">Быстрый выбор платформы (1 клик):</label>
+          <div class="flex flex-wrap gap-1.5">
+            <button type="button" onclick="selectPresetBadDomain('cims.com')" class="px-2.5 py-1 rounded bg-red-950/90 hover:bg-red-900 text-red-200 border border-red-700/70 text-xs font-mono">
+              cims.com / icims.com
+            </button>
+            <button type="button" onclick="selectPresetBadDomain('myworkdayjobs.com')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 text-xs font-mono">
+              myworkdayjobs.com
+            </button>
+            <button type="button" onclick="selectPresetBadDomain('taleo.net')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 text-xs font-mono">
+              taleo.net
+            </button>
+            <button type="button" onclick="selectPresetBadDomain('successfactors.com')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 text-xs font-mono">
+              successfactors.com
+            </button>
+            <button type="button" onclick="selectPresetBadDomain('')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-600 text-xs">
+              🏢 Только эту компанию
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-300 mb-1 font-medium">
+            URL или домен джоб-борда (куда перекинуло после LinkedIn):
+          </label>
+          <div class="flex gap-2">
+            <input id="modalBadDomainInput" type="text" placeholder="Например: cims.com или вставь URL из браузера"
+              class="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white font-mono focus:outline-none focus:border-red-500" />
+            <button type="button" onclick="pasteClipboardToInput('modalBadDomainInput')"
+              class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs whitespace-nowrap">
+              📋 Вставить URL
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">
+            Если оставить пустым — в чёрный список занесётся сама компания, и все её будущие вакансии будут помечены.
+          </p>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-300 mb-1 font-medium">Причина:</label>
+          <input id="modalBadReasonInput" type="text" value="Невозможно заполнить форму (в чёрном списке)"
+            class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-red-500" />
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+        <button type="button" onclick="closeBadBoardModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">
+          Отмена
+        </button>
+        <button type="button" onclick="confirmBadBoardModal()" class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold shadow">
+          ⛔ Занести в чёрный список и скрыть
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- Toast уведомление -->
   <div id="toast" class="fixed bottom-5 right-5 hidden bg-emerald-600 text-white text-sm px-4 py-2.5 rounded-lg shadow-xl z-50"></div>
@@ -201,6 +366,163 @@
       usAuthNote: "No, but I am seeking remote engagement from Georgia (country) as an independent contractor / B2B, which does not require US/local work authorization or visa sponsorship.",
       linkedin: "https://www.linkedin.com/in/iarygin-vladislav"
     };
+
+    const PROVIDER_CONFIG = {
+      linkedin: {
+        label: "Локация (LinkedIn)",
+        remoteMechanism: "🔍 Ключевые слова в заголовке/локации: «Remote», «Work from Home», «WFH» (в гостевом API нет параметра f_WT=2)",
+        hint: "LinkedIn: поддерживает макрорегионы (EMEA, EU, Worldwide) и страны; удалёнка ищется через слово Remote в запросе",
+        supportsEasyApply: true,
+        options: [
+          { value: "EMEA", label: "🌍 EMEA (Европа, Ближний Восток, Африка)" },
+          { value: "European Union", label: "🇪🇺 European Union" },
+          { value: "Worldwide", label: "🌐 Worldwide (Весь мир)" },
+          { value: "United Kingdom", label: "🇬🇧 United Kingdom" },
+          { value: "Germany", label: "🇩🇪 Germany" },
+          { value: "Netherlands", label: "🇳🇱 Netherlands" },
+          { value: "Poland", label: "🇵🇱 Poland" },
+          { value: "Spain", label: "🇪🇸 Spain" },
+          { value: "Ireland", label: "🇮🇪 Ireland" },
+          { value: "Switzerland", label: "🇨🇭 Switzerland" },
+          { value: "United Arab Emirates", label: "🇦🇪 United Arab Emirates" },
+          { value: "United States", label: "🇺🇸 United States" }
+        ]
+      },
+      indeed: {
+        label: "Страна сервера (Indeed)",
+        remoteMechanism: "🏷️ Системный атрибут GraphQL: Remote (DSQF7) + строгое исключение Hybrid (NOT PAXZC)",
+        hint: "Indeed: аппаратный фильтр Remote по всей выбранной стране (слово Remote из запроса убирается автоматически)",
+        supportsEasyApply: true,
+        options: [
+          { value: "uk", label: "🇬🇧 UK (uk.indeed.com)" },
+          { value: "germany", label: "🇩🇪 Germany (de.indeed.com)" },
+          { value: "netherlands", label: "🇳🇱 Netherlands (nl.indeed.com)" },
+          { value: "poland", label: "🇵🇱 Poland (pl.indeed.com)" },
+          { value: "spain", label: "🇪🇸 Spain (es.indeed.com)" },
+          { value: "france", label: "🇫🇷 France (fr.indeed.com)" },
+          { value: "ireland", label: "🇮🇪 Ireland (ie.indeed.com)" },
+          { value: "switzerland", label: "🇨🇭 Switzerland (ch.indeed.com)" },
+          { value: "portugal", label: "🇵🇹 Portugal (pt.indeed.com)" },
+          { value: "czechrepublic", label: "🇨🇿 Czechia (cz.indeed.com)" },
+          { value: "unitedarabemirates", label: "🇦🇪 UAE (ae.indeed.com)" },
+          { value: "usa", label: "🇺🇸 USA (www.indeed.com)" },
+          { value: "canada", label: "🇨🇦 Canada (ca.indeed.com)" }
+        ]
+      },
+      glassdoor: {
+        label: "Страна домена (Glassdoor)",
+        remoteMechanism: "🏷️ Системный фильтр: remoteWorkType=1 (WORK_FROM_HOME) или локация «Remote»",
+        hint: "Glassdoor: поддерживает только перечисленные страны с собственным доменом + фильтр Work From Home",
+        supportsEasyApply: true,
+        options: [
+          { value: "uk", label: "🇬🇧 United Kingdom (glassdoor.co.uk)" },
+          { value: "germany", label: "🇩🇪 Germany (glassdoor.de)" },
+          { value: "netherlands", label: "🇳🇱 Netherlands (glassdoor.nl)" },
+          { value: "france", label: "🇫🇷 France (glassdoor.fr)" },
+          { value: "spain", label: "🇪🇸 Spain (glassdoor.es)" },
+          { value: "ireland", label: "🇮🇪 Ireland (glassdoor.ie)" },
+          { value: "switzerland", label: "🇨🇭 Switzerland (glassdoor.ch)" },
+          { value: "austria", label: "🇦🇹 Austria (glassdoor.at)" },
+          { value: "belgium", label: "🇧🇪 Belgium (glassdoor.be)" },
+          { value: "italy", label: "🇮🇹 Italy (glassdoor.it)" },
+          { value: "usa", label: "🇺🇸 United States (glassdoor.com)" },
+          { value: "canada", label: "🇨🇦 Canada (glassdoor.ca)" }
+        ]
+      },
+      google: {
+        label: "Регион поиска (Google Jobs)",
+        remoteMechanism: "🔍 Поисковый модификатор «remote» + маркеры «remote» / «wfh» / «Anywhere» в карточке",
+        hint: "Google Jobs: агрегирует вакансии из Greenhouse, Lever, Ashby и Workday",
+        supportsEasyApply: false,
+        options: [
+          { value: "Europe", label: "🇪🇺 Europe" },
+          { value: "United Kingdom", label: "🇬🇧 United Kingdom" },
+          { value: "Germany", label: "🇩🇪 Germany" },
+          { value: "Netherlands", label: "🇳🇱 Netherlands" },
+          { value: "Poland", label: "🇵🇱 Poland" },
+          { value: "Spain", label: "🇪🇸 Spain" },
+          { value: "United States", label: "🇺🇸 United States" }
+        ]
+      },
+      zip_recruiter: {
+        label: "Регион (ZipRecruiter)",
+        remoteMechanism: "🏷️ Параметр refine_by_location_type=only_remote (теги REMOTE / REMOTE_OPTIONAL)",
+        hint: "ZipRecruiter: работает только по рынку США и Канады (фильтр only_remote)",
+        supportsEasyApply: true,
+        options: [
+          { value: "Remote", label: "🇺🇸 All USA (Remote)" },
+          { value: "United States", label: "🇺🇸 United States" },
+          { value: "Canada", label: "🇨🇦 Canada" }
+        ]
+      },
+      hellowork: {
+        label: "Локация (HelloWork)",
+        remoteMechanism: "🏷️ Параметр t=Complet → французский бейдж «Télétravail complet» (100% удалёнка)",
+        hint: "HelloWork: французская база вакансий (фильтр Télétravail complet)",
+        supportsEasyApply: false,
+        options: [
+          { value: "France", label: "🇫🇷 Вся Франция (Télétravail)" },
+          { value: "Paris", label: "🇫🇷 Paris" },
+          { value: "Lyon", label: "🇫🇷 Lyon" }
+        ]
+      },
+      bayt: {
+        label: "Страна (Bayt MENA)",
+        remoteMechanism: "🏷️ Фильтр remote_working_type=1 (бейдж «Remote») + автоматическое вычитание всех Hybrid-вакансий",
+        hint: "Bayt: вакансии Ближнего Востока и Персидского залива (MENA)",
+        supportsEasyApply: true,
+        options: [
+          { value: "all", label: "🌴 All MENA Countries" },
+          { value: "uae", label: "🇦🇪 UAE (All)" },
+          { value: "Dubai, UAE", label: "🇦🇪 Dubai, UAE" },
+          { value: "Abu Dhabi, UAE", label: "🇦🇪 Abu Dhabi, UAE" },
+          { value: "saudi-arabia", label: "🇸🇦 Saudi Arabia" },
+          { value: "qatar", label: "🇶🇦 Qatar" }
+        ]
+      }
+    };
+
+    const SITE_REMOTE_BADGE_LABELS = {
+      linkedin: "🏠 Remote / WFH",
+      indeed: "🏠 Remote (DSQF7 • No Hybrid)",
+      glassdoor: "🏠 Work From Home",
+      google: "🏠 Remote / WFH",
+      zip_recruiter: "🏠 Only Remote",
+      hellowork: "🏠 Télétravail complet",
+      bayt: "🏠 Remote (No Hybrid)"
+    };
+
+    function getSelectedProvider() {
+      const checked = document.querySelector('input[name="siteProvider"]:checked');
+      return checked ? checked.value : 'linkedin';
+    }
+
+    function onProviderChange() {
+      const provider = getSelectedProvider();
+      const cfg = PROVIDER_CONFIG[provider] || PROVIDER_CONFIG.linkedin;
+      const locSelect = document.getElementById('location');
+      const locLabel = document.getElementById('locationLabel');
+      const hintEl = document.getElementById('providerHint');
+      const remoteBadgeEl = document.getElementById('remoteMechanismBadge');
+      const easyWrap = document.getElementById('easyApplyWrap');
+      const easyInput = document.getElementById('easyApply');
+
+      locLabel.textContent = cfg.label;
+      hintEl.textContent = cfg.hint;
+      if (remoteBadgeEl) {
+        remoteBadgeEl.textContent = cfg.remoteMechanism || '';
+      }
+      locSelect.innerHTML = cfg.options
+        .map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`)
+        .join('');
+
+      if (cfg.supportsEasyApply) {
+        easyWrap.classList.remove('opacity-40', 'pointer-events-none');
+      } else {
+        easyInput.checked = false;
+        easyWrap.classList.add('opacity-40', 'pointer-events-none');
+      }
+    }
 
     function showToast(text) {
       const t = document.getElementById('toast');
@@ -218,12 +540,274 @@
       currentTab = tab;
       document.querySelectorAll('.tab-btn').forEach(btn => {
         if (btn.dataset.tab === tab) {
-          btn.className = 'tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 text-white';
+          btn.className = 'tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white';
+        } else if (btn.dataset.tab === 'blacklist') {
+          btn.className = 'tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-red-950/60 text-red-300 hover:bg-red-900/60 border border-red-800/60';
         } else {
-          btn.className = 'tab-btn px-3.5 py-1.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-300 hover:bg-slate-700';
+          btn.className = 'tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700';
         }
       });
-      loadJobs();
+
+      const candSec = document.getElementById('candidateSection');
+      const blackSec = document.getElementById('blacklistSection');
+      const jobsSec = document.getElementById('jobsList');
+      if (tab === 'candidate') {
+        candSec.classList.remove('hidden');
+        blackSec.classList.add('hidden');
+        jobsSec.classList.add('hidden');
+        loadCandidateProfile();
+      } else if (tab === 'blacklist') {
+        candSec.classList.add('hidden');
+        blackSec.classList.remove('hidden');
+        jobsSec.classList.add('hidden');
+        loadBlacklistPanel();
+      } else {
+        candSec.classList.add('hidden');
+        blackSec.classList.add('hidden');
+        jobsSec.classList.remove('hidden');
+        loadJobs();
+      }
+    }
+
+    let modalTargetJob = { job_id: null, company: null, title: null };
+    let cachedLastOpenedJob = null;
+
+    async function trackJobOpen(jobId) {
+      try {
+        const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/opened`, { method: 'POST' });
+        const data = await res.json();
+        if (data.last_opened_job) {
+          cachedLastOpenedJob = data.last_opened_job;
+          updateLastOpenedBanner(cachedLastOpenedJob);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    function updateLastOpenedBanner(info) {
+      const txtEl = document.getElementById('lastOpenedText');
+      const btnEl = document.getElementById('btnBanLastOpened');
+      if (!txtEl || !btnEl) return;
+      if (info && info.job_id) {
+        txtEl.innerHTML = `<strong class="text-white">${escapeHtml(info.title || info.job_id)}</strong> @ <span class="text-indigo-300">${escapeHtml(info.company || 'Unknown')}</span> <span class="text-slate-500">(${escapeHtml(info.opened_at || '')})</span>`;
+        btnEl.classList.remove('hidden');
+      } else {
+        txtEl.textContent = 'Пока не открывалась в этой сессии';
+        btnEl.classList.add('hidden');
+      }
+    }
+
+    async function pasteClipboardToInput(inputId) {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          document.getElementById(inputId).value = text.trim();
+          showToast('Вставлено из буфера обмена 📋');
+        }
+      } catch (err) {
+        showToast('Не удалось прочитать буфер обмена — нажми Cmd+V');
+      }
+    }
+
+    function openBadBoardModal(jobId, company, title, existingDomain = '') {
+      modalTargetJob = { job_id: jobId, company: company, title: title };
+      document.getElementById('modalJobSubtitle').textContent =
+        `${title || jobId} @ ${company || 'Unknown'}`;
+      document.getElementById('modalBadDomainInput').value = existingDomain || 'cims.com';
+      const modal = document.getElementById('badBoardModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function openBadBoardModalForLastOpened() {
+      if (!cachedLastOpenedJob || !cachedLastOpenedJob.job_id) return;
+      openBadBoardModal(
+        cachedLastOpenedJob.job_id,
+        cachedLastOpenedJob.company,
+        cachedLastOpenedJob.title,
+        'cims.com'
+      );
+    }
+
+    function closeBadBoardModal() {
+      const modal = document.getElementById('badBoardModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function selectPresetBadDomain(domain) {
+      document.getElementById('modalBadDomainInput').value = domain;
+    }
+
+    async function confirmBadBoardModal() {
+      const domain_or_url = document.getElementById('modalBadDomainInput').value.trim();
+      const reason = document.getElementById('modalBadReasonInput').value.trim() || 'Невозможно заполнить форму (в чёрном списке)';
+      await fetch('/api/blacklist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          domain_or_url: domain_or_url || null,
+          company: modalTargetJob.company || null,
+          job_id: modalTargetJob.job_id || null,
+          reason: reason,
+          hide_job: true
+        })
+      });
+      closeBadBoardModal();
+      showToast('Борд и компания добавлены в чёрный список ⛔');
+      if (currentTab === 'blacklist') {
+        loadBlacklistPanel();
+      } else {
+        loadJobs();
+      }
+    }
+
+    async function addBadDomainFromPanel() {
+      const domain_or_url = document.getElementById('newBadDomainInput').value.trim();
+      const reason = document.getElementById('newBadReasonInput').value.trim() || 'Невозможно заполнить форму (в чёрном списке)';
+      if (!domain_or_url) {
+        showToast('Укажи домен или URL (например, cims.com)');
+        return;
+      }
+      await fetch('/api/blacklist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          domain_or_url,
+          reason,
+          hide_job: false
+        })
+      });
+      document.getElementById('newBadDomainInput').value = '';
+      showToast(`Домен добавлен в чёрный список ⛔`);
+      loadBlacklistPanel();
+    }
+
+    async function removeBadDomain(domain) {
+      await fetch(`/api/blacklist/domain/${encodeURIComponent(domain)}`, { method: 'DELETE' });
+      showToast(`Удалено из чёрного списка: ${domain}`);
+      loadBlacklistPanel();
+    }
+
+    async function removeCompanyAts(companyKey) {
+      await fetch(`/api/blacklist/company/${encodeURIComponent(companyKey)}`, { method: 'DELETE' });
+      showToast(`Привязка компании удалена`);
+      loadBlacklistPanel();
+    }
+
+    async function loadBlacklistPanel() {
+      const res = await fetch('/api/blacklist');
+      const data = await res.json();
+      const boards = data.boards || [];
+      const companies = data.companies || [];
+      document.getElementById('cntBadBoards').textContent = boards.length;
+
+      if (data.last_opened_job) {
+        cachedLastOpenedJob = data.last_opened_job;
+        updateLastOpenedBanner(cachedLastOpenedJob);
+      }
+
+      const bList = document.getElementById('badDomainsList');
+      if (boards.length === 0) {
+        bList.innerHTML = `<div class="text-xs text-slate-500 italic p-3 bg-slate-900/40 rounded-lg">Чёрный список доменов пуст.</div>`;
+      } else {
+        bList.innerHTML = boards.map(b => `
+          <div class="flex items-center justify-between gap-2 p-3 rounded-lg bg-slate-900 border border-red-900/40">
+            <div>
+              <div class="text-sm font-mono font-bold text-red-300">💩 ${escapeHtml(b.domain)}</div>
+              <div class="text-xs text-slate-400">${escapeHtml(b.reason || '')}</div>
+            </div>
+            <button onclick="removeBadDomain('${escapeHtml(b.domain)}')" title="Удалить из чёрного списка"
+              class="px-2.5 py-1 rounded bg-slate-800 hover:bg-red-900/60 text-slate-400 hover:text-white text-xs">
+              ✕
+            </button>
+          </div>
+        `).join('');
+      }
+
+      const cList = document.getElementById('badCompaniesList');
+      if (companies.length === 0) {
+        cList.innerHTML = `<div class="text-xs text-slate-500 italic p-3 bg-slate-900/40 rounded-lg">Пока ни одна компания не привязана к черному списку. Когда ты перейдёшь с LinkedIn на проблемный домен (например, <code>cims.com</code>) или нажмёшь кнопку «⛔ В черный список» на карточке, компания появится здесь.</div>`;
+      } else {
+        cList.innerHTML = companies.map(c => `
+          <div class="flex items-center justify-between gap-2 p-3 rounded-lg bg-slate-900 border border-slate-800">
+            <div>
+              <div class="text-sm font-semibold text-white">🏢 ${escapeHtml(c.company_name || c.company_key)}</div>
+              <div class="text-xs text-red-300 font-mono">↳ ATS: ${escapeHtml(c.ats_domain || '')}</div>
+              ${c.sample_url ? `<div class="text-[11px] text-slate-500 truncate max-w-md">${escapeHtml(c.sample_url)}</div>` : ''}
+            </div>
+            <button onclick="removeCompanyAts('${escapeHtml(c.company_key)}')" title="Отвязать компанию"
+              class="px-2.5 py-1 rounded bg-slate-800 hover:bg-red-900/60 text-slate-400 hover:text-white text-xs">
+              ✕
+            </button>
+          </div>
+        `).join('');
+      }
+    }
+
+    async function loadCandidateProfile() {
+      const res = await fetch('/api/candidate');
+      const data = await res.json();
+      document.getElementById('profileTextInput').value = data.profile_text || '';
+      document.getElementById('cvTextInput').value = data.cv_text || '';
+      const tsEl = document.getElementById('candidateUpdatedAt');
+      tsEl.textContent = data.updated_at ? `Обновлено: ${data.updated_at.replace('T', ' ').slice(0, 19)} UTC` : '';
+    }
+
+    async function saveCandidateProfile() {
+      const profile_text = document.getElementById('profileTextInput').value;
+      const cv_text = document.getElementById('cvTextInput').value;
+      const res = await fetch('/api/candidate', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile_text, cv_text })
+      });
+      const data = await res.json();
+      const tsEl = document.getElementById('candidateUpdatedAt');
+      tsEl.textContent = data.updated_at ? `Обновлено: ${data.updated_at.replace('T', ' ').slice(0, 19)} UTC` : '';
+      showToast('Профиль и CV сохранены в базу данных jobs.db ✅');
+    }
+
+    function exportCandidateJson() {
+      const payload = {
+        profile: document.getElementById('profileTextInput').value,
+        cv: document.getElementById('cvTextInput').value
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'candidate-profile-settings.json';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 400);
+    }
+
+    async function importCandidateJson(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        if (parsed.profile !== undefined) {
+          document.getElementById('profileTextInput').value = parsed.profile;
+        } else if (parsed.profile_text !== undefined) {
+          document.getElementById('profileTextInput').value = parsed.profile_text;
+        }
+        if (parsed.cv !== undefined) {
+          document.getElementById('cvTextInput').value = parsed.cv;
+        } else if (parsed.cv_text !== undefined) {
+          document.getElementById('cvTextInput').value = parsed.cv_text;
+        }
+        await saveCandidateProfile();
+      } catch (err) {
+        alert('Ошибка чтения JSON: ' + err.message);
+      }
+      event.target.value = '';
     }
 
     async function setJobStatus(jobId, status) {
@@ -246,15 +830,13 @@
     async function startPipeline(enrichOnly) {
       const termsRaw = document.getElementById('searchTerms').value;
       const searchTerms = termsRaw.split(',').map(s => s.trim()).filter(Boolean);
+      const provider = getSelectedProvider();
       const location = document.getElementById('location').value.trim() || 'EMEA';
       const hoursOld = parseInt(document.getElementById('hoursOld').value || '4', 10);
       const llmLimit = parseInt(document.getElementById('llmLimit').value || '15', 10);
       const easyApply = document.getElementById('easyApply').checked;
-      const countryIndeed = document.getElementById('countryIndeed').value || 'uk';
-      const siteNames = Array.from(document.querySelectorAll('input[name="siteProvider"]:checked')).map(el => el.value);
-      if (siteNames.length === 0) {
-        siteNames.push('linkedin');
-      }
+      const countryIndeed = (provider === 'indeed' || provider === 'glassdoor') ? location : 'uk';
+      const siteNames = [provider];
 
       document.getElementById('logContainer').classList.remove('hidden');
       document.getElementById('logOutput').textContent = '';
@@ -309,6 +891,11 @@
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
+    function escapeJsArg(str) {
+      if (!str) return '';
+      return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
+    }
+
     function renderJobCard(job) {
       const e = job.enrichment || {};
       const sd = job.score_details || {};
@@ -328,8 +915,36 @@
       const remoteDetail = e.remote_policy_detail || '';
       const fitSummary = (e.resume_fit && e.resume_fit.summary) ? e.resume_fit.summary : '';
 
+      const siteKey = (job.site || 'linkedin').toLowerCase();
+      const titleAndLoc = `${job.title || ''} ${job.location || ''}`.toLowerCase();
+      const detectedRemoteByKeyword = /remote|work from home|\bwfh\b|télétravail|anywhere|distributed/.test(titleAndLoc);
+      const isRemoteFlag = job.is_remote === 1 || job.is_remote === true || detectedRemoteByKeyword;
+      const remoteBadgeText = isRemoteFlag
+        ? (SITE_REMOTE_BADGE_LABELS[siteKey] || '🏠 Remote')
+        : (remoteDetail ? `🏠 ${remoteDetail}` : '');
+
+      const isBadBoard = Boolean(job.is_bad_board);
+      const atsDomain = job.ats_domain || '';
+      const cardBorderClass = isBadBoard
+        ? 'border-red-600/80 bg-red-950/15 hover:border-red-500'
+        : 'hover:border-slate-600';
+
       return `
-        <article class="card rounded-xl p-5 shadow transition hover:border-slate-600">
+        <article class="card rounded-xl p-5 shadow transition ${cardBorderClass}">
+          ${isBadBoard ? `
+            <div class="mb-3 px-3.5 py-2.5 rounded-lg bg-red-950/90 border border-red-600 text-red-200 text-xs font-semibold flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <span class="text-base">⛔</span>
+                <span>ВНИМАНИЕ: В ЧЁРНОМ СПИСКЕ <code class="px-1.5 py-0.5 rounded bg-red-900/90 text-white font-mono">${escapeHtml(atsDomain || 'в чёрном списке')}</code> — ${escapeHtml(job.bad_board_reason || 'форму невозможно заполнить')}! Не трать время.</span>
+              </div>
+              ${job.user_status !== 'hidden' ? `
+                <button onclick="setJobStatus('${escapeJsArg(job.job_id)}', 'hidden')" class="px-2.5 py-1 rounded bg-red-800 hover:bg-red-700 text-white text-xs">
+                  🗑️ Скрыть сразу
+                </button>
+              ` : ''}
+            </div>
+          ` : ''}
+
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="space-y-1">
               <div class="flex flex-wrap items-center gap-2">
@@ -337,6 +952,9 @@
                   ${isTop ? '🟢 TOP MATCH • ' : isGood ? '🟡 GOOD MATCH • ' : ''}${scoreLabel}
                 </span>
                 <span class="text-xs px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 uppercase font-semibold">${escapeHtml(job.site || 'linkedin')}</span>
+                ${atsDomain ? `<span class="text-xs px-2 py-0.5 rounded ${isBadBoard ? 'bg-red-950 text-red-300 border border-red-700 font-bold' : 'bg-slate-800 text-slate-300 border border-slate-700'} font-mono">${isBadBoard ? '💩 ' : '🌐 ATS: '}${escapeHtml(atsDomain)}</span>` : ''}
+                ${remoteBadgeText ? `<span class="text-xs px-2 py-0.5 rounded bg-teal-950/80 text-teal-300 border border-teal-800/60 font-medium">${escapeHtml(remoteBadgeText)}</span>` : ''}
+                ${job.location && job.location !== 'None' ? `<span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">📍 ${escapeHtml(job.location)}</span>` : ''}
                 ${job.tier ? `<span class="text-xs px-2.5 py-1 rounded-md bg-slate-800 text-slate-200 border border-slate-700">${escapeHtml(job.tier)}</span>` : ''}
                 ${job.seniority_level ? `<span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400">${escapeHtml(job.seniority_level)}</span>` : ''}
                 ${job.salary ? `<span class="text-xs px-2.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">💰 ${escapeHtml(job.salary)}</span>` : ''}
@@ -344,7 +962,7 @@
               </div>
 
               <h2 class="text-lg font-bold text-white pt-1">
-                <a href="${escapeHtml(job.url)}" target="_blank" rel="noopener" class="hover:text-indigo-400 underline decoration-slate-600 underline-offset-4">
+                <a href="${escapeHtml(job.url)}" target="_blank" rel="noopener" onclick="trackJobOpen('${escapeJsArg(job.job_id)}')" class="hover:text-indigo-400 underline decoration-slate-600 underline-offset-4">
                   ${escapeHtml(job.title)}
                 </a>
                 <span class="text-slate-400 font-normal text-base"> @ ${escapeHtml(job.company || 'Unknown')}</span>
@@ -353,29 +971,35 @@
               <div class="text-xs text-slate-400 flex flex-wrap gap-3 items-center">
                 <span>📅 ${escapeHtml(job.date_posted || '')}</span>
                 <code class="text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded">${escapeHtml(job.url)}</code>
+                ${job.apply_url ? `<a href="${escapeHtml(job.apply_url)}" target="_blank" rel="noopener" onclick="trackJobOpen('${escapeJsArg(job.job_id)}')" class="text-indigo-400 hover:underline font-mono">⚡ Прямой Apply URL ↗</a>` : ''}
                 ${job.industry ? `<span>🏢 ${escapeHtml(job.industry)}</span>` : ''}
               </div>
             </div>
 
             <!-- Кнопки действий для заполнения откликов -->
-            <div class="flex items-center gap-2">
-              <a href="${escapeHtml(job.url)}" target="_blank" rel="noopener"
-                class="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition">
-                🔗 Открыть в LinkedIn ↗
+            <div class="flex flex-wrap items-center gap-2">
+              <a href="${escapeHtml(job.url)}" target="_blank" rel="noopener" onclick="trackJobOpen('${escapeJsArg(job.job_id)}')"
+                class="px-3.5 py-1.5 rounded-lg ${isBadBoard ? 'bg-red-900/70 hover:bg-red-800 text-red-200 border border-red-700' : 'bg-indigo-600 hover:bg-indigo-500 text-white'} text-xs font-semibold transition">
+                ${isBadBoard ? '⚠️ Открыть (В чёрном списке) ↗' : '🔗 Открыть вакансию ↗'}
               </a>
               ${job.user_status !== 'applied' ? `
-                <button onclick="setJobStatus('${escapeHtml(job.job_id)}', 'applied')"
+                <button onclick="setJobStatus('${escapeJsArg(job.job_id)}', 'applied')"
                   class="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 text-xs font-medium transition">
                   ✅ Откликнулся
                 </button>
               ` : `
-                <button onclick="setJobStatus('${escapeHtml(job.job_id)}', 'new')"
+                <button onclick="setJobStatus('${escapeJsArg(job.job_id)}', 'new')"
                   class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition">
                   ↩ Вернуть в новые
                 </button>
               `}
+              <button onclick="openBadBoardModal('${escapeJsArg(job.job_id)}', '${escapeJsArg(job.company)}', '${escapeJsArg(job.title)}', '${escapeJsArg(atsDomain)}')"
+                title="Добавить джоб-борд и компанию в черный список (например, cims.com)"
+                class="px-2.5 py-1.5 rounded-lg bg-red-950/50 hover:bg-red-900/80 text-red-300 border border-red-800/60 text-xs font-medium transition">
+                ⛔ В черный список
+              </button>
               ${job.user_status !== 'hidden' ? `
-                <button onclick="setJobStatus('${escapeHtml(job.job_id)}', 'hidden')"
+                <button onclick="setJobStatus('${escapeJsArg(job.job_id)}', 'hidden')"
                   class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-red-950/60 text-slate-400 hover:text-red-300 border border-slate-700 text-xs transition">
                   🗑️
                 </button>
@@ -468,6 +1092,13 @@
       document.getElementById('cntPending').textContent = s.pending_llm || 0;
       document.getElementById('cntApplied').textContent = s.applied || 0;
       document.getElementById('cntRejected').textContent = s.rejected || 0;
+      if (s.bad_boards_count !== undefined) {
+        document.getElementById('cntBadBoards').textContent = s.bad_boards_count;
+      }
+      if (data.last_opened_job) {
+        cachedLastOpenedJob = data.last_opened_job;
+        updateLastOpenedBanner(cachedLastOpenedJob);
+      }
 
       const container = document.getElementById('jobsList');
       if (!data.jobs || data.jobs.length === 0) {
@@ -483,6 +1114,7 @@
       container.innerHTML = data.jobs.map(renderJobCard).join('');
     }
 
+    onProviderChange();
     loadJobs();
   </script>
 </body>

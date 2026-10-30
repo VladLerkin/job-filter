@@ -1,16 +1,14 @@
 import json
 import re
 import shutil
+import sqlite3
 import subprocess
 from pathlib import Path
 
 from enrichment_schema import JobEnrichment
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-RESUME_PATH = PROJECT_ROOT / "resume" / "resume.md"
-PREFERENCES_PATH = PROJECT_ROOT / "resume" / "preferences.md"
-EXTERNAL_RESUME_PATH = Path("/Users/vlad/IdeaProjects/hirify-filter-bot-export-skill/resume/resume.md")
-EXTERNAL_PREFERENCES_PATH = Path("/Users/vlad/IdeaProjects/hirify-filter-bot-export-skill/resume/preferences.md")
+DB_PATH = PROJECT_ROOT / "jobs.db"
 
 AGY_BIN = shutil.which("agy") or "/Users/vlad/.local/bin/agy"
 DEFAULT_MODEL = "gemini-3.8-flash-low"
@@ -77,16 +75,21 @@ Rules for constraints (CRITICAL for remote candidate in Georgia/Tbilisi):
 
 def load_resume_text() -> str:
     resume_text = ""
-    for path in (RESUME_PATH, EXTERNAL_RESUME_PATH):
-        if path.is_file():
-            resume_text = path.read_text(encoding="utf-8").strip()
-            break
-
     prefs_text = ""
-    for path in (PREFERENCES_PATH, EXTERNAL_PREFERENCES_PATH):
-        if path.is_file():
-            prefs_text = path.read_text(encoding="utf-8").strip()
-            break
+
+    # Читаем актуальный профиль и резюме кандидата из БД jobs.db
+    if DB_PATH.is_file():
+        try:
+            conn = sqlite3.connect(DB_PATH, timeout=5.0)
+            row = conn.execute(
+                "SELECT profile_text, cv_text FROM candidate_settings WHERE id = 1"
+            ).fetchone()
+            conn.close()
+            if row:
+                prefs_text = (row[0] or "").strip()
+                resume_text = (row[1] or "").strip()
+        except Exception:
+            pass
 
     combined = resume_text
     if prefs_text:
