@@ -9,7 +9,7 @@
 ## ⚡ Core Features
 
 - 🌐 **Multi-Board Scraping**: Aggregates job vacancies from LinkedIn, Indeed, Glassdoor, and ZipRecruiter using `python-jobspy` across targeted locations (`Remote`, `EMEA`, `Worldwide`).
-- 🤖 **LLM Vacancy Enrichment**: Analyzes job descriptions via `agy` CLI (Gemini 2.5 Pro / Flash) to extract:
+- 🤖 **LLM Vacancy Enrichment**: Analyzes job descriptions via `agy` CLI (e.g. `gemini-3.8-flash-low`, `gemini-4-argon`, `claude-sonnet-5-5`) to extract:
   - **Geographic Eligibility**: Classifies positions as `GLOBAL`, `RESTRICTED_US`, or `RESTRICTED_EU`.
   - **Technology Stack**: Extracts required languages, frameworks, and architecture patterns.
   - **Agentic AI Classification**: Detects whether a job involves autonomous AI agents, LangGraph, LLM orchestration, RAG, or MCP.
@@ -84,7 +84,7 @@ For comprehensive architectural details, consult [docs/design.md](docs/design.md
 ## 📋 Prerequisites
 
 - **Python**: `3.11` or newer.
-- **Antigravity CLI (`agy`)**: Used for LLM processing (Google Gemini 2.5 Pro / Flash).
+- **Antigravity CLI (`agy`)**: Used for LLM processing (supports `gemini-3.8-flash`, `gemini-4-argon`, `claude-sonnet-5-5`, etc.). Run `agy models` to view available models.
 - **SQLite3**: Built into Python standard library.
 
 ---
@@ -149,7 +149,7 @@ Job Filter works out-of-the-box with sensible defaults, but can be configured vi
 | Variable | Default Value | Description |
 |---|---|---|
 | `JOB_FILTER_DB_PATH` | `jobs.db` | Absolute or relative path to the SQLite database |
-| `JOB_FILTER_MODEL` | `gemini-2.5-pro` | Default LLM model used by `agy` CLI |
+| `JOB_FILTER_MODEL` | `gemini-3.8-flash-low` | Default LLM model used by `agy` CLI (run `agy models` for options) |
 | `JOB_FILTER_LLM_TIMEOUT` | `120` | Timeout in seconds for vacancy enrichment |
 | `JOB_FILTER_CV_TIMEOUT` | `180` | Timeout in seconds for CV PDF analysis |
 | `JOB_FILTER_PORT` | `8000` | HTTP port for the web dashboard |
@@ -204,3 +204,4 @@ pytest tests/test_skills_diff.py -v
 
 Detailed architectural blueprints, subsystem interaction diagrams, and database entity relationships are documented in:
 - [System Design & Architecture Document](docs/design.md)
+

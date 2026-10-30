@@ -6,7 +6,7 @@
 
 1. **Scraping** multiple job aggregators (LinkedIn, Indeed, Glassdoor, ZipRecruiter) across target regions (e.g. Remote, EMEA, Worldwide).
 2. **Filtering & Normalizing** URLs, detecting Applicant Tracking System (ATS) platforms (Greenhouse, Lever, Ashby, Workable, etc.), and managing domain blacklists.
-3. **Enriching Vacancies with LLM** (via `agy` CLI / Gemini) to extract structured insights: geographic eligibility (US-only vs. Global Remote), required tech stack, Agentic AI classification, compensation estimates, and company red flags.
+3. **Enriching Vacancies with LLM** (via `agy` CLI) to extract structured insights: geographic eligibility (US-only vs. Global Remote), required tech stack, Agentic AI classification, compensation estimates, and company red flags.
 4. **Scoring Vacancies Against Candidate Profile**: Evaluating vacancies against a customizable **Skills Matrix** with category-level multipliers, caps, negative penalty deductions, and geographic tier filters.
 5. **AI-Powered CV Ingestion**: Parsing candidate PDF resumes, generating structured Markdown CVs, estimating years of experience per skill, mapping skills to weighted categories, and providing an interactive UI diff tool before committing to the database.
 
@@ -49,7 +49,7 @@ The project follows a clean **layered modular architecture**, maintaining strict
   - `cv_service`: Handles PDF text extraction, skills diff calculation, and atomic CV/skill database updates.
   - `skills_service`: Coordinates skill matrix updates, category multipliers, and bulk rescoring of vacancies.
 - **`scoring/` (Scoring Core)**: Pure, deterministic domain logic. Evaluates job descriptions against the active candidate skill matrix, calculating category points, penalties, and geographic tier classification.
-- **`llm/` (AI Integration Layer)**: Interfaces with `agy` CLI to run LLM prompts (Gemini 2.5 Pro / Flash). Handles JSON extraction, fallback parsing, and structured Pydantic schema validation.
+- **`llm/` (AI Integration Layer)**: Interfaces with `agy` CLI to run LLM prompts (supports `gemini-3.8-flash`, `gemini-4-argon`, `claude-sonnet-5-5`, etc.). Handles JSON extraction, fallback parsing, and structured Pydantic schema validation.
 - **`scraping/` (Data Acquisition Layer)**: Integrates `python-jobspy` to extract vacancies across job boards, normalizes URLs, and detects ATS board domains.
 - **`repositories/` (Data Access Layer)**: Encapsulates all SQL queries to keep database interactions separate from business logic.
 - **`db/` (Persistence Layer)**: Manages SQLite connection lifecycle, WAL mode pragmas, schema migrations, and default seed data.
@@ -239,7 +239,7 @@ sequenceDiagram
 ```
 
 1. **PDF Text Extraction**: Uses `pypdf` to extract text streams and cleans broken hyphenations (`word-\nwrap` $\to$ `wordwrap`).
-2. **LLM Extraction**: `cv_analyzer.py` prompts Gemini via `agy` CLI to output valid JSON with:
+2. **LLM Extraction**: `cv_analyzer.py` prompts the configured LLM via `agy` CLI to output valid JSON with:
    - Clean, normalized global English Markdown CV.
    - Concise candidate summary (in Russian).
    - List of all distinct technical skills with calculated years of experience and category mapping.
@@ -349,3 +349,4 @@ Key components in `static/js/app.js`:
 - **Interactive CV Diff Modal**: Renders candidate skills side-by-side with database records, providing inline `<select>` category pickers and numerical years inputs. Dynamic DOM updates ensure real-time score calculation before submission.
 - **Matrix Manager Modal**: Allows adding, editing, and deleting categories and individual skills with instantaneous updates to category multipliers.
 - **Toast Notification Engine**: User feedback mechanism for background job notifications and error alerts.
+
