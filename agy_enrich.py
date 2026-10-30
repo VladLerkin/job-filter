@@ -121,7 +121,7 @@ def build_enrich_prompt(
 
 def extract_json_object(text: str) -> dict:
     text = text.strip()
-    # Сначала пробуем распарсить как есть (особенно когда agy вызван с --output-format json)
+    # 1. Сначала пробуем распарсить как есть
     try:
         parsed = json.loads(text)
         if isinstance(parsed, dict):
@@ -129,7 +129,38 @@ def extract_json_object(text: str) -> dict:
     except Exception:
         pass
 
-    # Если вывод содержит несколько строк NDJSON или прогресс, ищем последнюю валидную JSON-строку
+    # 2. Ищем markdown-блок ```json ... ``` или ``` ... ```
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+    if fence:
+        candidate = fence.group(1).strip()
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+        start = candidate.find("{")
+        end = candidate.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                parsed = json.loads(candidate[start : end + 1])
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                pass
+
+    # 3. Ищем самый внешний блок от первого { до последнего }
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            parsed = json.loads(text[start : end + 1])
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+
+    # 4. Если вывод содержит несколько строк NDJSON или построчный вывод, ищем последнюю валидную JSON-строку
     for line in reversed(text.splitlines()):
         line_s = line.strip()
         if line_s.startswith("{") and line_s.endswith("}"):
@@ -140,14 +171,7 @@ def extract_json_object(text: str) -> dict:
             except Exception:
                 continue
 
-    fence = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
-    if fence:
-        text = fence.group(1).strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        text = text[start : end + 1]
-    return json.loads(text)
+    raise ValueError("Не удалось обнаружить валидный JSON-объект в ответе модели")
 
 
 def enrich_job_with_agy(

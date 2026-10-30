@@ -1,21 +1,44 @@
 import io
 import json
+import logging
 import re
 import subprocess
+import time
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from pypdf import PdfReader
 
 from agy_enrich import AGY_BIN, DEFAULT_MODEL, extract_json_object
 
+logger = logging.getLogger(__name__)
+
 
 class ParsedSkillItem(BaseModel):
     skill_id: str
-    name: str
-    category_id: str
+    name: str = ""
+    category_id: str = "core_backend"
     years_experience: float = 0.0
     is_primary: bool = False
     aliases: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_fields(cls, data):
+        if not isinstance(data, dict):
+            return data
+        # Handle 'category' alias for 'category_id'
+        if "category_id" not in data and "category" in data:
+            data["category_id"] = data["category"]
+        if "name" not in data or not data["name"]:
+            data["name"] = data.get("skill_id", "")
+        # Handle years_experience if passed as string (e.g. "5+", "5 years")
+        years = data.get("years_experience", 0.0)
+        if isinstance(years, str):
+            m = re.search(r"(\d+(?:\.\d+)?)", years)
+            data["years_experience"] = float(m.group(1)) if m else 0.0
+        elif years is None:
+            data["years_experience"] = 0.0
+        return data
 
 
 class ParsedCVResult(BaseModel):
@@ -23,6 +46,19 @@ class ParsedCVResult(BaseModel):
     structured_cv_markdown: str = ""
     total_years_experience: float = 0.0
     skills: list[ParsedSkillItem] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_fields(cls, data):
+        if not isinstance(data, dict):
+            return data
+        # Sometimes LLMs name the skills array differently
+        if "skills" not in data:
+            for alt in ("extracted_skills", "technical_skills", "candidate_skills", "skill_list"):
+                if alt in data and isinstance(data[alt], list):
+                    data["skills"] = data[alt]
+                    break
+        return data
 
 
 def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
@@ -85,39 +121,68 @@ def analyze_cv_text_with_llm(
     model: str = DEFAULT_MODEL,
     timeout_sec: int = 120,
 ) -> ParsedCVResult:
+    if not categories:
+        from skill_scorer import _build_fallback_matrix
+        categories = _build_fallback_matrix()["categories"]
+
     cat_descriptions = "\n".join(
         f"- ID: '{c['category_id']}', Title: '{c['title']}', Multiplier: {c['multiplier']}x, Max: {c['max_points']} pts"
         for c in categories
     )
 
+    schema_format = """{
+  "candidate_summary": "1-3 sentences in Russian summarizing candidate experience, main stack and role",
+  "structured_cv_markdown": "# Candidate Name\\n\\n## Summary\\n...\\n\\n## Experience\\n...",
+  "total_years_experience": 10.0,
+  "skills": [
+    {
+      "skill_id": "langgraph",
+      "name": "LangGraph",
+      "category_id": "ai_agentic",
+      "years_experience": 2.0,
+      "is_primary": true,
+      "aliases": ["langgraph", "langchain"]
+    }
+  ]
+}"""
+
     prompt = (
         f"{CV_ANALYZER_SYSTEM_PROMPT}\n\n"
         f"Available Skill Categories in the System:\n{cat_descriptions}\n\n"
+        f"Output JSON Format Specification (respond ONLY with this JSON structure):\n"
+        f"{schema_format}\n\n"
         f"--- RAW RESUME TEXT (from PDF) ---\n"
         f"{cv_raw_text[:14000]}\n"
         f"--- END RAW RESUME TEXT ---"
     )
 
-    schema_str = json.dumps(ParsedCVResult.model_json_schema())
     cmd = [
         AGY_BIN,
         "--model",
         model,
         "--disable-slash-commands",
-        "--output-format",
-        "json",
-        "--json-schema",
-        schema_str,
         "-p",
         prompt,
     ]
 
+    t0 = time.time()
+    logger.info("Calling LLM (%s) to analyze CV text (%d chars)...", model, len(cv_raw_text))
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_sec)
+    duration = time.time() - t0
     if proc.returncode != 0:
+        logger.error("LLM CV analysis failed in %.1fs: %s", duration, proc.stderr.strip())
         raise RuntimeError(f"LLM processing error (code {proc.returncode}): {proc.stderr.strip()}")
 
-    data = extract_json_object(proc.stdout)
-    return ParsedCVResult.model_validate(data)
+    logger.info("LLM CV analysis completed in %.1fs. Raw output length: %d chars", duration, len(proc.stdout))
+    try:
+        data = extract_json_object(proc.stdout)
+    except Exception as e:
+        logger.error("Failed to extract JSON from LLM output: %s\nFirst 500 chars:\n%s", e, proc.stdout[:500])
+        raise
+
+    res = ParsedCVResult.model_validate(data)
+    logger.info("Parsed CV successfully: %d skills, %.1f total years experience", len(res.skills), res.total_years_experience)
+    return res
 
 
 def compute_skills_diff(

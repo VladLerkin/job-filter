@@ -309,6 +309,9 @@
           <button onclick="openSkillModal()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
             ➕ Добавить навык
           </button>
+          <button onclick="resetSkillsDefaults()" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 transition" title="Восстановить базовый набор категорий и навыков по умолчанию">
+            ↺ Сбросить к базовым
+          </button>
           <button onclick="rescoreAll()" class="text-xs px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition shadow">
             🔄 Пересчитать скоринг вакансий
           </button>
@@ -776,11 +779,14 @@
       }
     }
 
-    function showToast(text) {
+    let toastTimer = null;
+    function showToast(text, durationMs = 3200) {
       const t = document.getElementById('toast');
+      if (!t) return;
       t.textContent = text;
       t.classList.remove('hidden');
-      setTimeout(() => t.classList.add('hidden'), 2600);
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.add('hidden'), durationMs);
     }
 
     function copySnippet(key) {
@@ -1768,6 +1774,19 @@
       }
     }
 
+    async function resetSkillsDefaults() {
+      if (!confirm('Восстановить базовый набор категорий и навыков по умолчанию? Существующие категории и навыки будут дополнены базовыми.')) return;
+      try {
+        const res = await fetch('/api/skills/reset-defaults', { method: 'POST' });
+        if (!res.ok) throw new Error('Ошибка при сбросе к базовым');
+        const data = await res.json();
+        showToast(`✅ Базовый набор восстановлен (${data.categories_count} категорий, ${data.skills_count} навыков)`);
+        loadSkillsMatrix();
+      } catch (err) {
+        showToast('Ошибка: ' + err.message);
+      }
+    }
+
     let currentCvAnalysisData = null;
 
     async function handleCvPdfUpload(event) {
@@ -1797,8 +1816,23 @@
         });
 
         if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.detail || 'Ошибка разбора PDF файла');
+          let errMsg = `Ошибка сервера (${res.status})`;
+          try {
+            const errData = await res.json();
+            if (typeof errData.detail === 'string') {
+              errMsg = errData.detail;
+            } else if (Array.isArray(errData.detail)) {
+              errMsg = errData.detail.map(d => d.msg || JSON.stringify(d)).join(', ');
+            } else if (errData.detail) {
+              errMsg = JSON.stringify(errData.detail);
+            }
+          } catch (_) {
+            try {
+              const text = await res.text();
+              if (text) errMsg = text.slice(0, 150);
+            } catch (_) {}
+          }
+          throw new Error(errMsg);
         }
 
         const data = await res.json();

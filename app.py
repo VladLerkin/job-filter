@@ -1,8 +1,13 @@
 import json
+import logging
 import threading
 import time
 from pathlib import Path
 from typing import Literal
+
+logger = logging.getLogger("job_filter")
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -310,6 +315,21 @@ def remove_candidate_skill(skill_id: str):
     return {"status": "ok", "deleted_skill_id": skill_id}
 
 
+@app.post("/api/skills/reset-defaults")
+def reset_skills_defaults():
+    """Восстанавливает базовые категории и навыки по умолчанию."""
+    conn = init_db()
+    from skill_scorer import _build_fallback_matrix
+    defaults = _build_fallback_matrix()
+    for c in defaults["categories"]:
+        save_skill_category(conn, c["category_id"], c["title"], c["multiplier"], c["max_points"], c["sort_order"])
+    for s in defaults["skills"]:
+        save_candidate_skill(conn, s["skill_id"], s["category_id"], s["name"], s["years_experience"], s["weight_points"], bool(s.get("is_primary", 0)), s.get("aliases", []))
+    conn.close()
+    invalidate_skill_matrix_cache()
+    return {"status": "ok", "categories_count": len(defaults["categories"]), "skills_count": len(defaults["skills"])}
+
+
 @app.get("/api/candidate")
 def read_candidate_profile():
     conn = init_db()
@@ -336,10 +356,15 @@ async def upload_and_analyze_cv_pdf(file: UploadFile = File(...), model: str = D
     if not pdf_bytes:
         raise HTTPException(status_code=400, detail="Загружен пустой файл")
 
+    logger.info("PDF upload received: %s (%d bytes). Extracting text...", file.filename, len(pdf_bytes))
+
     try:
         raw_text = extract_text_from_pdf_bytes(pdf_bytes)
     except Exception as e:
+        logger.error("Failed to extract text from PDF %s: %s", file.filename, e)
         raise HTTPException(status_code=400, detail=str(e))
+
+    logger.info("Extracted %d characters from PDF. Starting LLM analysis...", len(raw_text))
 
     conn = init_db()
     matrix = get_skill_matrix_data(conn)
@@ -351,9 +376,14 @@ async def upload_and_analyze_cv_pdf(file: UploadFile = File(...), model: str = D
     try:
         parsed = analyze_cv_text_with_llm(raw_text, categories, model=model)
     except Exception as e:
+        logger.error("LLM CV analysis failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Ошибка ИИ-анализа резюме: {e}")
 
     diff = compute_skills_diff(parsed.skills, existing_skills, categories)
+    new_c = sum(1 for s in diff if s["status"] == "new")
+    upd_c = sum(1 for s in diff if s["status"] == "updated")
+    unch_c = sum(1 for s in diff if s["status"] == "unchanged")
+    logger.info("CV analysis complete: %d skills in diff (new: %d, updated: %d, unchanged: %d)", len(diff), new_c, upd_c, unch_c)
 
     return {
         "raw_text_length": len(raw_text),
@@ -393,6 +423,9 @@ def apply_cv_analysis(body: ApplyCVAnalysisRequest):
             is_prim = bool(s.get("is_primary", False))
             aliases = s.get("aliases", [])
             if sid and name and cid:
+                cat_exists = conn.execute("SELECT 1 FROM skill_categories WHERE category_id = ?", (cid,)).fetchone()
+                if not cat_exists:
+                    save_skill_category(conn, cid, cid.replace("_", " ").title(), 2.0, 20)
                 save_candidate_skill(
                     conn,
                     skill_id=sid,
