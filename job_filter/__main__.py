@@ -7,3 +7,4 @@ if __name__ == "__main__":
     for job in matched:
         print(f"🔥 [{job.get('score')}/100 | {job.get('tier')}] {job['title']} @ {job['company']} ({job['date_posted']})")
         print(f"🔗 {job['url']}\n")
+
