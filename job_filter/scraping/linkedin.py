@@ -120,3 +120,4 @@ def fetch_job_details(
             time.sleep(backoff)
 
     return None
+

@@ -68,3 +68,4 @@ def remove_candidate_skill(
 def reset_skills_defaults(conn: sqlite3.Connection = Depends(get_db)):
     res = skills_service.reset_to_defaults(conn)
     return {"status": "ok", **res}
+

@@ -141,3 +141,4 @@ def scrape_site(
         easy_apply=easy_apply,
         fetch_description=True,
     )
+

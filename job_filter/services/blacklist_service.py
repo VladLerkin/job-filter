@@ -189,3 +189,4 @@ def check_url(
         "last_opened_job": last_op if is_recent else None,
         "all_blacklisted_domains": boards,
     }
+

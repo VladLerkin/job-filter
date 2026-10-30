@@ -69,3 +69,4 @@ def delete_company_ats_entry(
 ):
     blacklist_service.remove_company_ats_map(conn, company_key)
     return blacklist_service.get_blacklist_data(conn)
+

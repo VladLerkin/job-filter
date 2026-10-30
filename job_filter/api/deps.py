@@ -11,3 +11,4 @@ def get_db() -> Iterator[sqlite3.Connection]:
         yield conn
     finally:
         conn.close()
+

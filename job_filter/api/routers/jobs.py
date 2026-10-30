@@ -50,3 +50,4 @@ def record_job_opened(
 def get_last_opened_job():
     from job_filter.services.blacklist_service import last_opened_tracker
     return {"last_opened_job": last_opened_tracker.get()}
+

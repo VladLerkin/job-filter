@@ -162,3 +162,4 @@ def rescore_all_jobs(conn: sqlite3.Connection) -> int:
             continue
     conn.commit()
     return updated
+

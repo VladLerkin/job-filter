@@ -62,3 +62,4 @@ def test_pipeline_status(client):
     res = client.get("/api/pipeline/status")
     assert res.status_code == 200
     assert "running" in res.json()
+

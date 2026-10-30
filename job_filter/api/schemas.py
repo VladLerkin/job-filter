@@ -66,3 +66,4 @@ class AddBlacklistRequest(BaseModel):
     reason: str = "Невозможно заполнить форму (в чёрном списке)"
     hide_job: bool = True
     use_last_opened: bool = False
+

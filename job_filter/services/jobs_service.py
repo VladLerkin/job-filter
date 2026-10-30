@@ -149,3 +149,4 @@ def record_opened(conn: sqlite3.Connection, job_id: str) -> dict | None:
         company=job.get("company"),
         url=job.get("url"),
     )
+

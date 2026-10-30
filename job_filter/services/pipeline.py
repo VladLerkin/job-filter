@@ -385,3 +385,4 @@ def fetch_and_filter_jobs(
     results = jobs_repo.list_final_matches(conn, min_score=config.GOOD_SCORE_THRESHOLD)
     conn.close()
     return results
+

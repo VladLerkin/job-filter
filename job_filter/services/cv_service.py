@@ -184,3 +184,4 @@ def apply_cv_analysis(
         invalidate_matrix_cache()
 
     return skills_applied, cv_updated
+

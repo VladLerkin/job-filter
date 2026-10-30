@@ -102,3 +102,4 @@ def apply_cv_analysis(
         "skills_applied": skills_applied,
         "rescored": rescored,
     }
+

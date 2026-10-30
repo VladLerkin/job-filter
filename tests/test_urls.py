@@ -37,3 +37,4 @@ def test_find_domain_in_map():
     assert find_domain_in_map("jobs.icims.com", bad_map) == "icims.com"
     assert find_domain_in_map("cims.com", bad_map) == "cims.com"
     assert find_domain_in_map("good-site.com", bad_map) is None
+

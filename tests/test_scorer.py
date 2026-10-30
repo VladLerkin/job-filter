@@ -47,3 +47,4 @@ def test_score_vacancy_top_match():
     assert res.score >= 70
     assert res.match_category == "top"
     assert res.has_clean_title is True
+

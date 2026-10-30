@@ -72,3 +72,4 @@ def test_unwrap_structured_output():
 
     env2 = {"response": '{"num": 42}'}
     assert unwrap_structured_output(env2) == {"num": 42}
+

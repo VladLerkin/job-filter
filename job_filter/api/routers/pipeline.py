@@ -18,3 +18,4 @@ def start_pipeline(req: RunPipelineRequest):
 @router.get("/status")
 def get_pipeline_status(since: int = 0):
     return pipeline_runner.get_status(since=since)
+

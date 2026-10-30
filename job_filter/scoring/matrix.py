@@ -81,3 +81,4 @@ def skill_matches_candidate(skill: str, candidate_aliases: set[str]) -> bool:
         if len(cand) >= 3 and re.search(r"\b" + re.escape(cand) + r"\b", s):
             return True
     return False
+

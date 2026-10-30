@@ -33,3 +33,4 @@ def test_compute_skills_diff_categories():
 
     assert diff_by_id["kotlin"]["status"] == "unchanged"
     assert diff_by_id["kotlin"]["selected"] is False
+

@@ -74,3 +74,4 @@ def test_jobs_repo_crud(mem_db):
     jobs_repo.set_user_status(mem_db, "test-1", "applied")
     job = jobs_repo.get_job(mem_db, "test-1")
     assert job["user_status"] == "applied"
+
