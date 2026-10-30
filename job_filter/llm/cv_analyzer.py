@@ -26,7 +26,13 @@ Your task is to take raw resume text extracted from a candidate's PDF and perfor
    - Extract ALL distinct technical skills, frameworks, message brokers, databases, and architectural concepts used in the candidate's career.
    - skill_id: lowercase slug (e.g. "langgraph", "java", "kotlin", "spring_boot", "kafka", "docker", "fintech").
    - name: clear standard display title (e.g. "LangGraph", "Java", "Spring Boot", "Kafka").
-   - category_id: assign each skill to the most appropriate category ID from the Available Categories list provided below.
+   - category_id: assign each skill to the most appropriate category ID from the Available Categories list provided below. Choose the most fitting positive category:
+     * 'ai_agentic' for AI/agents/LLM/RAG/LangGraph/Prompt Engineering.
+     * 'core_backend' for primary backend languages and frameworks (e.g. Java, Kotlin, Spring Boot).
+     * 'secondary_backend' for secondary/scripting languages (e.g. Python, TypeScript, Node.js).
+     * 'arch_infra' for DevOps, Cloud, Microservices, Databases, Kafka, Docker, Kubernetes, AWS.
+     * 'domains' for Business domains (FinTech, Banking, Payments, E-commerce).
+     Do NOT assign candidate's skills to penalty categories ('alien', 'legacy').
    - years_experience: calculate realistic total years of experience based on the start/end dates of jobs where this skill was used. (e.g. 10.0, 5.0, 2.5). Be accurate and realistic.
    - is_primary: true if this is one of candidate's core languages / primary specializations, false if secondary or auxiliary.
    - aliases: 2 to 5 common lowercase synonyms/tokens for matching (e.g. ["spring", "spring boot", "spring data"]).
@@ -52,9 +58,12 @@ OUTPUT_FORMAT_EXAMPLE = """{
 
 
 def build_cv_prompt(cv_raw_text: str, categories: list[dict]) -> str:
+    # Filter positive categories for skill assignment so penalty categories aren't suggested for candidate skills
+    pos_cats = [c for c in categories if float(c.get("multiplier", 1.0)) > 0]
+    cats_to_show = pos_cats if pos_cats else categories
     cat_descriptions = "\n".join(
         f"- ID: '{c['category_id']}', Title: '{c['title']}', Multiplier: {c['multiplier']}x, Max: {c['max_points']} pts"
-        for c in categories
+        for c in cats_to_show
     )
     return (
         f"{CV_ANALYZER_SYSTEM_PROMPT}\n\n"

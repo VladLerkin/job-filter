@@ -6,11 +6,24 @@ import re
 import sqlite3
 from pypdf import PdfReader
 
+from job_filter.db.seed_data import DEFAULT_SKILL_CATEGORIES
 from job_filter.models.cv import ParsedCVResult, ParsedSkillItem
 from job_filter.repositories import candidate_repo, skills_repo
 from job_filter.scoring.matrix import invalidate_matrix_cache
 
 logger = logging.getLogger(__name__)
+
+
+def get_effective_categories(categories: list[dict] | None = None) -> list[dict]:
+    """
+    Возвращает объединённый список категорий: существующие категории дополняются
+    стандартными из DEFAULT_SKILL_CATEGORIES, сохраняя пользовательские настройки.
+    """
+    merged: dict[str, dict] = {c["category_id"]: dict(c) for c in DEFAULT_SKILL_CATEGORIES}
+    if categories:
+        for c in categories:
+            merged[c["category_id"]] = dict(c)
+    return sorted(merged.values(), key=lambda c: (c.get("sort_order", 99), c.get("category_id", "")))
 
 
 def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
@@ -50,8 +63,9 @@ def compute_skills_diff(
     Сравнивает извлеченные ИИ навыки с существующими в базе данными candidate_skills.
     Возвращает структурированный diff для модального окна подтверждения в UI.
     """
-    cat_map = {c["category_id"]: c for c in categories}
-    default_cat_id = categories[0]["category_id"] if categories else "core_backend"
+    effective_cats = get_effective_categories(categories)
+    cat_map = {c["category_id"]: c for c in effective_cats}
+    default_cat_id = "core_backend" if "core_backend" in cat_map else (categories[0]["category_id"] if categories else "core_backend")
 
     exist_map = {s["skill_id"]: s for s in existing_skills}
     seen_skill_ids = set()
@@ -81,7 +95,12 @@ def compute_skills_diff(
             existing = exist_map[sid]
             old_years = float(existing.get("years_experience", 0.0))
             old_points = int(existing.get("weight_points", 0))
-            is_changed = (abs(old_years - es.years_experience) >= 0.25) or (old_points != new_points)
+            old_cat_id = existing.get("category_id", cid)
+            is_changed = (
+                (abs(old_years - es.years_experience) >= 0.25)
+                or (old_points != new_points)
+                or (old_cat_id != cid)
+            )
 
             diff_list.append({
                 "skill_id": sid,
@@ -146,6 +165,8 @@ def apply_cv_analysis(
 
     skills_applied = 0
     if apply_skills and skills_to_apply:
+        default_cats_by_id = {c["category_id"]: c for c in DEFAULT_SKILL_CATEGORIES}
+
         for s in skills_to_apply:
             sid = s.get("skill_id", "").strip().lower()
             cid = s.get("category_id", "").strip().lower()
@@ -156,15 +177,37 @@ def apply_cv_analysis(
             aliases = s.get("aliases", [])
             if sid and name and cid:
                 if not skills_repo.get_category(conn, cid):
-                    skills_repo.upsert_category(conn, cid, cid.replace("_", " ").title(), 2.0, 20, 99)
-                if pts is None:
-                    cat = skills_repo.get_category(conn, cid)
-                    if cat:
-                        m = float(cat["multiplier"])
-                        max_p = int(cat["max_points"])
-                        pts = max_p if m < 0 else min(round(years * m), max_p)
+                    def_cat = default_cats_by_id.get(cid)
+                    if def_cat:
+                        skills_repo.upsert_category(
+                            conn,
+                            category_id=cid,
+                            title=def_cat["title"],
+                            multiplier=float(def_cat["multiplier"]),
+                            max_points=int(def_cat["max_points"]),
+                            sort_order=int(def_cat.get("sort_order", 99)),
+                        )
                     else:
-                        pts = int(years * 2)
+                        skills_repo.upsert_category(
+                            conn,
+                            category_id=cid,
+                            title=cid.replace("_", " ").title(),
+                            multiplier=2.0,
+                            max_points=20,
+                            sort_order=99,
+                        )
+
+                cat = skills_repo.get_category(conn, cid)
+                if cat:
+                    m = float(cat["multiplier"])
+                    max_p = int(cat["max_points"])
+                    if m < 0:
+                        pts = max_p
+                    else:
+                        calc_pts = min(round(years * m), max_p)
+                        pts = calc_pts if pts is None else min(pts, max_p)
+                elif pts is None:
+                    pts = int(years * 2)
 
                 aliases_list = [a.strip().lower() for a in aliases if a and a.strip()]
                 if name.lower() not in aliases_list:

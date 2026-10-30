@@ -55,14 +55,15 @@ async def upload_and_analyze_cv_pdf(
     matrix = skills_repo.get_matrix(conn)
     categories = matrix.get("categories", [])
     existing_skills = matrix.get("skills", [])
+    effective_categories = cv_service.get_effective_categories(categories)
 
     try:
-        parsed = analyze_cv_text(raw_text, categories, model=model)
+        parsed = analyze_cv_text(raw_text, effective_categories, model=model)
     except Exception as e:
         logger.error("LLM CV analysis failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Ошибка ИИ-анализа резюме: {e}")
 
-    diff = cv_service.compute_skills_diff(parsed.skills, existing_skills, categories)
+    diff = cv_service.compute_skills_diff(parsed.skills, existing_skills, effective_categories)
     new_c = sum(1 for s in diff if s["status"] == "new")
     upd_c = sum(1 for s in diff if s["status"] == "updated")
     unch_c = sum(1 for s in diff if s["status"] == "unchanged")
@@ -75,6 +76,7 @@ async def upload_and_analyze_cv_pdf(
         "candidate_summary": parsed.candidate_summary,
         "total_years_experience": parsed.total_years_experience,
         "skills_diff": diff,
+        "available_categories": effective_categories,
     }
 
 

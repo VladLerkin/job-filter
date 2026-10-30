@@ -1291,6 +1291,74 @@
       });
     }
 
+    function getCvAvailableCategories() {
+      if (currentCvAnalysisData && Array.isArray(currentCvAnalysisData.available_categories) && currentCvAnalysisData.available_categories.length > 0) {
+        return currentCvAnalysisData.available_categories;
+      }
+      if (cachedSkillsMatrix && Array.isArray(cachedSkillsMatrix.categories) && cachedSkillsMatrix.categories.length > 0) {
+        return cachedSkillsMatrix.categories;
+      }
+      return [
+        { category_id: "ai_agentic", title: "🤖 AI & Agentic Systems", multiplier: 15.0, max_points: 30 },
+        { category_id: "core_backend", title: "☕ Core Backend & Languages", multiplier: 2.0, max_points: 20 },
+        { category_id: "secondary_backend", title: "🐍 Secondary Languages / TS", multiplier: 3.0, max_points: 18 },
+        { category_id: "arch_infra", title: "🏗️ Architecture & Cloud / DevOps", multiplier: 2.0, max_points: 15 },
+        { category_id: "domains", title: "💼 Business Domains (FinTech / Banking)", multiplier: 2.0, max_points: 10 }
+      ];
+    }
+
+    function renderCvPointsCellHtml(s) {
+      if (s.status === 'new') {
+        return `<span class="text-emerald-400 font-bold">+${s.new_points} б.</span>`;
+      } else if (s.status === 'updated') {
+        return `<span class="text-slate-500 line-through mr-1">${s.old_points}</span><span class="text-blue-400 font-bold">➔ ${s.new_points} б.</span>`;
+      } else {
+        return `<span class="text-slate-400">${s.new_points} б.</span>`;
+      }
+    }
+
+    function recalculateCvSkillRow(idx) {
+      if (!currentCvAnalysisData || !currentCvAnalysisData.skills_diff) return;
+      const s = currentCvAnalysisData.skills_diff[idx];
+      if (!s) return;
+
+      const catSelect = document.getElementById('cv_cat_' + idx);
+      const yearsInput = document.getElementById('cv_years_' + idx);
+
+      const selectedCid = catSelect ? catSelect.value : s.category_id;
+      const selectedYears = yearsInput ? (parseFloat(yearsInput.value) || 0) : s.new_years;
+
+      const cats = getCvAvailableCategories();
+      const cat = cats.find(c => c.category_id === selectedCid) || {};
+      const mult = parseFloat(cat.multiplier !== undefined ? cat.multiplier : 2.0);
+      const maxP = parseInt(cat.max_points !== undefined ? cat.max_points : 20);
+
+      let newPts = 0;
+      if (mult < 0) {
+        newPts = maxP;
+      } else {
+        newPts = Math.min(Math.round(selectedYears * mult), maxP);
+      }
+
+      s.category_id = selectedCid;
+      s.category_title = cat.title || selectedCid;
+      s.new_years = selectedYears;
+      s.new_points = newPts;
+
+      const cell = document.getElementById('cv_points_cell_' + idx);
+      if (cell) {
+        cell.innerHTML = renderCvPointsCellHtml(s);
+      }
+    }
+
+    function onCvDiffCategoryChange(idx) {
+      recalculateCvSkillRow(idx);
+    }
+
+    function onCvDiffYearsChange(idx) {
+      recalculateCvSkillRow(idx);
+    }
+
     function renderCvDiffTable(diff) {
       const tbody = document.getElementById('cvDiffTableBody');
       if (!tbody) return;
@@ -1299,6 +1367,8 @@
         tbody.innerHTML = `<tr><td colspan="7" class="py-4 text-center text-slate-500 italic">Навыки не распознаны</td></tr>`;
         return;
       }
+
+      const availableCats = getCvAvailableCategories();
 
       tbody.innerHTML = diff.map((s, idx) => {
         let statusBadge = '';
@@ -1313,6 +1383,11 @@
         const isChecked = s.selected ? 'checked' : '';
         const aliasesStr = (s.aliases || []).join(', ');
 
+        const catOptions = availableCats.map(cat => {
+          const isSelected = (cat.category_id === s.category_id) ? 'selected' : '';
+          return `<option value="${escapeHtml(cat.category_id)}" ${isSelected}>${escapeHtml(cat.title || cat.category_id)}</option>`;
+        }).join('');
+
         return `
           <tr class="hover:bg-slate-900/60 transition ${s.status === 'unchanged' ? 'opacity-70' : ''}">
             <td class="py-2.5 px-2 text-center">
@@ -1321,29 +1396,20 @@
             <td class="py-2.5 px-2 whitespace-nowrap">
               ${statusBadge}
             </td>
-            <td class="py-2.5 px-2 whitespace-nowrap">
-              <div class="font-semibold text-white">${escapeHtml(s.name)}</div>
-              <div class="text-[11px] text-indigo-400">${escapeHtml(s.category_title || s.category_id)}</div>
+            <td class="py-2.5 px-2">
+              <div class="font-semibold text-white leading-tight">${escapeHtml(s.name)}</div>
+              <select id="cv_cat_${idx}" onchange="onCvDiffCategoryChange(${idx})" class="mt-1 w-full max-w-[210px] px-1.5 py-0.5 rounded bg-slate-950 border border-slate-700 text-[11px] text-indigo-300 focus:outline-none focus:border-indigo-500 font-sans">
+                ${catOptions}
+              </select>
             </td>
             <td class="py-2.5 px-2 text-center whitespace-nowrap font-mono">
-              ${s.status === 'new' ? `
-                <span class="text-emerald-400 font-semibold">${s.new_years} л.</span>
-              ` : s.status === 'updated' ? `
-                <span class="text-slate-500 line-through mr-1">${s.old_years} л.</span>
-                <span class="text-blue-400 font-semibold">➔ ${s.new_years} л.</span>
-              ` : `
-                <span class="text-slate-400">${s.new_years} л.</span>
-              `}
+              <div class="flex items-center justify-center gap-1">
+                ${s.status === 'updated' ? `<span class="text-slate-500 line-through text-[11px]">${s.old_years}л</span>` : ''}
+                <input type="number" step="0.5" min="0" max="40" id="cv_years_${idx}" value="${s.new_years}" onchange="onCvDiffYearsChange(${idx})" class="w-14 px-1 py-0.5 text-center bg-slate-950 border border-slate-700 rounded text-xs text-white focus:outline-none focus:border-indigo-500" />
+              </div>
             </td>
-            <td class="py-2.5 px-2 text-center whitespace-nowrap font-mono">
-              ${s.status === 'new' ? `
-                <span class="text-emerald-400 font-bold">+${s.new_points} б.</span>
-              ` : s.status === 'updated' ? `
-                <span class="text-slate-500 line-through mr-1">${s.old_points}</span>
-                <span class="text-blue-400 font-bold">➔ ${s.new_points} б.</span>
-              ` : `
-                <span class="text-slate-400">${s.new_points} б.</span>
-              `}
+            <td class="py-2.5 px-2 text-center whitespace-nowrap font-mono" id="cv_points_cell_${idx}">
+              ${renderCvPointsCellHtml(s)}
             </td>
             <td class="py-2.5 px-2 text-center whitespace-nowrap">
               <input type="checkbox" id="cv_primary_${idx}" ${s.is_primary ? 'checked' : ''} class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0 cursor-pointer" />
@@ -1378,16 +1444,27 @@
         diff.forEach((s, idx) => {
           const chk = document.getElementById('cv_chk_' + idx);
           if (chk && chk.checked) {
+            const catSelect = document.getElementById('cv_cat_' + idx);
+            const yearsInput = document.getElementById('cv_years_' + idx);
             const primChk = document.getElementById('cv_primary_' + idx);
             const aliasesInput = document.getElementById('cv_aliases_' + idx);
             const aliases = aliasesInput ? aliasesInput.value.split(',').map(a => a.trim()).filter(Boolean) : s.aliases;
 
+            const selectedCid = catSelect ? catSelect.value : s.category_id;
+            const selectedYears = yearsInput ? (parseFloat(yearsInput.value) || 0) : s.new_years;
+
+            const cats = getCvAvailableCategories();
+            const cat = cats.find(c => c.category_id === selectedCid) || {};
+            const mult = parseFloat(cat.multiplier !== undefined ? cat.multiplier : 2.0);
+            const maxP = parseInt(cat.max_points !== undefined ? cat.max_points : 20);
+            const selectedPts = mult < 0 ? maxP : Math.min(Math.round(selectedYears * mult), maxP);
+
             skillsToApply.push({
               skill_id: s.skill_id,
-              category_id: s.category_id,
+              category_id: selectedCid,
               name: s.name,
-              years_experience: s.new_years,
-              weight_points: s.new_points,
+              years_experience: selectedYears,
+              weight_points: selectedPts,
               is_primary: primChk ? primChk.checked : s.is_primary,
               aliases: aliases
             });

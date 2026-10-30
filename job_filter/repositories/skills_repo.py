@@ -94,6 +94,15 @@ def upsert_skill(
     )
 
 
+def get_skill(conn: sqlite3.Connection, skill_id: str) -> dict | None:
+    row = conn.execute(
+        "SELECT skill_id, category_id, name, years_experience, weight_points, is_primary, aliases_json "
+        "FROM candidate_skills WHERE skill_id = ?",
+        (skill_id,),
+    ).fetchone()
+    return _row_to_skill(row) if row else None
+
+
 def delete_skill(conn: sqlite3.Connection, skill_id: str) -> None:
     conn.execute("DELETE FROM candidate_skills WHERE skill_id = ?", (skill_id,))
 
