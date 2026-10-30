@@ -309,10 +309,12 @@
         updateTabsText();
       }
 
-      if (currentTab === 'skills' && cachedSkillsMatrix) {
-        renderCategories(cachedSkillsMatrix);
+      if (currentTab === 'skills' && typeof renderSkillsMatrix === 'function' && cachedSkillsMatrix && cachedSkillsMatrix.categories) {
+        renderSkillsMatrix(cachedSkillsMatrix);
       } else if (currentTab !== 'candidate' && currentTab !== 'blacklist') {
-        renderJobs();
+        if (typeof renderJobsList === 'function' && cachedJobs && cachedJobs.length > 0) {
+          renderJobsList();
+        }
       }
     }
 
@@ -1081,42 +1083,62 @@
       `;
     }
 
-    async function loadJobs() {
-      const res = await fetch(`/api/jobs?tab=${encodeURIComponent(currentTab)}`);
-      const data = await res.json();
-      const s = data.stats || {};
+    let cachedJobs = [];
+    let cachedStats = {};
 
-      document.getElementById('cntTotal').textContent = s.total_in_db || 0;
-      document.getElementById('cntActionable').textContent = (s.top_match || 0) + (s.good_match || 0);
-      document.getElementById('cntTop').textContent = s.top_match || 0;
-      document.getElementById('cntGood').textContent = s.good_match || 0;
-      document.getElementById('cntPending').textContent = s.pending_llm || 0;
-      document.getElementById('cntApplied').textContent = s.applied || 0;
-      document.getElementById('cntRejected').textContent = s.rejected || 0;
-      if (s.bad_boards_count !== undefined) {
-        document.getElementById('cntBadBoards').textContent = s.bad_boards_count;
-      }
-      if (data.last_opened_job) {
-        cachedLastOpenedJob = data.last_opened_job;
-        updateLastOpenedBanner(cachedLastOpenedJob);
-      }
-
+    function renderJobsList() {
       const container = document.getElementById('jobsList');
-      if (!data.jobs || data.jobs.length === 0) {
+      if (!container) return;
+      if (!cachedJobs || cachedJobs.length === 0) {
+        const pendingCount = cachedStats.pending_llm || 0;
         const noJobsText = (currentLang === 'ru') ? 'В этой вкладке пока нет вакансий.' : 'No vacancies in this tab yet.';
         const pendingTip = (currentLang === 'ru')
-          ? `В базе есть ${s.pending_llm} скачанных вакансий, ожидающих ИИ-разбора — нажми кнопку <strong>«🧠 Только ИИ»</strong> выше!`
-          : `There are ${s.pending_llm} scraped vacancies awaiting AI analysis in DB — click <strong>«🧠 AI Only»</strong> above!`;
+          ? `В базе есть ${pendingCount} скачанных вакансий, ожидающих ИИ-разбора — нажми кнопку <strong>«🧠 Только ИИ»</strong> выше!`
+          : `There are ${pendingCount} scraped vacancies awaiting AI analysis in DB — click <strong>«🧠 AI Only»</strong> above!`;
         container.innerHTML = `
           <div class="card rounded-xl p-10 text-center text-slate-400">
             <p class="text-base">${noJobsText}</p>
-            ${s.pending_llm > 0 ? `<p class="text-xs mt-2 text-indigo-400">${pendingTip}</p>` : ''}
+            ${pendingCount > 0 ? `<p class="text-xs mt-2 text-indigo-400">${pendingTip}</p>` : ''}
           </div>
         `;
         return;
       }
+      container.innerHTML = cachedJobs.map(renderJobCard).join('');
+    }
 
-      container.innerHTML = data.jobs.map(renderJobCard).join('');
+    async function loadJobs() {
+      try {
+        const res = await fetch(`/api/jobs?tab=${encodeURIComponent(currentTab)}`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const s = data.stats || {};
+        cachedStats = s;
+        cachedJobs = data.jobs || [];
+
+        const setTxt = (id, val) => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = val;
+        };
+
+        setTxt('cntTotal', s.total_in_db || 0);
+        setTxt('cntActionable', (s.top_match || 0) + (s.good_match || 0));
+        setTxt('cntTop', s.top_match || 0);
+        setTxt('cntGood', s.good_match || 0);
+        setTxt('cntPending', s.pending_llm || 0);
+        setTxt('cntApplied', s.applied || 0);
+        setTxt('cntRejected', s.rejected || 0);
+        if (s.bad_boards_count !== undefined) {
+          setTxt('cntBadBoards', s.bad_boards_count);
+        }
+        if (data.last_opened_job) {
+          cachedLastOpenedJob = data.last_opened_job;
+          updateLastOpenedBanner(cachedLastOpenedJob);
+        }
+
+        renderJobsList();
+      } catch (err) {
+        console.error('Failed to load jobs:', err);
+      }
     }
 
     let cachedSkillsMatrix = { categories: [], skills: [] };
