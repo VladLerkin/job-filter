@@ -220,10 +220,7 @@ def fetch_and_filter_jobs(
 
             site_errors = (df.attrs or {}).get("errors") or {}
             for err_site, err_msg in site_errors.items():
-                hint = ""
-                if err_site == "google" and "no job data" in str(err_msg).lower():
-                    hint = " (Google требует прокси/вернул JS-редирект с капчей; используйте LinkedIn или Indeed)"
-                emit(f"  ⚠️ [{err_site}] Сообщение провайдера: {err_msg}{hint}")
+                emit(f"  ⚠️ [{err_site}] Сообщение провайдера: {err_msg}")
 
             if not df.empty:
                 emit(f"  ↳ [{site}] Найдено по '{term}': {len(df)}")

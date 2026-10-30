@@ -2,13 +2,13 @@
 
 > **AI-Powered Automated Vacancy Discovery, Multi-Board Scraping, LLM Enrichment & Weighted Candidate Scoring Engine.**
 
-**Job Filter** is an intelligent assistant and dashboard designed for senior software engineers, backend specialists, and Agentic AI practitioners. It automates job hunting across major platforms (LinkedIn, Indeed, Glassdoor, ZipRecruiter), filters out inaccessible ATS applications, enriches job postings using Gemini LLMs, and computes personalized match scores based on a customizable **Skills Matrix**.
+**Job Filter** is an intelligent assistant and dashboard designed for senior software engineers, backend specialists, and Agentic AI practitioners. It automates job hunting across major platforms (LinkedIn, Indeed, Glassdoor), filters out inaccessible ATS applications, enriches job postings using Gemini LLMs, and computes personalized match scores based on a customizable **Skills Matrix**.
 
 ---
 
 ## ⚡ Core Features
 
-- 🌐 **Multi-Board Scraping**: Aggregates job vacancies from LinkedIn, Indeed, Glassdoor, and ZipRecruiter using `python-jobspy` across targeted locations (`Remote`, `EMEA`, `Worldwide`).
+- 🌐 **Multi-Board Scraping**: Aggregates job vacancies from verified platforms: LinkedIn, Indeed, and Glassdoor using `python-jobspy` across targeted locations (`Remote`, `EMEA`, `Worldwide`).
 - 🤖 **LLM Vacancy Enrichment**: Analyzes job descriptions via `agy` CLI (e.g. `gemini-3.8-flash-low`, `gemini-4-argon`, `claude-sonnet-5-5`) to extract:
   - **Geographic Eligibility**: Classifies positions as `GLOBAL`, `RESTRICTED_US`, or `RESTRICTED_EU`.
   - **Technology Stack**: Extracts required languages, frameworks, and architecture patterns.
@@ -110,7 +110,7 @@ To get the most accurate, personalized job matching, follow these steps when usi
 
 ### Step 3: Configure Your Search
 1. In the search panel, select your target roles (e.g. `Agentic Engineer Remote`, `AI Agent Engineer Remote`, `Software Engineer Remote`).
-2. Choose job platforms (LinkedIn, Indeed, Glassdoor, ZipRecruiter) and target region (e.g. `Remote`, `EMEA`, `Worldwide`).
+2. Choose job platforms (LinkedIn, Indeed, Glassdoor) and target region (e.g. `Remote`, `EMEA`, `Worldwide`).
 3. Set the results limit and hours freshness filter.
 
 ### Step 4: Run Discovery & Review Matches

@@ -23,6 +23,9 @@ GLASSDOOR_COUNTRY_NAMES = {
 }
 
 
+SUPPORTED_SITES = ("linkedin", "indeed", "glassdoor")
+
+
 def scrape_site(
     site: str,
     term: str,
@@ -33,7 +36,11 @@ def scrape_site(
     easy_apply: bool | None,
     linkedin_company_ids: list[int] | None = None,
 ) -> pd.DataFrame:
-    """Вызывает JobSpy scrape_jobs с оптимизированными под каждый сайт параметрами."""
+    """Вызывает JobSpy scrape_jobs для проверенных и стабильно работающих провайдеров (LinkedIn, Indeed, Glassdoor)."""
+    site = (site or "linkedin").strip().lower()
+    if site not in SUPPORTED_SITES:
+        raise ValueError(f"Неподдерживаемый или заблокированный провайдер '{site}'. Доступны только: {', '.join(SUPPORTED_SITES)}")
+
     clean_term = re.sub(r"\bremote\b", "", term, flags=re.IGNORECASE).strip() or term
 
     if site == "linkedin":
@@ -77,68 +84,5 @@ def scrape_site(
             fetch_description=True,
         )
 
-    if site == "google":
-        time_str = "since yesterday" if hours_old <= 24 else "in the last 3 days" if hours_old <= 72 else "in the last week"
-        g_query = f"{clean_term} remote jobs in {location} {time_str}"
-        return scrape_jobs(
-            site_name=["google"],
-            search_term=clean_term,
-            google_search_term=g_query,
-            location=location,
-            is_remote=True,
-            results_wanted=results_wanted,
-            hours_old=hours_old,
-            fetch_description=True,
-        )
-
-    if site == "zip_recruiter":
-        zr_loc = None if location.lower() in ("remote", "usa", "united states") else location
-        return scrape_jobs(
-            site_name=["zip_recruiter"],
-            search_term=clean_term,
-            location=zr_loc,
-            is_remote=True,
-            results_wanted=results_wanted,
-            hours_old=hours_old,
-            easy_apply=easy_apply,
-            fetch_description=True,
-        )
-
-    if site == "hellowork":
-        hw_loc = None if location.lower() in ("france", "remote", "télétravail") else location
-        return scrape_jobs(
-            site_name=["hellowork"],
-            search_term=clean_term,
-            location=hw_loc,
-            is_remote=True,
-            results_wanted=results_wanted,
-            hours_old=hours_old,
-            fetch_description=True,
-        )
-
-    if site == "bayt":
-        bayt_loc = None if location.lower() in ("all", "mena", "remote") else location
-        return scrape_jobs(
-            site_name=["bayt"],
-            search_term=clean_term,
-            location=bayt_loc,
-            is_remote=True,
-            results_wanted=results_wanted,
-            hours_old=hours_old,
-            easy_apply=easy_apply,
-            fetch_description=True,
-        )
-
-    # Общий случай для остальных провайдеров
-    return scrape_jobs(
-        site_name=[site],
-        search_term=clean_term,
-        location=location,
-        country_indeed=country_indeed,
-        is_remote=True,
-        results_wanted=results_wanted,
-        hours_old=hours_old,
-        easy_apply=easy_apply,
-        fetch_description=True,
-    )
+    raise ValueError(f"Неизвестный провайдер: {site}")
 

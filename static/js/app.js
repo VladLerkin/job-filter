@@ -391,68 +391,13 @@
           { value: "usa", label: "🇺🇸 United States (glassdoor.com)" },
           { value: "canada", label: "🇨🇦 Canada (glassdoor.ca)" }
         ]
-      },
-      google: {
-        label: "Регион поиска (Google Jobs)",
-        remoteMechanism: "🔍 Поисковый модификатор «remote» + маркеры «remote» / «wfh» / «Anywhere» в карточке",
-        hint: "Google Jobs: агрегирует вакансии из Greenhouse, Lever, Ashby и Workday",
-        supportsEasyApply: false,
-        options: [
-          { value: "Europe", label: "🇪🇺 Europe" },
-          { value: "United Kingdom", label: "🇬🇧 United Kingdom" },
-          { value: "Germany", label: "🇩🇪 Germany" },
-          { value: "Netherlands", label: "🇳🇱 Netherlands" },
-          { value: "Poland", label: "🇵🇱 Poland" },
-          { value: "Spain", label: "🇪🇸 Spain" },
-          { value: "United States", label: "🇺🇸 United States" }
-        ]
-      },
-      zip_recruiter: {
-        label: "Регион (ZipRecruiter)",
-        remoteMechanism: "🏷️ Параметр refine_by_location_type=only_remote (теги REMOTE / REMOTE_OPTIONAL)",
-        hint: "ZipRecruiter: работает только по рынку США и Канады (фильтр only_remote)",
-        supportsEasyApply: true,
-        options: [
-          { value: "Remote", label: "🇺🇸 All USA (Remote)" },
-          { value: "United States", label: "🇺🇸 United States" },
-          { value: "Canada", label: "🇨🇦 Canada" }
-        ]
-      },
-      hellowork: {
-        label: "Локация (HelloWork)",
-        remoteMechanism: "🏷️ Параметр t=Complet → французский бейдж «Télétravail complet» (100% удалёнка)",
-        hint: "HelloWork: французская база вакансий (фильтр Télétravail complet)",
-        supportsEasyApply: false,
-        options: [
-          { value: "France", label: "🇫🇷 Вся Франция (Télétravail)" },
-          { value: "Paris", label: "🇫🇷 Paris" },
-          { value: "Lyon", label: "🇫🇷 Lyon" }
-        ]
-      },
-      bayt: {
-        label: "Страна (Bayt MENA)",
-        remoteMechanism: "🏷️ Фильтр remote_working_type=1 (бейдж «Remote») + автоматическое вычитание всех Hybrid-вакансий",
-        hint: "Bayt: вакансии Ближнего Востока и Персидского залива (MENA)",
-        supportsEasyApply: true,
-        options: [
-          { value: "all", label: "🌴 All MENA Countries" },
-          { value: "uae", label: "🇦🇪 UAE (All)" },
-          { value: "Dubai, UAE", label: "🇦🇪 Dubai, UAE" },
-          { value: "Abu Dhabi, UAE", label: "🇦🇪 Abu Dhabi, UAE" },
-          { value: "saudi-arabia", label: "🇸🇦 Saudi Arabia" },
-          { value: "qatar", label: "🇶🇦 Qatar" }
-        ]
       }
     };
 
     const SITE_REMOTE_BADGE_LABELS = {
       linkedin: "🏠 Remote / WFH",
       indeed: "🏠 Remote (DSQF7 • No Hybrid)",
-      glassdoor: "🏠 Work From Home",
-      google: "🏠 Remote / WFH",
-      zip_recruiter: "🏠 Only Remote",
-      hellowork: "🏠 Télétravail complet",
-      bayt: "🏠 Remote (No Hybrid)"
+      glassdoor: "🏠 Work From Home"
     };
 
     function getSelectedProvider() {
