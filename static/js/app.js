@@ -1,6 +1,326 @@
     let currentTab = 'actionable';
     let pollTimer = null;
     let logCursor = 0;
+    let currentLang = localStorage.getItem('job_filter_lang') || 'en';
+
+    const I18N = {
+      en: {
+        app_subtitle: "Candidate: Vladislav Yarygin • AI Agentic & Senior Backend (Java, Kotlin, Python) • Remote / B2B",
+        search_terms_label: "Search Terms (comma-separated)",
+        location_label: "Location / Region",
+        hours_label: "Hours Old",
+        llm_limit_label: "AI Limit",
+        easy_apply_label: "⚡ Easy Apply",
+        easy_apply_title: "Filter jobs with quick Easy Apply",
+        btn_run_full: "🚀 Search + AI Filter",
+        btn_run_enrich: "🧠 AI Only",
+        btn_run_enrich_title: "Enrich already scraped jobs in DB via agy CLI without new scraping",
+        source_label: "🌐 Source (select one):",
+        pipeline_running: "Pipeline running...",
+        hide_log: "Hide Log",
+        tab_actionable_text: "Actionable",
+        tab_top_text: "Top Match ≥70",
+        tab_good_text: "Good 50–69",
+        tab_pending_text: "Pending AI",
+        tab_applied_text: "Applied",
+        tab_rejected_text: "Dismissed",
+        tab_blacklist_text: "Blacklist",
+        tab_skills_text: "Skills & Scoring",
+        tab_candidate: "👤 Profile & CV",
+        btn_rescore_all: "🔄 Rescore Jobs",
+        total_in_db: "Total in DB:",
+        blacklist_title: "💩 Job Boards & ATS Blacklist",
+        blacklist_badge: "Double Redirect LinkedIn → ATS",
+        blacklist_desc: "Synchronized with job-auto-applier extension. Navigating to a banned domain displays a warning and binds the employer to this board.",
+        last_opened_label: "🔗 Last opened vacancy:",
+        last_opened_none: "Not opened yet in this session",
+        btn_ban_last_opened: "⛔ Add last opened to Blacklist",
+        bad_domain_label: "Domain or full URL of job board (e.g. cims.com or redirect link)",
+        bad_domain_placeholder: "cims.com or https://careers-company.icims.com/...",
+        btn_clipboard: "📋 From Clipboard",
+        bad_reason_label: "Reason (why inaccessible)",
+        bad_reason_default: "Impossible to fill form (in blacklist)",
+        btn_add_blacklist: "➕ Add to Blacklist",
+        banned_domains_title: "🚫 Banned Job Board / ATS Domains",
+        banned_companies_title: "🏢 Companies with problematic ATS/boards",
+        candidate_title: "👤 Candidate Data in Database",
+        candidate_desc: "Used by AI when evaluating resume_fit. Compatible with job-auto-applier format.",
+        btn_upload_pdf: "📄 Upload PDF Resume",
+        btn_export_json: "⬇️ Export JSON",
+        btn_import_json: "⬆️ Import JSON",
+        btn_save_db: "💾 Save to DB",
+        profile_label: "Your Profile / Preferences (Location, Visa / B2B, Salary expectations):",
+        profile_placeholder: "E.g., Number of years of experience, address, salary expectations, Work Authorization note...",
+        cv_label: "Your CV / Resume Text (Full structured resume for skills matching):",
+        cv_placeholder: "Paste your structured CV / Resume text here...",
+        matrix_title: "🎯 Skills Matrix & Scoring Categories",
+        matrix_desc: "Define experience in years for each skill. Vacancy score points are calculated via: points = min(years × multiplier, category limit) or adjusted manually.",
+        btn_import_cv_skills: "📄 Import from PDF Resume",
+        btn_add_category: "➕ Add Category",
+        btn_add_skill: "➕ Add Skill",
+        btn_reset_defaults: "↺ Reset to Defaults",
+        btn_rescore_vacancies: "🔄 Rescore Vacancies",
+        modal_blacklist_title: "⛔ Add to Blacklist (Problematic Form)",
+        modal_quick_select: "Quick Platform Select (1-click):",
+        modal_only_company: "🏢 Only this company",
+        modal_url_label: "URL or Domain of Job Board (where redirected):",
+        modal_url_placeholder: "E.g. cims.com or paste from browser",
+        modal_url_hint: "If left blank, the company itself will be blacklisted and all its future jobs flagged.",
+        btn_cancel: "Cancel",
+        btn_confirm_blacklist: "⛔ Blacklist and Dismiss",
+        modal_cat_title: "Skill Category",
+        modal_cat_id_label: "Category ID (slug, e.g. ai_agentic):",
+        modal_cat_name_label: "Category Title (with emoji):",
+        modal_cat_mult_label: "Multiplier (per 1 year):",
+        modal_cat_mult_hint: "Negative for penalty deductions",
+        modal_cat_max_label: "Max Points (cap):",
+        modal_cat_max_hint: "Category cap in scoring",
+        modal_cat_sort_label: "Sort Order (number):",
+        btn_save_category: "💾 Save Category",
+        modal_skill_title: "Candidate Skill",
+        modal_skill_cat_label: "Category:",
+        modal_skill_id_label: "Skill ID (slug, e.g. langgraph):",
+        modal_skill_name_label: "Skill Name:",
+        modal_skill_years_label: "Experience (years):",
+        modal_skill_points_label: "Scoring Points:",
+        modal_skill_primary_label: "⭐ Primary Skill",
+        modal_skill_aliases_label: "Synonyms / Aliases (comma-separated):",
+        btn_save_skill: "💾 Save Skill",
+        modal_cv_title: "📄 AI Resume Analysis & Skills Matrix",
+        modal_cv_desc: "AI extracted structured resume text and calculated experience for each skill. Review and select changes to apply.",
+        modal_cv_summary_title: "Candidate Profile Summary:",
+        tab_cv_skills_text: "Skills & Experience",
+        tab_cv_text: "📄 Structured Resume Text",
+        badge_cv_new_label: "New:",
+        badge_cv_updated_label: "Updated:",
+        badge_cv_unchanged_label: "Unchanged:",
+        badge_cv_new: "New",
+        badge_cv_updated: "Updated",
+        badge_cv_unchanged: "Unchanged",
+        col_status: "Status",
+        col_skill_cat: "Skill & Category",
+        col_experience: "Experience (yrs)",
+        col_points: "Score Points",
+        col_primary: "Primary",
+        col_aliases: "Aliases",
+        opt_update_cv: "📝 Update resume text in DB (cv_text)",
+        opt_update_skills: "🎯 Apply selected skills to scoring matrix",
+        opt_update_profile: "👤 Add summary to candidate preferences",
+        opt_rescore_all: "🔄 Rescore all vacancies immediately",
+        btn_apply_cv: "✅ Apply Selected Changes",
+        loading_cv_title: "AI is Analyzing Resume",
+        loading_cv_desc: "Extracting text from PDF, parsing career timeline, and evaluating skill experience...",
+        btn_open_job: "🔗 Open Vacancy ↗",
+        btn_open_job_bad: "⚠️ Open (Blacklisted) ↗",
+        btn_applied_done: "✅ Applied",
+        btn_return_new: "↩ Return to New",
+        btn_blacklist_job: "⛔ Blacklist",
+        btn_hide_job: "Dismiss",
+        btn_hide_immediate: "🗑️ Dismiss Immediately",
+        fit_summary_label: "💡 Resume Fit:",
+        cat_multiplier_label: "Multiplier:",
+        cat_limit_label: "Cap:",
+        cat_skills_count_label: "Skills:",
+        btn_edit: "✏️ Edit",
+        empty_category_notice: "No skills in this category yet. Click «➕ Add Skill».",
+        empty_categories_notice: "No categories found. Click «➕ Add Category» to create one.",
+        toast_saved: "Profile saved successfully",
+        toast_reset: "Default categories and skills restored",
+        toast_applied: "Marked as Applied ✅",
+        toast_status_updated: "Status updated"
+      },
+      ru: {
+        app_subtitle: "Кандидат: Владислав Ярыгин • AI Agentic & Senior Backend (Java, Kotlin, Python) • Удалёнка из Грузии (B2B)",
+        search_terms_label: "Поисковые запросы (через запятую)",
+        location_label: "Локация / Регион",
+        hours_label: "Часов",
+        llm_limit_label: "Лимит ИИ",
+        easy_apply_label: "⚡ Easy Apply",
+        easy_apply_title: "Искать только вакансии с быстрым откликом Easy Apply",
+        btn_run_full: "🚀 Собрать + ИИ-фильтр",
+        btn_run_enrich: "🧠 Только ИИ",
+        btn_run_enrich_title: "Обогатить через agy CLI уже скачанные в БД вакансии без нового парсинга",
+        source_label: "🌐 Источник (выбери один):",
+        pipeline_running: "Выполняется пайплайн...",
+        hide_log: "Скрыть лог",
+        tab_actionable_text: "Сухой остаток",
+        tab_top_text: "Top Match ≥70",
+        tab_good_text: "Good 50–69",
+        tab_pending_text: "Ждут ИИ",
+        tab_applied_text: "Откликнулся",
+        tab_rejected_text: "Отсеянные",
+        tab_blacklist_text: "Чёрный список",
+        tab_skills_text: "Навыки и Скоринг",
+        tab_candidate: "👤 Профиль и CV",
+        btn_rescore_all: "🔄 Пересчитать скоринг",
+        total_in_db: "Всего в БД:",
+        blacklist_title: "💩 Чёрный список джоб-бордов и ATS",
+        blacklist_badge: "Двойной переход LinkedIn → ATS",
+        blacklist_desc: "Синхронизировано с расширением job-auto-applier. При переходе на забаненный домен всплывает предупреждение, а компания привязывается к этому борду.",
+        last_opened_label: "🔗 Последняя открытая вакансия:",
+        last_opened_none: "Пока не открывалась в этой сессии",
+        btn_ban_last_opened: "⛔ Добавить последнюю открытую в черный список",
+        bad_domain_label: "Домен или полный URL джоб-борда (например, cims.com или ссылка с редиректа)",
+        bad_domain_placeholder: "cims.com или https://careers-company.icims.com/...",
+        btn_clipboard: "📋 Из буфера",
+        bad_reason_label: "Причина (почему не заполняется)",
+        bad_reason_default: "Невозможно заполнить форму (в чёрном списке)",
+        btn_add_blacklist: "➕ В чёрный список",
+        banned_domains_title: "🚫 Забаненные домены джоб-бордов / ATS",
+        banned_companies_title: "🏢 Компании с проблемными ATS/бордами",
+        candidate_title: "👤 Данные кандидата в базе",
+        candidate_desc: "Используется ИИ при оценке resume_fit. Совместимо с форматом экспорта/импорта job-auto-applier.",
+        btn_upload_pdf: "📄 Загрузить PDF резюме",
+        btn_export_json: "⬇️ Экспорт JSON",
+        btn_import_json: "⬆️ Импорт JSON",
+        btn_save_db: "💾 Сохранить в БД",
+        profile_label: "Your Profile / Preferences (Предпочтения, локация, виза / B2B, зарплатные ожидания):",
+        profile_placeholder: "E.g., Number of years of experience, address, salary expectations, Work Authorization note...",
+        cv_label: "Your CV / Resume Text (Полный текст резюме для сопоставления навыков):",
+        cv_placeholder: "Paste your structured CV / Resume text here...",
+        matrix_title: "🎯 Матрица навыков и категории скоринга",
+        matrix_desc: "Задавайте опыт в годах для каждого навыка. Баллы в скоринге вакансий рассчитываются по формуле: баллы = min(годы × множитель, лимит категории) или настраиваются вручную.",
+        btn_import_cv_skills: "📄 Импорт из PDF резюме",
+        btn_add_category: "➕ Добавить категорию",
+        btn_add_skill: "➕ Добавить навык",
+        btn_reset_defaults: "↺ Сбросить к базовым",
+        btn_rescore_vacancies: "🔄 Пересчитать скоринг вакансий",
+        modal_blacklist_title: "⛔ Добавить в чёрный список (проблемная форма)",
+        modal_quick_select: "Быстрый выбор платформы (1 клик):",
+        modal_only_company: "🏢 Только эту компанию",
+        modal_url_label: "URL или домен джоб-борда (куда перекинуло после LinkedIn):",
+        modal_url_placeholder: "Например: cims.com или вставь URL из браузера",
+        modal_url_hint: "Если оставить пустым — в чёрный список занесётся сама компания, и все её будущие вакансии будут помечены.",
+        btn_cancel: "Отмена",
+        btn_confirm_blacklist: "⛔ Занести в чёрный список и скрыть",
+        modal_cat_title: "Категория навыков",
+        modal_cat_id_label: "ID категории (латиницей, например ai_agentic):",
+        modal_cat_name_label: "Название категории (с эмодзи):",
+        modal_cat_mult_label: "Множитель (за 1 год):",
+        modal_cat_mult_hint: "Отрицательный для штрафов",
+        modal_cat_max_label: "Максимум баллов (лимит):",
+        modal_cat_max_hint: "Потолок категории в скоринге",
+        modal_cat_sort_label: "Порядок сортировки (число):",
+        btn_save_category: "💾 Сохранить категорию",
+        modal_skill_title: "Навык кандидата",
+        modal_skill_cat_label: "Категория:",
+        modal_skill_id_label: "ID навыка (латиницей):",
+        modal_skill_name_label: "Название навыка:",
+        modal_skill_years_label: "Опыт (в годах):",
+        modal_skill_points_label: "Баллы в скоринге:",
+        modal_skill_primary_label: "⭐ Ключевой навык (Primary)",
+        modal_skill_aliases_label: "Синонимы / алиасы (через запятую):",
+        btn_save_skill: "💾 Сохранить навык",
+        modal_cv_title: "📄 ИИ-разбор резюме и матрица навыков",
+        modal_cv_desc: "ИИ извлек структурированный текст резюме и рассчитал стаж по каждому навыку. Выберите, какие изменения применить в базе.",
+        modal_cv_summary_title: "Резюме профиля кандидата:",
+        tab_cv_skills_text: "Навыки и стаж",
+        tab_cv_text: "📄 Структурированный текст резюме",
+        badge_cv_new_label: "Новых:",
+        badge_cv_updated_label: "Обновленных:",
+        badge_cv_unchanged_label: "Без изменений:",
+        badge_cv_new: "Новый",
+        badge_cv_updated: "Изменился",
+        badge_cv_unchanged: "Без изм.",
+        col_status: "Статус",
+        col_skill_cat: "Навык & Категория",
+        col_experience: "Стаж (годы)",
+        col_points: "Баллы скоринга",
+        col_primary: "Primary",
+        col_aliases: "Алиасы",
+        opt_update_cv: "📝 Обновить текст резюме в базе (cv_text)",
+        opt_update_skills: "🎯 Применить отмеченные навыки в матрицу скоринга",
+        opt_update_profile: "👤 Добавить summary в предпочтения кандидата",
+        opt_rescore_all: "🔄 Пересчитать скоринг всех вакансий сразу",
+        btn_apply_cv: "✅ Применить выбранные изменения",
+        loading_cv_title: "ИИ анализирует резюме",
+        loading_cv_desc: "Извлекаем текст из PDF, восстанавливаем структуру карьеры и оцениваем стаж по навыкам...",
+        btn_open_job: "🔗 Открыть вакансию ↗",
+        btn_open_job_bad: "⚠️ Открыть (В чёрном списке) ↗",
+        btn_applied_done: "✅ Откликнулся",
+        btn_return_new: "↩ Вернуть в новые",
+        btn_blacklist_job: "⛔ В черный список",
+        btn_hide_job: "Скрыть",
+        btn_hide_immediate: "🗑️ Скрыть сразу",
+        fit_summary_label: "💡 Резюме-фит:",
+        cat_multiplier_label: "Множитель:",
+        cat_limit_label: "Лимит:",
+        cat_skills_count_label: "Навыков:",
+        btn_edit: "✏️ Изменить",
+        empty_category_notice: "В этой категории пока нет навыков. Нажмите «➕ Добавить навык».",
+        empty_categories_notice: "Категории не найдены. Нажмите «➕ Добавить категорию», чтобы создать первую.",
+        toast_saved: "Профиль успешно сохранен",
+        toast_reset: "Базовый набор категорий и навыков восстановлен",
+        toast_applied: "Отмечено как «Откликнулся» ✅",
+        toast_status_updated: "Статус обновлен"
+      }
+    };
+
+    function t(key) {
+      if (I18N[currentLang] && I18N[currentLang][key] !== undefined) {
+        return I18N[currentLang][key];
+      }
+      if (I18N.en && I18N.en[key] !== undefined) {
+        return I18N.en[key];
+      }
+      return key;
+    }
+
+    function applyLanguage() {
+      document.documentElement.lang = currentLang;
+
+      const btnEn = document.getElementById('langBtnEn');
+      const btnRu = document.getElementById('langBtnRu');
+      if (btnEn && btnRu) {
+        if (currentLang === 'en') {
+          btnEn.className = 'px-2.5 py-1 rounded-md transition text-white bg-indigo-600 font-bold';
+          btnRu.className = 'px-2.5 py-1 rounded-md transition text-slate-400 hover:text-white font-medium';
+        } else {
+          btnRu.className = 'px-2.5 py-1 rounded-md transition text-white bg-indigo-600 font-bold';
+          btnEn.className = 'px-2.5 py-1 rounded-md transition text-slate-400 hover:text-white font-medium';
+        }
+      }
+
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        const val = t(key);
+        if (val) el.textContent = val;
+      });
+
+      document.querySelectorAll('[data-i18n-html]').forEach(el => {
+        const key = el.getAttribute('data-i18n-html');
+        const val = t(key);
+        if (val) el.innerHTML = val;
+      });
+
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        const val = t(key);
+        if (val) el.placeholder = val;
+      });
+
+      document.querySelectorAll('[data-i18n-title]').forEach(el => {
+        const key = el.getAttribute('data-i18n-title');
+        const val = t(key);
+        if (val) el.title = val;
+      });
+
+      if (typeof updateTabsText === 'function') {
+        updateTabsText();
+      }
+
+      if (currentTab === 'skills' && cachedSkillsMatrix) {
+        renderCategories(cachedSkillsMatrix);
+      } else if (currentTab !== 'candidate' && currentTab !== 'blacklist') {
+        renderJobs();
+      }
+    }
+
+    function setLanguage(lang) {
+      currentLang = (lang === 'ru') ? 'ru' : 'en';
+      localStorage.setItem('job_filter_lang', currentLang);
+      applyLanguage();
+    }
 
     const SNIPPETS = {
       workAuth: "I am legally authorized to work from Georgia (country) and do not require visa sponsorship. I am seeking remote-only roles (e.g., via B2B contract, independent contractor, or Employer of Record/EOR) and do not require work authorization in the employer’s country (such as the US).",
@@ -175,9 +495,34 @@
       toastTimer = setTimeout(() => t.classList.add('hidden'), durationMs);
     }
 
+    function updateTabsText() {
+      const tabs = [
+        { tab: 'actionable', countId: 'cntActionable', key: 'tab_actionable_text', icon: '🎯 ' },
+        { tab: 'top', countId: 'cntTop', key: 'tab_top_text', icon: '🟢 ' },
+        { tab: 'good', countId: 'cntGood', key: 'tab_good_text', icon: '🟡 ' },
+        { tab: 'pending', countId: 'cntPending', key: 'tab_pending_text', icon: '⏳ ' },
+        { tab: 'applied', countId: 'cntApplied', key: 'tab_applied_text', icon: '✅ ' },
+        { tab: 'rejected', countId: 'cntRejected', key: 'tab_rejected_text', icon: '🗑️ ' },
+        { tab: 'blacklist', countId: 'cntBadBoards', key: 'tab_blacklist_text', icon: '⛔ ' },
+        { tab: 'skills', countId: 'cntSkills', key: 'tab_skills_text', icon: '🎯 ' },
+      ];
+      tabs.forEach(tInfo => {
+        const btn = document.querySelector(`.tab-btn[data-tab="${tInfo.tab}"]`);
+        if (btn) {
+          const cntEl = document.getElementById(tInfo.countId);
+          const cnt = cntEl ? cntEl.textContent : '0';
+          btn.innerHTML = `${tInfo.icon}${t(tInfo.key)} (<span id="${tInfo.countId}">${cnt}</span>)`;
+        }
+      });
+      const candBtn = document.querySelector('.tab-btn[data-tab="candidate"]');
+      if (candBtn) {
+        candBtn.textContent = t('tab_candidate');
+      }
+    }
+
     function copySnippet(key) {
       navigator.clipboard.writeText(SNIPPETS[key]);
-      showToast('Скопировано в буфер обмена!');
+      showToast(currentLang === 'ru' ? 'Скопировано в буфер обмена!' : 'Copied to clipboard!');
     }
 
     function switchTab(tab) {
@@ -627,36 +972,36 @@
               <div class="text-xs text-slate-400 flex flex-wrap gap-3 items-center">
                 <span>📅 ${escapeHtml(job.date_posted || '')}</span>
                 <code class="text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded">${escapeHtml(job.url)}</code>
-                ${job.apply_url ? `<a href="${escapeHtml(job.apply_url)}" target="_blank" rel="noopener" onclick="trackJobOpen('${escapeJsArg(job.job_id)}')" class="text-indigo-400 hover:underline font-mono">⚡ Прямой Apply URL ↗</a>` : ''}
+                ${job.apply_url ? `<a href="${escapeHtml(job.apply_url)}" target="_blank" rel="noopener" onclick="trackJobOpen('${escapeJsArg(job.job_id)}')" class="text-indigo-400 hover:underline font-mono">⚡ ${currentLang === 'ru' ? 'Прямой Apply URL ↗' : 'Direct Apply URL ↗'}</a>` : ''}
                 ${job.industry ? `<span>🏢 ${escapeHtml(job.industry)}</span>` : ''}
               </div>
             </div>
 
-            <!-- Кнопки действий для заполнения откликов -->
+            <!-- Action buttons -->
             <div class="flex flex-wrap items-center gap-2">
               <a href="${escapeHtml(job.url)}" target="_blank" rel="noopener" onclick="trackJobOpen('${escapeJsArg(job.job_id)}')"
                 class="px-3.5 py-1.5 rounded-lg ${isBadBoard ? 'bg-red-900/70 hover:bg-red-800 text-red-200 border border-red-700' : 'bg-indigo-600 hover:bg-indigo-500 text-white'} text-xs font-semibold transition">
-                ${isBadBoard ? '⚠️ Открыть (В чёрном списке) ↗' : '🔗 Открыть вакансию ↗'}
+                ${isBadBoard ? t('btn_open_job_bad') : t('btn_open_job')}
               </a>
               ${job.user_status !== 'applied' ? `
                 <button onclick="setJobStatus('${escapeJsArg(job.job_id)}', 'applied')"
                   class="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 text-xs font-medium transition">
-                  ✅ Откликнулся
+                  ${t('btn_applied_done')}
                 </button>
               ` : `
                 <button onclick="setJobStatus('${escapeJsArg(job.job_id)}', 'new')"
                   class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition">
-                  ↩ Вернуть в новые
+                  ${t('btn_return_new')}
                 </button>
               `}
               <button onclick="openBadBoardModal('${escapeJsArg(job.job_id)}', '${escapeJsArg(job.company)}', '${escapeJsArg(job.title)}', '${escapeJsArg(atsDomain)}')"
-                title="Добавить джоб-борд и компанию в черный список (например, cims.com)"
+                title="Blacklist job board and company"
                 class="px-2.5 py-1.5 rounded-lg bg-red-950/50 hover:bg-red-900/80 text-red-300 border border-red-800/60 text-xs font-medium transition">
-                ⛔ В черный список
+                ${t('btn_blacklist_job')}
               </button>
               ${job.user_status !== 'hidden' ? `
                 <button onclick="setJobStatus('${escapeJsArg(job.job_id)}', 'hidden')"
-                  class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-red-950/60 text-slate-400 hover:text-red-300 border border-slate-700 text-xs transition">
+                  class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-red-950/60 text-slate-400 hover:text-red-300 border border-slate-700 text-xs transition" title="${t('btn_hide_job')}">
                   🗑️
                 </button>
               ` : ''}
@@ -665,7 +1010,7 @@
 
           ${fitSummary ? `
             <div class="mt-3 text-sm text-indigo-200 bg-indigo-950/40 border border-indigo-800/50 rounded-lg px-3 py-2">
-              💡 <strong>Резюме-фит:</strong> ${escapeHtml(fitSummary)}
+              <strong>${t('fit_summary_label')}</strong> ${escapeHtml(fitSummary)}
             </div>
           ` : ''}
 
@@ -674,13 +1019,13 @@
             <div class="mt-3 space-y-1.5 text-xs">
               ${matched.length > 0 ? `
                 <div class="flex flex-wrap items-center gap-1.5">
-                  <span class="text-slate-400 font-medium">✅ Совпало (${matched.length}):</span>
+                  <span class="text-slate-400 font-medium">✅ ${currentLang === 'ru' ? 'Совпало' : 'Matched'} (${matched.length}):</span>
                   ${matched.map(s => `<span class="px-2 py-0.5 rounded chip-match font-mono">${escapeHtml(s)}</span>`).join('')}
                 </div>
               ` : ''}
               ${missing.length > 0 ? `
                 <div class="flex flex-wrap items-center gap-1.5">
-                  <span class="text-slate-400 font-medium">⚠️ Не указано в резюме (${missing.length}):</span>
+                  <span class="text-slate-400 font-medium">⚠️ ${currentLang === 'ru' ? 'Не указано в резюме' : 'Missing from CV'} (${missing.length}):</span>
                   ${missing.map(s => `<span class="px-2 py-0.5 rounded chip-miss font-mono">${escapeHtml(s)}</span>`).join('')}
                 </div>
               ` : ''}
@@ -689,7 +1034,7 @@
 
           ${breakdown ? `
             <div class="mt-2 text-xs text-slate-400 italic">
-              📊 Скоринг детали: ${escapeHtml(breakdown)}
+              📊 ${currentLang === 'ru' ? 'Скоринг детали:' : 'Score breakdown:'} ${escapeHtml(breakdown)}
             </div>
           ` : ''}
 
@@ -758,10 +1103,14 @@
 
       const container = document.getElementById('jobsList');
       if (!data.jobs || data.jobs.length === 0) {
+        const noJobsText = (currentLang === 'ru') ? 'В этой вкладке пока нет вакансий.' : 'No vacancies in this tab yet.';
+        const pendingTip = (currentLang === 'ru')
+          ? `В базе есть ${s.pending_llm} скачанных вакансий, ожидающих ИИ-разбора — нажми кнопку <strong>«🧠 Только ИИ»</strong> выше!`
+          : `There are ${s.pending_llm} scraped vacancies awaiting AI analysis in DB — click <strong>«🧠 AI Only»</strong> above!`;
         container.innerHTML = `
           <div class="card rounded-xl p-10 text-center text-slate-400">
-            <p class="text-base">В этой вкладке пока нет вакансий.</p>
-            ${s.pending_llm > 0 ? `<p class="text-xs mt-2 text-indigo-400">В базе есть ${s.pending_llm} скачанных вакансий, ожидающих ИИ-разбора — нажми кнопку <strong>«🧠 Только ИИ»</strong> выше!</p>` : ''}
+            <p class="text-base">${noJobsText}</p>
+            ${s.pending_llm > 0 ? `<p class="text-xs mt-2 text-indigo-400">${pendingTip}</p>` : ''}
           </div>
         `;
         return;
@@ -800,7 +1149,7 @@
       if (categories.length === 0) {
         container.innerHTML = `
           <div class="card rounded-xl p-8 text-center text-slate-400">
-            Категории не найдены. Нажмите «➕ Добавить категорию», чтобы создать первую.
+            ${t('empty_categories_notice')}
           </div>
         `;
         return;
@@ -810,6 +1159,8 @@
         const catSkills = skillsByCat[cat.category_id] || [];
         const isPenalty = cat.multiplier < 0 || cat.max_points < 0;
         const badgeBorder = isPenalty ? 'border-red-800 bg-red-950/60 text-red-300' : 'border-indigo-800 bg-indigo-950/60 text-indigo-300';
+        const ptsUnit = (currentLang === 'ru') ? 'б.' : 'pts';
+        const yrsUnit = (currentLang === 'ru') ? 'л.' : 'yrs';
 
         return `
           <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
@@ -818,23 +1169,23 @@
                 <h3 class="text-sm font-bold text-white">${escapeHtml(cat.title)}</h3>
                 <code class="text-[11px] px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 font-mono">${escapeHtml(cat.category_id)}</code>
                 <span class="text-xs px-2 py-0.5 rounded-full border ${badgeBorder}">
-                  Множитель: <strong>${cat.multiplier}x</strong>
+                  ${t('cat_multiplier_label')} <strong>${cat.multiplier}x</strong>
                 </span>
                 <span class="text-xs px-2 py-0.5 rounded-full border border-slate-700 bg-slate-800 text-slate-300">
-                  Лимит: <strong>${cat.max_points} б.</strong>
+                  ${t('cat_limit_label')} <strong>${cat.max_points} ${ptsUnit}</strong>
                 </span>
                 <span class="text-xs px-2 py-0.5 rounded-full bg-slate-800/60 text-slate-400">
-                  Навыков: <strong>${catSkills.length}</strong>
+                  ${t('cat_skills_count_label')} <strong>${catSkills.length}</strong>
                 </span>
               </div>
               <div class="flex items-center gap-1.5">
-                <button onclick="openSkillModal('${escapeHtml(cat.category_id)}')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition" title="Добавить навык в эту категорию">
-                  ➕ Добавить навык
+                <button onclick="openSkillModal('${escapeHtml(cat.category_id)}')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition" title="Add skill to this category">
+                  ${t('btn_add_skill')}
                 </button>
-                <button onclick="openCategoryModal('${escapeHtml(cat.category_id)}')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition" title="Редактировать параметры категории">
-                  ✏️ Изменить
+                <button onclick="openCategoryModal('${escapeHtml(cat.category_id)}')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition" title="Edit category parameters">
+                  ${t('btn_edit')}
                 </button>
-                <button onclick="deleteCategory('${escapeHtml(cat.category_id)}')" class="px-2.5 py-1 rounded-lg bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-800/60 text-xs transition" title="Удалить категорию со всеми навыками">
+                <button onclick="deleteCategory('${escapeHtml(cat.category_id)}')" class="px-2.5 py-1 rounded-lg bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-800/60 text-xs transition" title="Delete category with all skills">
                   🗑️
                 </button>
               </div>
@@ -842,18 +1193,18 @@
 
             <!-- Таблица навыков категории -->
             ${catSkills.length === 0 ? `
-              <div class="text-xs text-slate-500 italic py-2">В этой категории пока нет навыков. Нажмите «➕ Добавить навык».</div>
+              <div class="text-xs text-slate-500 italic py-2">${t('empty_category_notice')}</div>
             ` : `
               <div class="overflow-x-auto">
                 <table class="w-full text-left text-xs">
                   <thead>
                     <tr class="text-slate-400 border-b border-slate-800 text-[11px] uppercase tracking-wider">
-                      <th class="py-2 pr-3">Навык</th>
-                      <th class="py-2 px-3 text-center" title="Опыт в годах">Опыт (годы)</th>
-                      <th class="py-2 px-3 text-center" title="Баллы, начисляемые вакансии при совпадении">Баллы скоринга</th>
-                      <th class="py-2 px-3 text-center" title="Ключевой навык (Primary)">Primary</th>
-                      <th class="py-2 px-3">Синонимы / Алиасы в тексте</th>
-                      <th class="py-2 pl-3 text-right">Действия</th>
+                      <th class="py-2 pr-3">${currentLang === 'ru' ? 'Навык' : 'Skill'}</th>
+                      <th class="py-2 px-3 text-center" title="Experience in years">${currentLang === 'ru' ? 'Опыт (годы)' : 'Experience (yrs)'}</th>
+                      <th class="py-2 px-3 text-center" title="Score points">${currentLang === 'ru' ? 'Баллы скоринга' : 'Score Points'}</th>
+                      <th class="py-2 px-3 text-center">Primary</th>
+                      <th class="py-2 px-3">${currentLang === 'ru' ? 'Синонимы / Алиасы' : 'Synonyms / Aliases'}</th>
+                      <th class="py-2 pl-3 text-right">${currentLang === 'ru' ? 'Действия' : 'Actions'}</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-800/50">
@@ -873,12 +1224,18 @@
                                 value="${s.years_experience}"
                                 oninput="onSkillYearsChange('${escapeHtml(s.skill_id)}', ${cat.multiplier}, ${cat.max_points})"
                                 class="w-16 px-2 py-1 bg-slate-950 border border-slate-700 rounded text-center text-xs text-white focus:outline-none focus:border-indigo-500 font-mono" />
-                              <span class="text-slate-500 text-[11px]">л.</span>
+                              <span class="text-slate-500 text-[11px]">${yrsUnit}</span>
                             </div>
                           </td>
                           <td class="py-2 px-3 text-center whitespace-nowrap">
                             <div class="flex items-center justify-center gap-1">
                               <input type="number" step="1"
+                                id="points_${escapeHtml(s.skill_id)}"
+                                value="${s.weight_points}"
+                                class="w-16 px-2 py-1 bg-slate-950 border border-slate-700 rounded text-center text-xs font-bold ${ptsColor} focus:outline-none focus:border-indigo-500 font-mono" />
+                              <span class="text-slate-500 text-[11px]">${ptsUnit}</span>
+                            </div>
+                          </td>
                                 id="points_${escapeHtml(s.skill_id)}"
                                 value="${s.weight_points}"
                                 class="w-16 px-2 py-1 bg-slate-950 border border-slate-700 rounded text-center text-xs font-bold ${ptsColor} focus:outline-none focus:border-indigo-500 font-mono" />
@@ -1308,12 +1665,13 @@
     }
 
     function renderCvPointsCellHtml(s) {
+      const ptsUnit = (currentLang === 'ru') ? 'б.' : 'pts';
       if (s.status === 'new') {
-        return `<span class="text-emerald-400 font-bold">+${s.new_points} б.</span>`;
+        return `<span class="text-emerald-400 font-bold">+${s.new_points} ${ptsUnit}</span>`;
       } else if (s.status === 'updated') {
-        return `<span class="text-slate-500 line-through mr-1">${s.old_points}</span><span class="text-blue-400 font-bold">➔ ${s.new_points} б.</span>`;
+        return `<span class="text-slate-500 line-through mr-1">${s.old_points}</span><span class="text-blue-400 font-bold">➔ ${s.new_points} ${ptsUnit}</span>`;
       } else {
-        return `<span class="text-slate-400">${s.new_points} б.</span>`;
+        return `<span class="text-slate-400">${s.new_points} ${ptsUnit}</span>`;
       }
     }
 
@@ -1364,20 +1722,21 @@
       if (!tbody) return;
 
       if (!diff || diff.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="py-4 text-center text-slate-500 italic">Навыки не распознаны</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="py-4 text-center text-slate-500 italic">${currentLang === 'ru' ? 'Навыки не распознаны' : 'No skills recognized'}</td></tr>`;
         return;
       }
 
       const availableCats = getCvAvailableCategories();
+      const yrsUnit = (currentLang === 'ru') ? 'л' : 'y';
 
       tbody.innerHTML = diff.map((s, idx) => {
         let statusBadge = '';
         if (s.status === 'new') {
-          statusBadge = `<span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-semibold">Новый</span>`;
+          statusBadge = `<span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-semibold">${t('badge_cv_new')}</span>`;
         } else if (s.status === 'updated') {
-          statusBadge = `<span class="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 text-[10px] font-semibold">Изменился</span>`;
+          statusBadge = `<span class="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 text-[10px] font-semibold">${t('badge_cv_updated')}</span>`;
         } else {
-          statusBadge = `<span class="px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800 text-[10px]">Без изм.</span>`;
+          statusBadge = `<span class="px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800 text-[10px]">${t('badge_cv_unchanged')}</span>`;
         }
 
         const isChecked = s.selected ? 'checked' : '';
@@ -1404,7 +1763,7 @@
             </td>
             <td class="py-2.5 px-2 text-center whitespace-nowrap font-mono">
               <div class="flex items-center justify-center gap-1">
-                ${s.status === 'updated' ? `<span class="text-slate-500 line-through text-[11px]">${s.old_years}л</span>` : ''}
+                ${s.status === 'updated' ? `<span class="text-slate-500 line-through text-[11px]">${s.old_years}${yrsUnit}</span>` : ''}
                 <input type="number" step="0.5" min="0" max="40" id="cv_years_${idx}" value="${s.new_years}" onchange="onCvDiffYearsChange(${idx})" class="w-14 px-1 py-0.5 text-center bg-slate-950 border border-slate-700 rounded text-xs text-white focus:outline-none focus:border-indigo-500" />
               </div>
             </td>
@@ -1509,6 +1868,7 @@
       }
     }
 
+    applyLanguage();
     onProviderChange();
     loadJobs();
     loadSkillsMatrix();

@@ -346,6 +346,7 @@ The frontend is implemented as a lightweight, reactive Single Page Application u
 
 Key components in `static/js/app.js`:
 - **State Management**: Reactive state object storing active vacancies, filter parameters, current skills matrix, and active CV diff payload.
+- **Internationalization (i18n)**: Native bilingual interface (English and Russian) with instant header switcher (`EN` | `RU`), data-attribute DOM localization (`data-i18n`), and persistent preferences in `localStorage`.
 - **Interactive CV Diff Modal**: Renders candidate skills side-by-side with database records, providing inline `<select>` category pickers and numerical years inputs. Dynamic DOM updates ensure real-time score calculation before submission.
 - **Matrix Manager Modal**: Allows adding, editing, and deleting categories and individual skills with instantaneous updates to category multipliers.
 - **Toast Notification Engine**: User feedback mechanism for background job notifications and error alerts.

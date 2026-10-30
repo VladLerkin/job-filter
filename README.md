@@ -21,6 +21,7 @@
   - Computes years of experience per technical skill and maps skills to standard categories.
   - Features an **interactive diff modal** with category dropdowns (`<select>`) and experience adjustments before committing to the database.
 - 🚫 **1-Click ATS Blacklist Management**: Block problematic application portals (e.g., iCIMS, Taleo, Brassring) or specific employers with one click.
+- 🌐 **Bilingual Interface (EN / RU)**: Seamless one-click language toggle between English and Russian in the top header.
 - 💻 **Modern Web Dashboard**: Fast, responsive Single Page Application (SPA) with a sleek dark theme built with Tailwind CSS.
 
 ---
@@ -91,7 +92,7 @@ To get the most accurate, personalized job matching, follow these steps when usi
 
 ### Step 1: Upload Your Resume (PDF)
 1. Open the dashboard at `http://localhost:8000`.
-2. In the top-right header, click **«📄 Загрузить PDF резюме»**.
+2. In the top-right header (or under Profile tab), click **«📄 Upload PDF Resume»**.
 3. Select your latest resume file (`.pdf`).
 4. The AI will:
    - Extract and normalize your resume into clean Markdown.
@@ -105,7 +106,7 @@ To get the most accurate, personalized job matching, follow these steps when usi
    - Change the assigned category using the **interactive `<select>` dropdown** (scores update dynamically).
    - Adjust the calculated **years of experience**.
    - Review and edit synonyms/aliases.
-3. Check **«🔄 Пересчитать скоринг всех вакансий сразу»** and click **«✅ Применить выбранные изменения»**.
+3. Check **«🔄 Rescore all vacancies immediately»** and click **«✅ Apply Selected Changes»**.
 
 ### Step 3: Configure Your Search
 1. In the search panel, select your target roles (e.g. `Agentic Engineer Remote`, `AI Agent Engineer Remote`, `Software Engineer Remote`).
@@ -113,13 +114,13 @@ To get the most accurate, personalized job matching, follow these steps when usi
 3. Set the results limit and hours freshness filter.
 
 ### Step 4: Run Discovery & Review Matches
-1. Click **«🚀 Запустить поиск»**.
+1. Click **«🚀 Search + AI Filter»** (or **«🧠 AI Only»** to re-analyze existing vacancies).
 2. Monitor real-time status in the header (`Scraping` $\to$ `Enriching` $\to$ `Idle`).
 3. Use quick filters to focus on high-yield opportunities:
    - **🔥 TOP (70+)**: Best match for your stack and experience.
    - **⚡ GOOD (50-69)**: Solid match with minor skill gaps.
-4. Click **«🔗 Открыть вакансию»** to view the posting.
-5. If an ATS portal requires tedious multi-page account creation (e.g. iCIMS, Taleo), click **«🚫 В чёрный список»** to permanently hide it and all future jobs on that domain.
+4. Click **«🔗 Open Vacancy»** to view the posting.
+5. If an ATS portal requires tedious multi-page account creation (e.g. iCIMS, Taleo), click **«⛔ Blacklist»** to permanently hide it and all future jobs on that domain.
 
 ---
 
