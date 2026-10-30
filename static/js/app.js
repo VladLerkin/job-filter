@@ -1236,12 +1236,6 @@
                               <span class="text-slate-500 text-[11px]">${ptsUnit}</span>
                             </div>
                           </td>
-                                id="points_${escapeHtml(s.skill_id)}"
-                                value="${s.weight_points}"
-                                class="w-16 px-2 py-1 bg-slate-950 border border-slate-700 rounded text-center text-xs font-bold ${ptsColor} focus:outline-none focus:border-indigo-500 font-mono" />
-                              <span class="text-slate-500 text-[11px]">б.</span>
-                            </div>
-                          </td>
                           <td class="py-2 px-3 text-center whitespace-nowrap">
                             <input type="checkbox"
                               id="primary_${escapeHtml(s.skill_id)}"
