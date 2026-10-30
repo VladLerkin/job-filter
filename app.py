@@ -13,20 +13,25 @@ from agy_enrich import DEFAULT_MODEL
 from enrichment_schema import JobEnrichment
 from main import (
     add_blacklisted_board,
+    delete_candidate_skill,
+    delete_skill_category,
     enrich_and_score_pending_jobs,
     extract_root_domain,
     fetch_and_filter_jobs,
     get_blacklist_data,
     get_candidate_settings,
+    get_skill_matrix_data,
     init_db,
     match_blacklisted_domain,
     normalize_company_key,
     remove_blacklisted_board,
     remove_company_ats_map,
     save_candidate_settings,
+    save_candidate_skill,
+    save_skill_category,
     update_job_enrichment_and_score,
 )
-from skill_scorer import score_vacancy_by_skill
+from skill_scorer import invalidate_skill_matrix_cache, score_vacancy_by_skill
 
 app = FastAPI(title="Job Filter")
 
@@ -96,6 +101,24 @@ class UpdateStatusRequest(BaseModel):
 class CandidateProfileRequest(BaseModel):
     profile_text: str = ""
     cv_text: str = ""
+
+
+class SkillCategoryRequest(BaseModel):
+    category_id: str
+    title: str
+    multiplier: float = 2.0
+    max_points: int = 30
+    sort_order: int = 0
+
+
+class CandidateSkillRequest(BaseModel):
+    skill_id: str
+    category_id: str
+    name: str
+    years_experience: float = 0.0
+    weight_points: int | None = None
+    is_primary: bool = False
+    aliases: list[str] = []
 
 
 class AddBlacklistRequest(BaseModel):
@@ -196,6 +219,7 @@ def rescore_all_enriched_jobs():
                 salary_text=r["salary"],
                 description=r["description"] or "",
                 enrichment=enrichment,
+                conn=conn,
             )
             update_job_enrichment_and_score(conn, r["job_id"], enrichment, score_res)
             updated += 1
@@ -203,6 +227,66 @@ def rescore_all_enriched_jobs():
             continue
     conn.close()
     return {"rescored": updated}
+
+
+@app.get("/api/skills/matrix")
+def get_skills_matrix():
+    conn = init_db()
+    data = get_skill_matrix_data(conn)
+    conn.close()
+    return data
+
+
+@app.post("/api/skills/category")
+def upsert_skill_category(body: SkillCategoryRequest):
+    conn = init_db()
+    res = save_skill_category(
+        conn,
+        category_id=body.category_id,
+        title=body.title,
+        multiplier=body.multiplier,
+        max_points=body.max_points,
+        sort_order=body.sort_order,
+    )
+    conn.close()
+    invalidate_skill_matrix_cache()
+    return res
+
+
+@app.delete("/api/skills/category/{category_id}")
+def remove_skill_category(category_id: str):
+    conn = init_db()
+    delete_skill_category(conn, category_id)
+    conn.close()
+    invalidate_skill_matrix_cache()
+    return {"status": "ok", "deleted_category_id": category_id}
+
+
+@app.post("/api/skills/item")
+def upsert_candidate_skill(body: CandidateSkillRequest):
+    conn = init_db()
+    res = save_candidate_skill(
+        conn,
+        skill_id=body.skill_id,
+        category_id=body.category_id,
+        name=body.name,
+        years_experience=body.years_experience,
+        weight_points=body.weight_points,
+        is_primary=body.is_primary,
+        aliases=body.aliases,
+    )
+    conn.close()
+    invalidate_skill_matrix_cache()
+    return res
+
+
+@app.delete("/api/skills/item/{skill_id}")
+def remove_candidate_skill(skill_id: str):
+    conn = init_db()
+    delete_candidate_skill(conn, skill_id)
+    conn.close()
+    invalidate_skill_matrix_cache()
+    return {"status": "ok", "deleted_skill_id": skill_id}
 
 
 @app.get("/api/candidate")

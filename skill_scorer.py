@@ -4,46 +4,100 @@ from pydantic import BaseModel, Field
 
 from enrichment_schema import JobEnrichment
 
-# Профиль кандидата из hirify-filter-bot-export-skill
-CANDIDATE_SKILLS_SET = {
-    # Languages
-    "java", "kotlin", "python", "typescript", "sql", "node", "nodejs", "node.js",
-    # Frameworks & Backend
-    "spring", "spring boot", "spring data", "spring security", "spring ai", "ktor", "quartz", "kmp", "kotlin multiplatform",
-    # AI & Agentic Systems
-    "ai", "ai engineer", "ai engineering", "ai agentic", "ai agentic engineer", "ai agents", "agentic", "agentic ai",
-    "multi-agent", "multi agent", "rag", "mem0", "memsearch", "mcp", "a2a", "agent-to-agent",
-    "langsmith", "langfuse", "hivetrace", "agent security", "local llm", "llm", "llms", "agents", "prompt engineering", "genai", "generative ai",
-    "langgraph", "langchain", "crewai", "koog", "machine learning", "claude", "openai", "anthropic", "gpt", "embeddings", "vector db",
-    # Architecture & Protocols
-    "microservices", "rest", "rest api", "restful", "apis", "api", "http", "http api", "openapi", "swagger",
-    "event-driven", "event driven", "event driven architecture",
-    "high-load", "high load", "high load systems", "distributed systems", "software architecture", "system design", "cloud architecture", "cloud native",
-    # Databases & Storage
-    "postgresql", "postgres", "oracle", "oracle db", "mssql", "sql server", "s3", "s3 storage", "storage", "databases",
-    # DevOps & Cloud
-    "docker", "kubernetes", "k8s", "aws", "google cloud", "gcp", "gitlab", "gitlab ci", "gitlab ci/cd", "ci cd", "ci/cd", "github", "gradle", "maven", "git",
-    # Domains & Business Systems
-    "fintech", "banking", "custody", "brokerage", "payments", "billing", "ecm", "crm", "bpm", "erp", "healthcare", "medtech", "travel",
-    # General engineering & message brokers
-    "backend", "backend engineering", "backend development", "software engineering", "clean code", "clean architecture", "architecture", "solution architecture",
-    "kafka", "rabbitmq", "testing", "automation",
+import json
+import re
+import sqlite3
+from datetime import date, datetime
+from pydantic import BaseModel, Field
+
+from enrichment_schema import JobEnrichment
+
+# Кэш матрицы навыков из базы данных
+_SKILL_MATRIX_CACHE: dict | None = None
+
+
+def invalidate_skill_matrix_cache():
+    global _SKILL_MATRIX_CACHE
+    _SKILL_MATRIX_CACHE = None
+
+
+def _build_fallback_matrix() -> dict:
+    return {
+        "categories": [
+            {"category_id": "ai_agentic", "title": "🤖 AI & Agentic Systems", "multiplier": 15.0, "max_points": 30, "sort_order": 1},
+            {"category_id": "core_backend", "title": "☕ Core Backend & Languages", "multiplier": 2.0, "max_points": 20, "sort_order": 2},
+            {"category_id": "secondary_backend", "title": "🐍 Secondary Languages / TS", "multiplier": 3.0, "max_points": 18, "sort_order": 3},
+            {"category_id": "arch_infra", "title": "🏗️ Architecture & Cloud / DevOps", "multiplier": 2.0, "max_points": 15, "sort_order": 4},
+            {"category_id": "domains", "title": "💼 Business Domains (FinTech / Banking)", "multiplier": 2.0, "max_points": 10, "sort_order": 5},
+            {"category_id": "alien", "title": "🚫 Чужой стек (Штрафы)", "multiplier": -1.0, "max_points": -20, "sort_order": 6},
+            {"category_id": "legacy", "title": "🦖 Устаревший стек (Штрафы)", "multiplier": -1.0, "max_points": -30, "sort_order": 7},
+        ],
+        "skills": [
+            {"skill_id": "langgraph", "category_id": "ai_agentic", "name": "LangGraph", "years_experience": 2.0, "weight_points": 30, "is_primary": 1, "aliases": ["langgraph", "langchain", "crewai", "koog"]},
+            {"skill_id": "agentic", "category_id": "ai_agentic", "name": "AI Agents / Multi-Agent", "years_experience": 2.0, "weight_points": 30, "is_primary": 1, "aliases": ["agentic", "agentic ai", "ai agentic", "ai agents", "agents", "multi-agent", "multi agent", "a2a"]},
+            {"skill_id": "rag", "category_id": "ai_agentic", "name": "RAG & Vector DB", "years_experience": 2.0, "weight_points": 20, "is_primary": 1, "aliases": ["rag", "embeddings", "vector db", "mem0", "memsearch"]},
+            {"skill_id": "mcp", "category_id": "ai_agentic", "name": "MCP Protocol", "years_experience": 1.5, "weight_points": 20, "is_primary": 1, "aliases": ["mcp", "model context protocol"]},
+            {"skill_id": "llm", "category_id": "ai_agentic", "name": "LLMs / GenAI / Prompt Engineering", "years_experience": 2.5, "weight_points": 25, "is_primary": 1, "aliases": ["llm", "llms", "genai", "generative ai", "prompt engineering", "claude", "openai", "anthropic", "gpt"]},
+            {"skill_id": "langsmith", "category_id": "ai_agentic", "name": "LLM Observability", "years_experience": 1.5, "weight_points": 15, "is_primary": 0, "aliases": ["langsmith", "langfuse", "hivetrace"]},
+            {"skill_id": "java", "category_id": "core_backend", "name": "Java", "years_experience": 10.0, "weight_points": 20, "is_primary": 1, "aliases": ["java", "jvm"]},
+            {"skill_id": "kotlin", "category_id": "core_backend", "name": "Kotlin", "years_experience": 5.0, "weight_points": 20, "is_primary": 1, "aliases": ["kotlin", "kmp", "kotlin multiplatform"]},
+            {"skill_id": "spring_boot", "category_id": "core_backend", "name": "Spring Boot", "years_experience": 8.0, "weight_points": 20, "is_primary": 1, "aliases": ["spring", "spring boot", "spring data", "spring security", "spring ai"]},
+            {"skill_id": "ktor", "category_id": "core_backend", "name": "Ktor", "years_experience": 3.0, "weight_points": 15, "is_primary": 0, "aliases": ["ktor"]},
+            {"skill_id": "python", "category_id": "secondary_backend", "name": "Python", "years_experience": 4.0, "weight_points": 18, "is_primary": 1, "aliases": ["python"]},
+            {"skill_id": "typescript", "category_id": "secondary_backend", "name": "TypeScript / Node.js", "years_experience": 2.0, "weight_points": 9, "is_primary": 0, "aliases": ["typescript", "ts", "node", "nodejs", "node.js"]},
+            {"skill_id": "microservices", "category_id": "arch_infra", "name": "Microservices & Distributed Systems", "years_experience": 8.0, "weight_points": 15, "is_primary": 1, "aliases": ["microservices", "distributed systems", "high-load", "high load", "system design"]},
+            {"skill_id": "kafka", "category_id": "arch_infra", "name": "Kafka & Event-Driven", "years_experience": 6.0, "weight_points": 15, "is_primary": 1, "aliases": ["kafka", "event-driven", "event driven", "event driven architecture", "rabbitmq"]},
+            {"skill_id": "postgresql", "category_id": "arch_infra", "name": "PostgreSQL / SQL", "years_experience": 8.0, "weight_points": 15, "is_primary": 1, "aliases": ["postgresql", "postgres", "sql", "oracle", "mssql"]},
+            {"skill_id": "docker_k8s", "category_id": "arch_infra", "name": "Docker & Kubernetes", "years_experience": 6.0, "weight_points": 15, "is_primary": 1, "aliases": ["docker", "kubernetes", "k8s"]},
+            {"skill_id": "aws_cloud", "category_id": "arch_infra", "name": "AWS / Cloud Native", "years_experience": 5.0, "weight_points": 15, "is_primary": 1, "aliases": ["aws", "google cloud", "gcp", "cloud architecture", "cloud native"]},
+            {"skill_id": "rest_api", "category_id": "arch_infra", "name": "REST & OpenAPI", "years_experience": 8.0, "weight_points": 12, "is_primary": 0, "aliases": ["rest", "rest api", "restful", "openapi", "swagger"]},
+            {"skill_id": "fintech", "category_id": "domains", "name": "FinTech & Banking / Payments", "years_experience": 5.0, "weight_points": 10, "is_primary": 1, "aliases": ["fintech", "banking", "payments", "billing", "trading", "brokerage", "financial services", "custody", "enterprise"]},
+            {"skill_id": "alien_go", "category_id": "alien", "name": "Golang", "years_experience": 0.0, "weight_points": -20, "is_primary": 0, "aliases": ["go", "golang"]},
+            {"skill_id": "alien_dotnet", "category_id": "alien", "name": "C# / .NET", "years_experience": 0.0, "weight_points": -20, "is_primary": 0, "aliases": ["c#", ".net", "dotnet"]},
+            {"skill_id": "alien_cpp", "category_id": "alien", "name": "C++", "years_experience": 0.0, "weight_points": -20, "is_primary": 0, "aliases": ["c++"]},
+            {"skill_id": "alien_rust", "category_id": "alien", "name": "Rust", "years_experience": 0.0, "weight_points": -20, "is_primary": 0, "aliases": ["rust"]},
+            {"skill_id": "alien_ruby", "category_id": "alien", "name": "Ruby / Rails", "years_experience": 0.0, "weight_points": -20, "is_primary": 0, "aliases": ["ruby", "rails"]},
+            {"skill_id": "alien_php", "category_id": "alien", "name": "PHP", "years_experience": 0.0, "weight_points": -20, "is_primary": 0, "aliases": ["php"]},
+            {"skill_id": "alien_scala", "category_id": "alien", "name": "Scala", "years_experience": 0.0, "weight_points": -20, "is_primary": 0, "aliases": ["scala"]},
+            {"skill_id": "legacy_1c", "category_id": "legacy", "name": "1C Enterprise", "years_experience": 0.0, "weight_points": -30, "is_primary": 0, "aliases": ["1c", "1с", "oscript"]},
+            {"skill_id": "legacy_sap", "category_id": "legacy", "name": "SAP / ABAP", "years_experience": 0.0, "weight_points": -30, "is_primary": 0, "aliases": ["sap", "abap"]},
+            {"skill_id": "legacy_cobol", "category_id": "legacy", "name": "Cobol / Pega / Salesforce", "years_experience": 0.0, "weight_points": -30, "is_primary": 0, "aliases": ["cobol", "salesforce", "mulesoft", "pega"]},
+        ],
+    }
+
+
+def get_loaded_skill_matrix(conn: sqlite3.Connection | None = None) -> dict:
+    global _SKILL_MATRIX_CACHE
+    if _SKILL_MATRIX_CACHE is not None and conn is None:
+        return _SKILL_MATRIX_CACHE
+
+    try:
+        from main import DB_PATH, get_skill_matrix_data
+        should_close = False
+        db_conn = conn
+        if db_conn is None:
+            db_conn = sqlite3.connect(DB_PATH)
+            db_conn.row_factory = sqlite3.Row
+            should_close = True
+        data = get_skill_matrix_data(db_conn)
+        if should_close:
+            db_conn.close()
+        if data and data.get("categories") and data.get("skills"):
+            _SKILL_MATRIX_CACHE = data
+            return data
+    except Exception:
+        pass
+
+    return _build_fallback_matrix()
+
+
+# Множество алиасов по умолчанию (строится автоматически из резервной матрицы)
+DEFAULT_CANDIDATE_SKILLS_SET = {
+    alias.strip().lower()
+    for s in _build_fallback_matrix()["skills"]
+    for alias in ([s["name"]] + s.get("aliases", []))
+    if alias and alias.strip()
 }
-
-ALIEN_LANGS = {"go", "golang", "c#", ".net", "c++", "rust", "ruby", "php", "elixir", "scala", "swift", "objective-c"}
-
-AGENTIC_SPECIALTY_KEYWORDS = {
-    "agentic", "agentic ai", "ai agentic", "ai agents", "agents", "multi-agent", "multi agent",
-    "llm", "llms", "rag", "mcp", "a2a", "langgraph", "langchain", "crewai", "koog", "prompt engineering",
-    "ai-инженер", "ai engineer", "ai developer", "applied ai", "genai engineer",
-}
-
-AI_KEYWORDS = {
-    "ai", "genai", "generative ai", "llm", "llms", "agentic", "rag", "mcp", "agents",
-    "langgraph", "langchain", "crewai", "prompt engineering", "machine learning",
-}
-
-LEGACY_KEYWORDS = {"1c", "1с", "oscript", "sap", "cobol", "salesforce", "mulesoft", "duck creek", "abap", "pega"}
 
 NON_PROFILE_TITLE_KEYWORDS = {
     "go", "golang", "react", "angular", "vue", "nextjs", "nuxt", "svelte",
@@ -78,14 +132,15 @@ class SkillScoreResult(BaseModel):
     match_category: str  # "top" (>=70), "good" (50..69), "low" (<50), "rejected_geo"
 
 
-def _skill_matches_candidate(skill: str) -> bool:
+def _skill_matches_candidate(skill: str, candidate_aliases: set[str] | None = None) -> bool:
     s = skill.strip().lower()
     if not s:
         return True
-    if s in CANDIDATE_SKILLS_SET:
+    active_set = candidate_aliases if candidate_aliases is not None else DEFAULT_CANDIDATE_SKILLS_SET
+    if s in active_set:
         return True
     # Проверка вхождения (например "Spring Boot 3" -> "spring boot", "AWS Lambda" -> "aws")
-    for cand in CANDIDATE_SKILLS_SET:
+    for cand in active_set:
         if len(cand) >= 3 and re.search(r"\b" + re.escape(cand) + r"\b", s):
             return True
     return False
@@ -288,11 +343,35 @@ def score_vacancy_by_skill(
     salary_text: str | None,
     description: str,
     enrichment: JobEnrichment,
+    conn: sqlite3.Connection | None = None,
 ) -> SkillScoreResult:
     """
-    Полная реализация скоринговой модели (0..100 баллов) из SKILL.md (hirify-vacancy-filter).
+    Полная реализация скоринговой модели (0..100 баллов) из SKILL.md (hirify-vacancy-filter)
+    с динамической загрузкой весов, категорий и навыков из БД (jobs.db).
     """
     geo_passed, tier, geo_reason = classify_geo_tier(title, description, enrichment)
+
+    matrix = get_loaded_skill_matrix(conn)
+    categories = matrix.get("categories", [])
+    skills = matrix.get("skills", [])
+
+    # Группировка навыков по категориям
+    skills_by_cat: dict[str, list[dict]] = {}
+    for s in skills:
+        skills_by_cat.setdefault(s["category_id"], []).append(s)
+
+    # Формируем множество алиасов кандидата (из категорий с неотрицательным множителем)
+    candidate_aliases: set[str] = set()
+    for cat in categories:
+        if float(cat.get("multiplier", 1.0)) >= 0:
+            for s in skills_by_cat.get(cat["category_id"], []):
+                candidate_aliases.add(s["name"].strip().lower())
+                for a in s.get("aliases", []):
+                    if a and a.strip():
+                        candidate_aliases.add(a.strip().lower())
+
+    if not candidate_aliases:
+        candidate_aliases = DEFAULT_CANDIDATE_SKILLS_SET
 
     all_job_tech = [t.strip().lower() for t in enrichment.required_technologies if t.strip()]
     nice_tech = [t.strip().lower() for t in enrichment.nice_to_have_technologies if t.strip()]
@@ -306,7 +385,7 @@ def score_vacancy_by_skill(
         t_low = tech.strip().lower()
         if not t_low:
             continue
-        if _skill_matches_candidate(t_low):
+        if _skill_matches_candidate(t_low, candidate_aliases):
             if t_low not in matched_skills:
                 matched_skills.append(t_low)
         else:
@@ -316,65 +395,85 @@ def score_vacancy_by_skill(
     # Дополняем из nice_to_have совпавшие навыки
     for tech in enrichment.nice_to_have_technologies:
         t_low = tech.strip().lower()
-        if t_low and _skill_matches_candidate(t_low) and t_low not in matched_skills:
+        if t_low and _skill_matches_candidate(t_low, candidate_aliases) and t_low not in matched_skills:
             matched_skills.append(t_low)
 
     score = 0
     breakdown: list[str] = []
 
-    # 1. Tech Stack, Specialization & Architecture Match
-    has_agentic = any(kw in combined_tech_and_title or kw in desc_lower[:2500] for kw in AGENTIC_SPECIALTY_KEYWORDS)
-    has_general_ai = any(kw in combined_tech_and_title for kw in AI_KEYWORDS)
+    # 1. Tech Stack, Specialization & Architecture Match (динамически по категориям из БД)
+    matched_skill_ids: set[str] = set()
+    for s in skills:
+        sid = s["skill_id"]
+        aliases = [s["name"].lower()] + [a.lower() for a in s.get("aliases", []) if a]
+        found = False
+        for a in aliases:
+            if not a:
+                continue
+            if len(a) <= 3:
+                if re.search(r"\b" + re.escape(a) + r"\b", combined_tech_and_title) or re.search(r"\b" + re.escape(a) + r"\b", desc_lower[:3000]):
+                    found = True
+                    break
+            else:
+                if a in combined_tech_and_title or a in desc_lower[:3000]:
+                    found = True
+                    break
+        if found:
+            matched_skill_ids.add(sid)
 
-    if has_agentic:
-        score += 30
-        breakdown.append("AI Agentic Specialty (+30)")
-    elif has_general_ai:
-        score += 15
-        breakdown.append("General AI (+15)")
+    has_core_language = any(sid in matched_skill_ids for sid in ("java", "kotlin", "spring_boot"))
+    has_python = "python" in matched_skill_ids
+    has_agentic = any(s["category_id"] == "ai_agentic" for s in skills if s["skill_id"] in matched_skill_ids)
 
-    # Core languages: Java / Kotlin (+20), Python (+18), TypeScript (+9)
-    has_java_kotlin = any(
-        re.search(r"\b(?:java|kotlin|jvm|spring)\b", s) for s in [title.lower(), *all_job_tech]
-    )
-    has_python = any("python" in s for s in [title.lower(), *all_job_tech])
-    has_ts = any(s in ("typescript", "ts", "node.js", "nodejs") for s in all_job_tech) or "typescript" in title.lower()
+    for cat in sorted(categories, key=lambda c: c.get("sort_order", 0)):
+        cid = cat["category_id"]
+        ctitle = cat["title"]
+        cmult = float(cat.get("multiplier", 1.0))
+        cmax = int(cat.get("max_points", 0))
+        cat_skills = skills_by_cat.get(cid, [])
+        cat_matched = [s for s in cat_skills if s["skill_id"] in matched_skill_ids]
 
-    if has_java_kotlin:
-        score += 20
-        breakdown.append("Java/Kotlin (+20)")
-    if has_python:
-        score += 18
-        breakdown.append("Python (+18)")
-    elif has_ts and not has_java_kotlin:
-        score += 9
-        breakdown.append("TypeScript/Node (+9)")
+        if cmult < 0 or cmax < 0:
+            penalty = cmax if cmax < 0 else -abs(cmax)
+            if cid == "alien" or "alien" in cid:
+                # Чужой стек применяется, только если вакансия не содержит основной стек (Java/Kotlin/Python/AI)
+                if cat_matched and not (has_core_language or has_python or has_agentic):
+                    score += penalty
+                    breakdown.append(f"{ctitle} ({penalty})")
+            elif cid == "legacy" or "legacy" in cid:
+                if cat_matched:
+                    score += penalty
+                    breakdown.append(f"{ctitle} ({penalty})")
+            else:
+                if cat_matched:
+                    score += penalty
+                    breakdown.append(f"{ctitle} ({penalty})")
+        else:
+            if not cat_matched:
+                continue
 
-    # Alien backend languages without candidate languages or AI: -20 pts
-    has_alien = any(al in all_job_tech for al in ALIEN_LANGS)
-    if has_alien and not (has_java_kotlin or has_python or has_agentic):
-        score -= 20
-        breakdown.append("Alien Stack Penalty (-20)")
+            if cid in ("ai_agentic", "core_backend", "secondary_backend"):
+                if cid == "secondary_backend" and has_core_language and not has_python:
+                    continue
+                best_pts = max((s.get("weight_points", 0) for s in cat_matched), default=0)
+                earned = min(best_pts, cmax) if cmax > 0 else best_pts
+            elif cid == "arch_infra":
+                if len(cat_matched) >= 3:
+                    earned = min(15, cmax)
+                elif len(cat_matched) >= 1:
+                    earned = min(10, cmax)
+                else:
+                    earned = 0
+            elif cid == "domains":
+                best_pts = max((s.get("weight_points", 0) for s in cat_matched), default=0)
+                earned = min(best_pts, cmax) if cmax > 0 else best_pts
+            else:
+                sum_pts = sum(s.get("weight_points", 0) for s in cat_matched)
+                earned = min(sum_pts, cmax) if cmax > 0 else sum_pts
 
-    # Architecture & Infrastructure (+8 to +15)
-    arch_hits = sum(1 for kw in ARCH_KEYWORDS if kw in combined_tech_and_title or kw in desc_lower)
-    if arch_hits >= 3:
-        score += 15
-        breakdown.append("Arch/Microservices (+15)")
-    elif arch_hits >= 1:
-        score += 10
-        breakdown.append("Arch/Microservices (+10)")
-
-    # Domain: FinTech / Payments / Banking / Enterprise (+10)
-    ind_and_desc = f"{(industry or '').lower()} {desc_lower[:1500]}"
-    if any(fk in ind_and_desc for fk in FINTECH_KEYWORDS):
-        score += 10
-        breakdown.append("FinTech/Enterprise (+10)")
-
-    # Legacy penalty (-30)
-    if any(lk in combined_tech_and_title for lk in LEGACY_KEYWORDS):
-        score -= 30
-        breakdown.append("Legacy/Irrelevant Stack (-30)")
+            if earned > 0:
+                score += earned
+                breakdown.append(f"{ctitle} (+{earned})")
 
     # 2. Seniority / Grade Fit (0 to 15 pts)
     title_low = title.lower()

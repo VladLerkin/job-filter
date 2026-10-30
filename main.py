@@ -136,6 +136,93 @@ def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
             (datetime.now(timezone.utc).isoformat(),),
         )
 
+    # Таблицы категорий и матрицы навыков для гибкого скоринга
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS skill_categories (
+            category_id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            multiplier REAL DEFAULT 2.0,
+            max_points INTEGER DEFAULT 30,
+            sort_order INTEGER DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS candidate_skills (
+            skill_id TEXT PRIMARY KEY,
+            category_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            years_experience REAL DEFAULT 0.0,
+            weight_points INTEGER DEFAULT 0,
+            is_primary INTEGER DEFAULT 0,
+            aliases_json TEXT,
+            FOREIGN KEY (category_id) REFERENCES skill_categories(category_id)
+        )
+        """
+    )
+
+    # Инициализируем стартовые категории и навыки, если таблицы пустые
+    cat_count = conn.execute("SELECT COUNT(*) FROM skill_categories").fetchone()[0]
+    if cat_count == 0:
+        default_categories = [
+            ("ai_agentic", "🤖 AI & Agentic Systems", 15.0, 30, 1),
+            ("core_backend", "☕ Core Backend & Languages", 2.0, 20, 2),
+            ("secondary_backend", "🐍 Secondary Languages / TS", 3.0, 18, 3),
+            ("arch_infra", "🏗️ Architecture & Cloud / DevOps", 2.0, 15, 4),
+            ("domains", "💼 Business Domains (FinTech / Banking)", 2.0, 10, 5),
+            ("alien", "🚫 Чужой стек (Штрафы)", -1.0, -20, 6),
+            ("legacy", "🦖 Устаревший стек (Штрафы)", -1.0, -30, 7),
+        ]
+        conn.executemany(
+            "INSERT INTO skill_categories (category_id, title, multiplier, max_points, sort_order) VALUES (?, ?, ?, ?, ?)",
+            default_categories,
+        )
+
+        default_skills = [
+            # AI & Agentic
+            ("langgraph", "ai_agentic", "LangGraph", 2.0, 30, 1, '["langgraph", "langchain", "crewai", "koog"]'),
+            ("agentic", "ai_agentic", "AI Agents / Multi-Agent", 2.0, 30, 1, '["agentic", "agentic ai", "ai agentic", "ai agents", "agents", "multi-agent", "multi agent", "a2a"]'),
+            ("rag", "ai_agentic", "RAG & Vector DB", 2.0, 20, 1, '["rag", "embeddings", "vector db", "mem0", "memsearch"]'),
+            ("mcp", "ai_agentic", "MCP Protocol", 1.5, 20, 1, '["mcp", "model context protocol"]'),
+            ("llm", "ai_agentic", "LLMs / GenAI / Prompt Engineering", 2.5, 25, 1, '["llm", "llms", "genai", "generative ai", "prompt engineering", "claude", "openai", "anthropic", "gpt"]'),
+            ("langsmith", "ai_agentic", "LLM Observability", 1.5, 15, 0, '["langsmith", "langfuse", "hivetrace"]'),
+            # Core Backend
+            ("java", "core_backend", "Java", 10.0, 20, 1, '["java", "jvm"]'),
+            ("kotlin", "core_backend", "Kotlin", 5.0, 20, 1, '["kotlin", "kmp", "kotlin multiplatform"]'),
+            ("spring_boot", "core_backend", "Spring Boot", 8.0, 20, 1, '["spring", "spring boot", "spring data", "spring security", "spring ai"]'),
+            ("ktor", "core_backend", "Ktor", 3.0, 15, 0, '["ktor"]'),
+            # Secondary Backend
+            ("python", "secondary_backend", "Python", 4.0, 18, 1, '["python"]'),
+            ("typescript", "secondary_backend", "TypeScript / Node.js", 2.0, 9, 0, '["typescript", "ts", "node", "nodejs", "node.js"]'),
+            # Architecture & Cloud
+            ("microservices", "arch_infra", "Microservices & Distributed Systems", 8.0, 15, 1, '["microservices", "distributed systems", "high-load", "high load", "system design"]'),
+            ("kafka", "arch_infra", "Kafka & Event-Driven", 6.0, 15, 1, '["kafka", "event-driven", "event driven", "event driven architecture", "rabbitmq"]'),
+            ("postgresql", "arch_infra", "PostgreSQL / SQL", 8.0, 15, 1, '["postgresql", "postgres", "sql", "oracle", "mssql"]'),
+            ("docker_k8s", "arch_infra", "Docker & Kubernetes", 6.0, 15, 1, '["docker", "kubernetes", "k8s"]'),
+            ("aws_cloud", "arch_infra", "AWS / Cloud Native", 5.0, 15, 1, '["aws", "google cloud", "gcp", "cloud architecture", "cloud native"]'),
+            ("rest_api", "arch_infra", "REST & OpenAPI", 8.0, 12, 0, '["rest", "rest api", "restful", "openapi", "swagger"]'),
+            # Business Domains
+            ("fintech", "domains", "FinTech & Banking / Payments", 5.0, 10, 1, '["fintech", "banking", "payments", "billing", "brokerage", "custody", "trading"]'),
+            ("enterprise", "domains", "Enterprise Systems (ECM/CRM/ERP)", 4.0, 8, 0, '["enterprise", "ecm", "crm", "bpm", "erp"]'),
+            # Alien stack
+            ("go", "alien", "Golang / Go", 0.0, -20, 0, '["go", "golang"]'),
+            ("csharp", "alien", "C# / .NET", 0.0, -20, 0, '["c#", ".net"]'),
+            ("cpp", "alien", "C++", 0.0, -20, 0, '["c++"]'),
+            ("rust", "alien", "Rust", 0.0, -20, 0, '["rust"]'),
+            ("php", "alien", "PHP", 0.0, -20, 0, '["php", "wordpress", "drupal", "laravel", "symfony"]'),
+            ("ruby", "alien", "Ruby / Rails", 0.0, -20, 0, '["ruby", "rails"]'),
+            # Legacy
+            ("one_c", "legacy", "1C", 0.0, -30, 0, '["1c", "1с", "oscript"]'),
+            ("sap", "legacy", "SAP / ABAP", 0.0, -30, 0, '["sap", "abap"]'),
+            ("salesforce", "legacy", "Salesforce", 0.0, -30, 0, '["salesforce", "apex"]'),
+        ]
+        conn.executemany(
+            "INSERT INTO candidate_skills (skill_id, category_id, name, years_experience, weight_points, is_primary, aliases_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            default_skills,
+        )
+
     conn.commit()
     return conn
 
@@ -151,6 +238,129 @@ def get_candidate_settings(conn: sqlite3.Connection) -> dict[str, str]:
         "cv_text": row["cv_text"] or "",
         "updated_at": row["updated_at"] or "",
     }
+
+
+def get_skill_matrix_data(conn: sqlite3.Connection) -> dict:
+    categories = [
+        dict(r)
+        for r in conn.execute(
+            "SELECT category_id, title, multiplier, max_points, sort_order FROM skill_categories ORDER BY sort_order ASC, category_id ASC"
+        ).fetchall()
+    ]
+    skills = [
+        dict(r)
+        for r in conn.execute(
+            "SELECT skill_id, category_id, name, years_experience, weight_points, is_primary, aliases_json FROM candidate_skills ORDER BY years_experience DESC, name ASC"
+        ).fetchall()
+    ]
+    for s in skills:
+        if s.get("aliases_json"):
+            try:
+                s["aliases"] = json.loads(s["aliases_json"])
+            except Exception:
+                s["aliases"] = []
+        else:
+            s["aliases"] = []
+    return {"categories": categories, "skills": skills}
+
+
+def save_skill_category(
+    conn: sqlite3.Connection,
+    category_id: str,
+    title: str,
+    multiplier: float = 2.0,
+    max_points: int = 30,
+    sort_order: int = 0,
+) -> dict:
+    cid = category_id.strip().lower()
+    conn.execute(
+        """
+        INSERT INTO skill_categories (category_id, title, multiplier, max_points, sort_order)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(category_id) DO UPDATE SET
+            title = excluded.title,
+            multiplier = excluded.multiplier,
+            max_points = excluded.max_points,
+            sort_order = excluded.sort_order
+        """,
+        (cid, title.strip(), multiplier, max_points, sort_order),
+    )
+    conn.commit()
+    return {"category_id": cid, "title": title, "multiplier": multiplier, "max_points": max_points, "sort_order": sort_order}
+
+
+def delete_skill_category(conn: sqlite3.Connection, category_id: str) -> None:
+    cid = category_id.strip().lower()
+    # Удаляем или перемещаем связанные навыки
+    conn.execute("DELETE FROM candidate_skills WHERE category_id = ?", (cid,))
+    conn.execute("DELETE FROM skill_categories WHERE category_id = ?", (cid,))
+    conn.commit()
+
+
+def save_candidate_skill(
+    conn: sqlite3.Connection,
+    skill_id: str,
+    category_id: str,
+    name: str,
+    years_experience: float = 0.0,
+    weight_points: int | None = None,
+    is_primary: bool = False,
+    aliases: list[str] | None = None,
+) -> dict:
+    sid = skill_id.strip().lower()
+    cid = category_id.strip().lower()
+    name_clean = name.strip()
+
+    # Если weight_points не задан вручную, рассчитываем по множителю категории
+    if weight_points is None:
+        cat = conn.execute("SELECT multiplier, max_points FROM skill_categories WHERE category_id = ?", (cid,)).fetchone()
+        if cat:
+            mult = float(cat["multiplier"])
+            max_p = int(cat["max_points"])
+            if mult < 0:
+                calc = max_p
+            else:
+                calc = round(years_experience * mult)
+                calc = min(calc, max_p)
+            weight_points = int(calc)
+        else:
+            weight_points = int(years_experience * 2)
+
+    aliases_list = [a.strip().lower() for a in (aliases or []) if a.strip()]
+    if name_clean.lower() not in aliases_list:
+        aliases_list.append(name_clean.lower())
+    aliases_json = json.dumps(aliases_list, ensure_ascii=False)
+
+    conn.execute(
+        """
+        INSERT INTO candidate_skills (skill_id, category_id, name, years_experience, weight_points, is_primary, aliases_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(skill_id) DO UPDATE SET
+            category_id = excluded.category_id,
+            name = excluded.name,
+            years_experience = excluded.years_experience,
+            weight_points = excluded.weight_points,
+            is_primary = excluded.is_primary,
+            aliases_json = excluded.aliases_json
+        """,
+        (sid, cid, name_clean, years_experience, weight_points, 1 if is_primary else 0, aliases_json),
+    )
+    conn.commit()
+    return {
+        "skill_id": sid,
+        "category_id": cid,
+        "name": name_clean,
+        "years_experience": years_experience,
+        "weight_points": weight_points,
+        "is_primary": is_primary,
+        "aliases": aliases_list,
+    }
+
+
+def delete_candidate_skill(conn: sqlite3.Connection, skill_id: str) -> None:
+    sid = skill_id.strip().lower()
+    conn.execute("DELETE FROM candidate_skills WHERE skill_id = ?", (sid,))
+    conn.commit()
 
 
 def save_candidate_settings(

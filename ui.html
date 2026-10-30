@@ -158,6 +158,9 @@
         <button data-tab="blacklist" onclick="switchTab('blacklist')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-red-950/60 text-red-300 hover:bg-red-900/60 border border-red-800/60">
           ⛔ Чёрный список (<span id="cntBadBoards">2</span>)
         </button>
+        <button data-tab="skills" onclick="switchTab('skills')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700">
+          🎯 Навыки и Скоринг (<span id="cntSkills">0</span>)
+        </button>
         <button data-tab="candidate" onclick="switchTab('candidate')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700">
           👤 Профиль и CV
         </button>
@@ -279,6 +282,35 @@
       </div>
     </section>
 
+    <!-- Панель управления матрицей навыков и категориями скоринга -->
+    <section id="skillsSection" class="hidden card rounded-xl p-6 shadow-lg space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div>
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <span>🎯 Матрица навыков и категории скоринга</span>
+            <span class="text-xs font-normal px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">jobs.db → candidate_skills</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Задавайте опыт в годах для каждого навыка. Баллы в скоринге вакансий рассчитываются по формуле: <code class="text-slate-200">баллы = min(годы × множитель, лимит категории)</code> или настраиваются вручную.
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="openCategoryModal()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+            ➕ Добавить категорию
+          </button>
+          <button onclick="openSkillModal()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+            ➕ Добавить навык
+          </button>
+          <button onclick="rescoreAll()" class="text-xs px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition shadow">
+            🔄 Пересчитать скоринг вакансий
+          </button>
+        </div>
+      </div>
+
+      <!-- Контейнер карточек категорий и их навыков -->
+      <div id="skillsCategoriesContainer" class="space-y-6"></div>
+    </section>
+
     <!-- Список карточек вакансий -->
     <section id="jobsList" class="space-y-4"></section>
   </main>
@@ -349,6 +381,96 @@
         <button type="button" onclick="confirmBadBoardModal()" class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold shadow">
           ⛔ Занести в чёрный список и скрыть
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно создания/редактирования категории -->
+  <div id="categoryModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="card rounded-xl max-w-md w-full p-6 shadow-2xl border border-slate-700 space-y-4">
+      <div class="flex items-start justify-between gap-2">
+        <h3 id="categoryModalTitle" class="text-base font-bold text-white">Категория навыков</h3>
+        <button onclick="closeCategoryModal()" class="text-slate-400 hover:text-white text-lg leading-none">&times;</button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs text-slate-300 mb-1">ID категории (латиницей, например <code>ai_agentic</code>):</label>
+          <input id="modalCatId" type="text" placeholder="ai_agentic" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div>
+          <label class="block text-xs text-slate-300 mb-1">Название категории (с эмодзи):</label>
+          <input id="modalCatTitle" type="text" placeholder="🤖 AI & Agentic Systems" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">Множитель (за 1 год):</label>
+            <input id="modalCatMultiplier" type="number" step="0.5" placeholder="15.0" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            <span class="text-[10px] text-slate-500">Отрицательный для штрафов</span>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">Максимум баллов (лимит):</label>
+            <input id="modalCatMaxPoints" type="number" step="1" placeholder="30" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            <span class="text-[10px] text-slate-500">Потолок категории в скоринге</span>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs text-slate-300 mb-1">Порядок сортировки (число):</label>
+          <input id="modalCatSortOrder" type="number" step="1" value="1" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+        <button type="button" onclick="closeCategoryModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">Отмена</button>
+        <button type="button" onclick="saveCategoryFromModal()" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow">💾 Сохранить категорию</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно создания/редактирования навыка -->
+  <div id="skillModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="card rounded-xl max-w-lg w-full p-6 shadow-2xl border border-slate-700 space-y-4">
+      <div class="flex items-start justify-between gap-2">
+        <h3 id="skillModalTitle" class="text-base font-bold text-white">Навык кандидата</h3>
+        <button onclick="closeSkillModal()" class="text-slate-400 hover:text-white text-lg leading-none">&times;</button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs text-slate-300 mb-1">Категория:</label>
+          <select id="modalSkillCatSelect" onchange="onModalCategoryChange()" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500"></select>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">ID навыка (латиницей):</label>
+            <input id="modalSkillId" type="text" placeholder="langgraph" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          </div>
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">Название навыка:</label>
+            <input id="modalSkillName" type="text" placeholder="LangGraph" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">Опыт (в годах):</label>
+            <input id="modalSkillYears" type="number" step="0.5" min="0" placeholder="2.0" oninput="onModalYearsInput()" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          </div>
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">Баллы в скоринге:</label>
+            <input id="modalSkillPoints" type="number" step="1" placeholder="30" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          </div>
+        </div>
+        <div>
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input id="modalSkillPrimary" type="checkbox" class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0" />
+            <span class="text-xs text-slate-300 font-medium">⭐ Ключевой навык (Primary)</span>
+          </label>
+        </div>
+        <div>
+          <label class="block text-xs text-slate-300 mb-1">Синонимы / алиасы (через запятую):</label>
+          <input id="modalSkillAliases" type="text" placeholder="langgraph, langchain, crewai, koog" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+        <button type="button" onclick="closeSkillModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">Отмена</button>
+        <button type="button" onclick="saveSkillFromModal()" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow">💾 Сохранить навык</button>
       </div>
     </div>
   </div>
@@ -543,6 +665,8 @@
           btn.className = 'tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white';
         } else if (btn.dataset.tab === 'blacklist') {
           btn.className = 'tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-red-950/60 text-red-300 hover:bg-red-900/60 border border-red-800/60';
+        } else if (btn.dataset.tab === 'skills') {
+          btn.className = 'tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-950/60 text-indigo-300 hover:bg-indigo-900/60 border border-indigo-800/60';
         } else {
           btn.className = 'tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700';
         }
@@ -550,20 +674,30 @@
 
       const candSec = document.getElementById('candidateSection');
       const blackSec = document.getElementById('blacklistSection');
+      const skillsSec = document.getElementById('skillsSection');
       const jobsSec = document.getElementById('jobsList');
       if (tab === 'candidate') {
         candSec.classList.remove('hidden');
         blackSec.classList.add('hidden');
+        skillsSec.classList.add('hidden');
         jobsSec.classList.add('hidden');
         loadCandidateProfile();
       } else if (tab === 'blacklist') {
         candSec.classList.add('hidden');
         blackSec.classList.remove('hidden');
+        skillsSec.classList.add('hidden');
         jobsSec.classList.add('hidden');
         loadBlacklistPanel();
+      } else if (tab === 'skills') {
+        candSec.classList.add('hidden');
+        blackSec.classList.add('hidden');
+        skillsSec.classList.remove('hidden');
+        jobsSec.classList.add('hidden');
+        loadSkillsMatrix();
       } else {
         candSec.classList.add('hidden');
         blackSec.classList.add('hidden');
+        skillsSec.classList.add('hidden');
         jobsSec.classList.remove('hidden');
         loadJobs();
       }
@@ -1114,8 +1248,399 @@
       container.innerHTML = data.jobs.map(renderJobCard).join('');
     }
 
+    let cachedSkillsMatrix = { categories: [], skills: [] };
+
+    async function loadSkillsMatrix() {
+      try {
+        const res = await fetch('/api/skills/matrix');
+        if (!res.ok) throw new Error('Ошибка загрузки матрицы');
+        cachedSkillsMatrix = await res.json();
+        const cntEl = document.getElementById('cntSkills');
+        if (cntEl) cntEl.textContent = (cachedSkillsMatrix.skills || []).length;
+        renderSkillsMatrix(cachedSkillsMatrix);
+      } catch (err) {
+        showToast('Ошибка загрузки матрицы навыков: ' + err.message);
+      }
+    }
+
+    function renderSkillsMatrix(data) {
+      const container = document.getElementById('skillsCategoriesContainer');
+      if (!container) return;
+      const categories = data.categories || [];
+      const skills = data.skills || [];
+
+      const skillsByCat = {};
+      skills.forEach(s => {
+        if (!skillsByCat[s.category_id]) skillsByCat[s.category_id] = [];
+        skillsByCat[s.category_id].push(s);
+      });
+
+      if (categories.length === 0) {
+        container.innerHTML = `
+          <div class="card rounded-xl p-8 text-center text-slate-400">
+            Категории не найдены. Нажмите «➕ Добавить категорию», чтобы создать первую.
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = categories.map(cat => {
+        const catSkills = skillsByCat[cat.category_id] || [];
+        const isPenalty = cat.multiplier < 0 || cat.max_points < 0;
+        const badgeBorder = isPenalty ? 'border-red-800 bg-red-950/60 text-red-300' : 'border-indigo-800 bg-indigo-950/60 text-indigo-300';
+
+        return `
+          <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-2.5">
+              <div class="flex flex-wrap items-center gap-2">
+                <h3 class="text-sm font-bold text-white">${escapeHtml(cat.title)}</h3>
+                <code class="text-[11px] px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 font-mono">${escapeHtml(cat.category_id)}</code>
+                <span class="text-xs px-2 py-0.5 rounded-full border ${badgeBorder}">
+                  Множитель: <strong>${cat.multiplier}x</strong>
+                </span>
+                <span class="text-xs px-2 py-0.5 rounded-full border border-slate-700 bg-slate-800 text-slate-300">
+                  Лимит: <strong>${cat.max_points} б.</strong>
+                </span>
+                <span class="text-xs px-2 py-0.5 rounded-full bg-slate-800/60 text-slate-400">
+                  Навыков: <strong>${catSkills.length}</strong>
+                </span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <button onclick="openSkillModal('${escapeHtml(cat.category_id)}')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition" title="Добавить навык в эту категорию">
+                  ➕ Добавить навык
+                </button>
+                <button onclick="openCategoryModal('${escapeHtml(cat.category_id)}')" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium transition" title="Редактировать параметры категории">
+                  ✏️ Изменить
+                </button>
+                <button onclick="deleteCategory('${escapeHtml(cat.category_id)}')" class="px-2.5 py-1 rounded-lg bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-800/60 text-xs transition" title="Удалить категорию со всеми навыками">
+                  🗑️
+                </button>
+              </div>
+            </div>
+
+            <!-- Таблица навыков категории -->
+            ${catSkills.length === 0 ? `
+              <div class="text-xs text-slate-500 italic py-2">В этой категории пока нет навыков. Нажмите «➕ Добавить навык».</div>
+            ` : `
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                  <thead>
+                    <tr class="text-slate-400 border-b border-slate-800 text-[11px] uppercase tracking-wider">
+                      <th class="py-2 pr-3">Навык</th>
+                      <th class="py-2 px-3 text-center" title="Опыт в годах">Опыт (годы)</th>
+                      <th class="py-2 px-3 text-center" title="Баллы, начисляемые вакансии при совпадении">Баллы скоринга</th>
+                      <th class="py-2 px-3 text-center" title="Ключевой навык (Primary)">Primary</th>
+                      <th class="py-2 px-3">Синонимы / Алиасы в тексте</th>
+                      <th class="py-2 pl-3 text-right">Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800/50">
+                    ${catSkills.map(s => {
+                      const aliasesStr = (s.aliases || []).join(', ');
+                      const ptsColor = s.weight_points > 0 ? 'text-emerald-400' : (s.weight_points < 0 ? 'text-red-400' : 'text-slate-400');
+                      return `
+                        <tr class="hover:bg-slate-800/40 transition">
+                          <td class="py-2 pr-3 whitespace-nowrap">
+                            <div class="font-semibold text-slate-200">${escapeHtml(s.name)}</div>
+                            <code class="text-[10px] text-slate-500 font-mono">${escapeHtml(s.skill_id)}</code>
+                          </td>
+                          <td class="py-2 px-3 text-center whitespace-nowrap">
+                            <div class="flex items-center justify-center gap-1">
+                              <input type="number" step="0.5" min="0" max="40"
+                                id="years_${escapeHtml(s.skill_id)}"
+                                value="${s.years_experience}"
+                                oninput="onSkillYearsChange('${escapeHtml(s.skill_id)}', ${cat.multiplier}, ${cat.max_points})"
+                                class="w-16 px-2 py-1 bg-slate-950 border border-slate-700 rounded text-center text-xs text-white focus:outline-none focus:border-indigo-500 font-mono" />
+                              <span class="text-slate-500 text-[11px]">л.</span>
+                            </div>
+                          </td>
+                          <td class="py-2 px-3 text-center whitespace-nowrap">
+                            <div class="flex items-center justify-center gap-1">
+                              <input type="number" step="1"
+                                id="points_${escapeHtml(s.skill_id)}"
+                                value="${s.weight_points}"
+                                class="w-16 px-2 py-1 bg-slate-950 border border-slate-700 rounded text-center text-xs font-bold ${ptsColor} focus:outline-none focus:border-indigo-500 font-mono" />
+                              <span class="text-slate-500 text-[11px]">б.</span>
+                            </div>
+                          </td>
+                          <td class="py-2 px-3 text-center whitespace-nowrap">
+                            <input type="checkbox"
+                              id="primary_${escapeHtml(s.skill_id)}"
+                              ${s.is_primary ? 'checked' : ''}
+                              class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0 cursor-pointer" />
+                          </td>
+                          <td class="py-2 px-3">
+                            <input type="text"
+                              id="aliases_${escapeHtml(s.skill_id)}"
+                              value="${escapeHtml(aliasesStr)}"
+                              class="w-full min-w-[200px] px-2.5 py-1 bg-slate-950 border border-slate-700 rounded text-xs text-slate-300 focus:outline-none focus:border-indigo-500" />
+                          </td>
+                          <td class="py-2 pl-3 text-right whitespace-nowrap">
+                            <div class="flex items-center justify-end gap-1.5">
+                              <button onclick="quickSaveSkill('${escapeHtml(s.skill_id)}', '${escapeHtml(cat.category_id)}', '${escapeHtml(s.name)}')"
+                                class="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition shadow"
+                                title="Сохранить изменения этого навыка">
+                                💾
+                              </button>
+                              <button onclick="deleteSkillItem('${escapeHtml(s.skill_id)}')"
+                                class="px-2 py-1 rounded bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/60 text-xs transition"
+                                title="Удалить навык">
+                                🗑️
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      `;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function onSkillYearsChange(skillId, multiplier, maxPoints) {
+      const yearsEl = document.getElementById('years_' + skillId);
+      const pointsEl = document.getElementById('points_' + skillId);
+      if (!yearsEl || !pointsEl) return;
+      const years = parseFloat(yearsEl.value) || 0.0;
+      let pts;
+      if (multiplier < 0) {
+        pts = maxPoints;
+      } else {
+        pts = Math.min(Math.round(years * multiplier), maxPoints);
+      }
+      pointsEl.value = pts;
+      pointsEl.className = pointsEl.className.replace(/text-(emerald|red|slate)-400/g, '');
+      pointsEl.classList.add(pts > 0 ? 'text-emerald-400' : (pts < 0 ? 'text-red-400' : 'text-slate-400'));
+    }
+
+    async function quickSaveSkill(skillId, categoryId, skillName) {
+      const yearsEl = document.getElementById('years_' + skillId);
+      const pointsEl = document.getElementById('points_' + skillId);
+      const primaryEl = document.getElementById('primary_' + skillId);
+      const aliasesEl = document.getElementById('aliases_' + skillId);
+
+      const years = parseFloat(yearsEl ? yearsEl.value : 0) || 0.0;
+      const points = parseInt(pointsEl ? pointsEl.value : 0, 10);
+      const isPrimary = primaryEl ? primaryEl.checked : false;
+      const aliasesRaw = aliasesEl ? aliasesEl.value : '';
+      const aliases = aliasesRaw.split(',').map(a => a.trim()).filter(Boolean);
+
+      try {
+        const res = await fetch('/api/skills/item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            skill_id: skillId,
+            category_id: categoryId,
+            name: skillName,
+            years_experience: years,
+            weight_points: points,
+            is_primary: isPrimary,
+            aliases: aliases
+          })
+        });
+        if (!res.ok) throw new Error('Ошибка сервера');
+        showToast(`✅ Навык «${skillName}» сохранен (${years} л. → ${points} б.)`);
+        loadSkillsMatrix();
+      } catch (err) {
+        showToast('Ошибка сохранения навыка: ' + err.message);
+      }
+    }
+
+    let isEditingCategory = false;
+
+    function openCategoryModal(catId = null) {
+      isEditingCategory = !!catId;
+      const modal = document.getElementById('categoryModal');
+      const titleEl = document.getElementById('categoryModalTitle');
+      const idEl = document.getElementById('modalCatId');
+      const nameEl = document.getElementById('modalCatTitle');
+      const multEl = document.getElementById('modalCatMultiplier');
+      const maxEl = document.getElementById('modalCatMaxPoints');
+      const sortEl = document.getElementById('modalCatSortOrder');
+
+      if (catId) {
+        titleEl.textContent = '✏️ Редактирование категории';
+        const cat = (cachedSkillsMatrix.categories || []).find(c => c.category_id === catId);
+        if (cat) {
+          idEl.value = cat.category_id;
+          idEl.disabled = true;
+          nameEl.value = cat.title;
+          multEl.value = cat.multiplier;
+          maxEl.value = cat.max_points;
+          sortEl.value = cat.sort_order;
+        }
+      } else {
+        titleEl.textContent = '➕ Добавление новой категории';
+        idEl.value = '';
+        idEl.disabled = false;
+        nameEl.value = '';
+        multEl.value = 2.0;
+        maxEl.value = 20;
+        sortEl.value = (cachedSkillsMatrix.categories || []).length + 1;
+      }
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeCategoryModal() {
+      const modal = document.getElementById('categoryModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    async function saveCategoryFromModal() {
+      const id = document.getElementById('modalCatId').value.trim();
+      const title = document.getElementById('modalCatTitle').value.trim();
+      const mult = parseFloat(document.getElementById('modalCatMultiplier').value) || 2.0;
+      const maxP = parseInt(document.getElementById('modalCatMaxPoints').value, 10) || 20;
+      const sortOrder = parseInt(document.getElementById('modalCatSortOrder').value, 10) || 0;
+
+      if (!id || !title) {
+        showToast('Укажите ID и название категории');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/skills/category', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category_id: id,
+            title: title,
+            multiplier: mult,
+            max_points: maxP,
+            sort_order: sortOrder
+          })
+        });
+        if (!res.ok) throw new Error('Ошибка сервера');
+        closeCategoryModal();
+        showToast(`✅ Категория «${title}» сохранена`);
+        loadSkillsMatrix();
+      } catch (err) {
+        showToast('Ошибка сохранения: ' + err.message);
+      }
+    }
+
+    async function deleteCategory(catId) {
+      if (!confirm(`Удалить категорию «${catId}» и все входящие в неё навыки?`)) return;
+      try {
+        const res = await fetch(`/api/skills/category/${encodeURIComponent(catId)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Ошибка при удалении');
+        showToast(`Категория ${catId} удалена`);
+        loadSkillsMatrix();
+      } catch (err) {
+        showToast('Ошибка: ' + err.message);
+      }
+    }
+
+    function openSkillModal(catId = null, skillId = null) {
+      const modal = document.getElementById('skillModal');
+      const catSelect = document.getElementById('modalSkillCatSelect');
+      const idEl = document.getElementById('modalSkillId');
+      const nameEl = document.getElementById('modalSkillName');
+      const yearsEl = document.getElementById('modalSkillYears');
+      const pointsEl = document.getElementById('modalSkillPoints');
+      const primEl = document.getElementById('modalSkillPrimary');
+      const aliasesEl = document.getElementById('modalSkillAliases');
+
+      catSelect.innerHTML = (cachedSkillsMatrix.categories || [])
+        .map(c => `<option value="${escapeHtml(c.category_id)}">${escapeHtml(c.title)} (${c.multiplier}x, max ${c.max_points})</option>`)
+        .join('');
+
+      if (catId) catSelect.value = catId;
+
+      idEl.value = '';
+      idEl.disabled = false;
+      nameEl.value = '';
+      yearsEl.value = '2.0';
+      primEl.checked = false;
+      aliasesEl.value = '';
+      onModalYearsInput();
+
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeSkillModal() {
+      const modal = document.getElementById('skillModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function onModalCategoryChange() {
+      onModalYearsInput();
+    }
+
+    function onModalYearsInput() {
+      const catSelect = document.getElementById('modalSkillCatSelect');
+      const yearsEl = document.getElementById('modalSkillYears');
+      const pointsEl = document.getElementById('modalSkillPoints');
+      const catId = catSelect.value;
+      const cat = (cachedSkillsMatrix.categories || []).find(c => c.category_id === catId);
+      const mult = cat ? cat.multiplier : 2.0;
+      const maxP = cat ? cat.max_points : 20;
+      const years = parseFloat(yearsEl.value) || 0;
+      const pts = mult < 0 ? maxP : Math.min(Math.round(years * mult), maxP);
+      pointsEl.value = pts;
+    }
+
+    async function saveSkillFromModal() {
+      const catId = document.getElementById('modalSkillCatSelect').value;
+      const skillId = document.getElementById('modalSkillId').value.trim();
+      const name = document.getElementById('modalSkillName').value.trim();
+      const years = parseFloat(document.getElementById('modalSkillYears').value) || 0;
+      const points = parseInt(document.getElementById('modalSkillPoints').value, 10);
+      const isPrimary = document.getElementById('modalSkillPrimary').checked;
+      const aliases = document.getElementById('modalSkillAliases').value.split(',').map(s => s.trim()).filter(Boolean);
+
+      if (!skillId || !name) {
+        showToast('Укажите ID и название навыка');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/skills/item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            skill_id: skillId,
+            category_id: catId,
+            name: name,
+            years_experience: years,
+            weight_points: points,
+            is_primary: isPrimary,
+            aliases: aliases
+          })
+        });
+        if (!res.ok) throw new Error('Ошибка сервера');
+        closeSkillModal();
+        showToast(`✅ Навык «${name}» сохранен!`);
+        loadSkillsMatrix();
+      } catch (err) {
+        showToast('Ошибка сохранения: ' + err.message);
+      }
+    }
+
+    async function deleteSkillItem(skillId) {
+      if (!confirm(`Удалить навык «${skillId}» из матрицы?`)) return;
+      try {
+        const res = await fetch(`/api/skills/item/${encodeURIComponent(skillId)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Ошибка при удалении');
+        showToast(`Навык ${skillId} удален`);
+        loadSkillsMatrix();
+      } catch (err) {
+        showToast('Ошибка: ' + err.message);
+      }
+    }
+
     onProviderChange();
     loadJobs();
+    loadSkillsMatrix();
   </script>
 </body>
 </html>
