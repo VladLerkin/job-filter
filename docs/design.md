@@ -5,7 +5,7 @@
 **Job Filter** is an intelligent, automated job discovery and scoring system tailored for senior backend and AI/Agentic software engineers. It bridges the gap between raw web scraping and personalized job hunting by:
 
 1. **Scraping** multiple job aggregators (LinkedIn, Indeed, Glassdoor) across target regions (e.g. Remote, EMEA, Worldwide).
-2. **Filtering & Normalizing** URLs, detecting Applicant Tracking System (ATS) platforms (Greenhouse, Lever, Ashby, Workable, etc.), and managing domain blacklists.
+2. **Filtering & Normalizing** URLs, detecting Applicant Tracking System (ATS) platforms, and managing domain blacklists.
 3. **Enriching Vacancies with LLM** (via `agy` CLI) to extract structured insights: geographic eligibility (US-only vs. Global Remote), required tech stack, Agentic AI classification, compensation estimates, and company red flags.
 4. **Scoring Vacancies Against Candidate Profile**: Evaluating vacancies against a customizable **Skills Matrix** with category-level multipliers, caps, negative penalty deductions, and geographic tier filters.
 5. **AI-Powered CV Ingestion**: Parsing candidate PDF resumes, generating structured Markdown CVs, estimating years of experience per skill, mapping skills to weighted categories, and providing an interactive UI diff tool before committing to the database.

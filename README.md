@@ -20,7 +20,7 @@
   - Generates a polished, global-standard Markdown CV and candidate summary.
   - Computes years of experience per technical skill and maps skills to standard categories.
   - Features an **interactive diff modal** with category dropdowns (`<select>`) and experience adjustments before committing to the database.
-- 🚫 **1-Click ATS Blacklist Management**: Block problematic application portals (e.g., iCIMS, Taleo, Brassring) or specific employers with one click.
+- 🚫 **1-Click ATS Blacklist Management**: Block problematic ATS application portals or specific employers with one click.
 - 🌐 **Bilingual Interface (EN / RU)**: Seamless one-click language toggle between English and Russian in the top header.
 - 💻 **Modern Web Dashboard**: Fast, responsive Single Page Application (SPA) with a sleek dark theme built with Tailwind CSS.
 
@@ -120,7 +120,7 @@ To get the most accurate, personalized job matching, follow these steps when usi
    - **🔥 TOP (70+)**: Best match for your stack and experience.
    - **⚡ GOOD (50-69)**: Solid match with minor skill gaps.
 4. Click **«🔗 Open Vacancy»** to view the posting.
-5. If an ATS portal requires tedious multi-page account creation (e.g. iCIMS, Taleo), click **«⛔ Blacklist»** to permanently hide it and all future jobs on that domain.
+5. If an ATS portal requires tedious multi-page account creation or is inaccessible, click **«⛔ Blacklist»** to permanently hide it and all future jobs from that domain or employer.
 
 ---
 
