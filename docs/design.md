@@ -350,3 +350,24 @@ Key components in `static/js/app.js`:
 - **Matrix Manager Modal**: Allows adding, editing, and deleting categories and individual skills with instantaneous updates to category multipliers.
 - **Toast Notification Engine**: User feedback mechanism for background job notifications and error alerts.
 
+---
+
+## 8. Configuration & Environment Variables
+
+Job Filter works out-of-the-box with sensible defaults defined in [`job_filter/config.py`](file:///Users/vlad/IdeaProjects/job-filter/job_filter/config.py), but allows customization via environment variables:
+
+| Variable | Default Value | Description |
+|---|---|---|
+| `JOB_FILTER_DB` | `jobs.db` | Absolute or relative path to the SQLite database file |
+| `JOB_FILTER_MODEL` | `gemini-3.8-flash-low` | Active LLM model used by `agy` CLI (run `agy models` to view options) |
+| `AGY_BIN` | Auto-detected | Path to the `agy` CLI executable (e.g. `~/.local/bin/agy`) |
+| `JOB_FILTER_PORT` | `8000` | HTTP port for the web dashboard server |
+| `JOB_FILTER_HOST` | `0.0.0.0` | Bind host for the web server |
+
+### Operational Parameters
+- **`TOP_SCORE_THRESHOLD`**: `70` — Vacancies with score $\ge 70$ are highlighted as **TOP Match**.
+- **`GOOD_SCORE_THRESHOLD`**: `50` — Vacancies with score $\ge 50$ qualify as **Good Match**.
+- **`JOB_ENRICH_TIMEOUT_SEC`**: `90s` — Maximum duration allowed per vacancy enrichment LLM call.
+- **`CV_ANALYZE_TIMEOUT_SEC`**: `120s` — Maximum duration allowed for parsing full PDF resumes.
+- **`LAST_OPENED_TTL_SEC`**: `1800s` (30 min) — Time window to bind a recently opened vacancy to ATS blacklist rules.
+

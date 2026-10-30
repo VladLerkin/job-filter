@@ -14,70 +14,14 @@
   - **Technology Stack**: Extracts required languages, frameworks, and architecture patterns.
   - **Agentic AI Classification**: Detects whether a job involves autonomous AI agents, LangGraph, LLM orchestration, RAG, or MCP.
   - **Company Red Flags & Compensation**: Identifies equity-only offers, hidden requirements, and salary ranges.
-- ⚖️ **Weighted Scoring Matrix**: Scores each job from `0` to `100`:
-  - Category-level multipliers and point caps (e.g., Agentic AI up to 30 pts, Backend up to 20 pts).
-  - Negative penalty deductions for non-target tech stacks (e.g., Golang, .NET, Rust, PHP) and legacy technologies (1C, SAP).
-  - Geographic caps penalizing US-only restricted roles.
+- ⚖️ **Weighted Candidate Scoring**: Automatically scores each job from `0` to `100` against your personalized skills matrix, applying category multipliers and penalty deductions for non-target tech stacks.
 - 📄 **Smart PDF Resume (CV) Ingestion**:
   - Automatically parses PDF resumes using `pypdf`.
   - Generates a polished, global-standard Markdown CV and candidate summary.
   - Computes years of experience per technical skill and maps skills to standard categories.
   - Features an **interactive diff modal** with category dropdowns (`<select>`) and experience adjustments before committing to the database.
-  - Automatically provisions new categories in SQLite using official defaults.
 - 🚫 **1-Click ATS Blacklist Management**: Block problematic application portals (e.g., iCIMS, Taleo, Brassring) or specific employers with one click.
 - 💻 **Modern Web Dashboard**: Fast, responsive Single Page Application (SPA) with a sleek dark theme built with Tailwind CSS.
-
----
-
-## 🏗️ Architecture & Project Structure
-
-Job Filter follows a clean, modular **layered architecture**:
-
-```
-job-filter/
-├── app.py                      # Uvicorn entrypoint for web server
-├── start_app.command           # macOS one-click launcher (starts server + opens browser)
-├── requirements.txt            # Production runtime dependencies
-├── requirements-dev.txt        # Development dependencies (pytest, etc.)
-├── jobs.db                     # SQLite database file (WAL mode)
-│
-├── job_filter/                 # Core modular Python package
-│   ├── config.py               # Centralized configuration & environment variables
-│   ├── logging_setup.py        # Rotating file & console logging setup
-│   │
-│   ├── api/                    # FastAPI routes, dependencies, and request schemas
-│   │   ├── app.py              # Application factory & middleware configuration
-│   │   ├── deps.py             # Database session dependency injection
-│   │   ├── schemas.py          # Pydantic request models
-│   │   └── routers/            # Domain-based routers (candidate, jobs, pipeline, skills, system)
-│   │
-│   ├── db/                     # Database engine & migrations
-│   │   ├── connection.py       # SQLite connection manager & WAL pragmas
-│   │   ├── schema.py           # DDL schema definition & soft migrations
-│   │   └── seed_data.py        # Default categories, skills matrix & ATS blacklist
-│   │
-│   ├── llm/                    # Large Language Model integrations
-│   │   ├── agy_client.py       # Subprocess wrapper for `agy` CLI with JSON parser
-│   │   ├── cv_analyzer.py      # PDF resume analyzer & skill extractor
-│   │   └── enricher.py         # Vacancy enrichment prompt & parser
-│   │
-│   ├── models/                 # Shared domain data models (Pydantic / dataclasses)
-│   ├── repositories/           # Direct SQL operations (jobs, skills, candidate, blacklist)
-│   ├── scoring/                # Deterministic scoring algorithm & matrix cache
-│   ├── scraping/               # Multi-platform scraping (JobSpy) & URL normalizer
-│   └── services/               # Workflows (pipeline, CV processing, skills management)
-│
-├── static/                     # Web dashboard frontend (HTML, Tailwind CSS, JS)
-│   ├── index.html              # Dashboard layout
-│   ├── css/style.css           # Styling & animations
-│   └── js/app.js               # Reactive frontend logic & modals
-│
-├── tests/                      # Automated test suite (28 passing tests via pytest)
-└── docs/                       # System design & documentation
-    └── design.md               # Detailed architecture & design specifications
-```
-
-For comprehensive architectural details, consult [docs/design.md](docs/design.md).
 
 ---
 
@@ -118,7 +62,7 @@ For comprehensive architectural details, consult [docs/design.md](docs/design.md
 
 ## 🖥️ How to Run
 
-### Option 1: macOS One-Click Launcher (Recommended for Desktop)
+### Option 1: macOS One-Click Launcher (Recommended)
 Double-click `start_app.command` in Finder or run:
 ```bash
 ./start_app.command
@@ -133,59 +77,55 @@ uvicorn app:app --reload --port 8000
 Open [http://localhost:8000](http://localhost:8000) in your browser.
 
 ### Option 3: Run the Pipeline via CLI
-To scrape vacancies, enrich them with AI, and score them without launching the web server:
+To scrape vacancies, enrich them with AI, and score them directly in the terminal:
 ```bash
 source .venv/bin/activate
 python -m job_filter
 ```
-Output will display top-matched vacancies (Score $\ge 50$) with match tiers, scores, and application URLs directly in the terminal.
 
 ---
 
-## ⚙️ Configuration & Environment Variables
+## 🏁 Getting Started: Recommended Workflow
 
-Job Filter works out-of-the-box with sensible defaults, but can be configured via environment variables:
+To get the most accurate, personalized job matching, follow these steps when using Job Filter for the first time:
 
-| Variable | Default Value | Description |
-|---|---|---|
-| `JOB_FILTER_DB_PATH` | `jobs.db` | Absolute or relative path to the SQLite database |
-| `JOB_FILTER_MODEL` | `gemini-3.8-flash-low` | Default LLM model used by `agy` CLI (run `agy models` for options) |
-| `JOB_FILTER_LLM_TIMEOUT` | `120` | Timeout in seconds for vacancy enrichment |
-| `JOB_FILTER_CV_TIMEOUT` | `180` | Timeout in seconds for CV PDF analysis |
-| `JOB_FILTER_PORT` | `8000` | HTTP port for the web dashboard |
-| `JOB_FILTER_HOST` | `0.0.0.0` | Bind host for the web server |
+### Step 1: Upload Your Resume (PDF)
+1. Open the dashboard at `http://localhost:8000`.
+2. In the top-right header, click **«📄 Загрузить PDF резюме»**.
+3. Select your latest resume file (`.pdf`).
+4. The AI will:
+   - Extract and normalize your resume into clean Markdown.
+   - Generate a concise candidate profile summary.
+   - Calculate years of experience for every technical skill.
+   - Automatically assign skills to appropriate categories (`🤖 AI & Agentic Systems`, `☕ Core Backend`, `🐍 Secondary Languages`, `🏗️ Architecture & DevOps`, `💼 Business Domains`).
 
----
+### Step 2: Review & Apply Skills in the Diff Modal
+1. An interactive **Diff Modal** will appear displaying newly discovered and modified skills.
+2. For each skill, you can:
+   - Change the assigned category using the **interactive `<select>` dropdown** (scores update dynamically).
+   - Adjust the calculated **years of experience**.
+   - Review and edit synonyms/aliases.
+3. Check **«🔄 Пересчитать скоринг всех вакансий сразу»** and click **«✅ Применить выбранные изменения»**.
 
-## 📊 Scoring & Skills Matrix
+### Step 3: Configure Your Search
+1. In the search panel, select your target roles (e.g. `Agentic Engineer Remote`, `AI Agent Engineer Remote`, `Software Engineer Remote`).
+2. Choose job platforms (LinkedIn, Indeed, Glassdoor, ZipRecruiter) and target region (e.g. `Remote`, `EMEA`, `Worldwide`).
+3. Set the results limit and hours freshness filter.
 
-The scoring engine compares extracted vacancy requirements against the candidate's active skills:
-
-$$\text{FinalScore} = \text{clamp}\left(\sum_{c \in \text{Categories}} \min(P_c, \text{Cap}_c) - \sum_{k \in \text{Penalties}} \text{Penalty}_k - \text{GeoAdjustment}, 0, 100\right)$$
-
-### Default Skill Categories:
-1. **🤖 AI & Agentic Systems** (`ai_agentic`): Multiplier **15.0x**, Max Cap **30 pts**  
-   *LangGraph, AI Agents, Multi-Agent Architecture, RAG, Vector DB, MCP, LLM Observability.*
-2. **☕ Core Backend & Languages** (`core_backend`): Multiplier **2.0x**, Max Cap **20 pts**  
-   *Java, Kotlin, Spring Boot, Ktor.*
-3. **🐍 Secondary Languages / TS** (`secondary_backend`): Multiplier **3.0x**, Max Cap **18 pts**  
-   *Python, TypeScript, Node.js.*
-4. **🏗️ Architecture & Cloud / DevOps** (`arch_infra`): Multiplier **2.0x**, Max Cap **15 pts**  
-   *Kafka, Microservices, PostgreSQL, Docker, Kubernetes, AWS.*
-5. **💼 Business Domains** (`domains`): Multiplier **2.0x**, Max Cap **10 pts**  
-   *FinTech, Banking, Payments, Trading.*
-6. **🚫 Alien Stack** (`alien`): Multiplier **-1.0x**, Penalty **-20 pts**  
-   *Golang, C#, .NET, C++, Rust, Ruby, PHP.*
-7. **🦖 Legacy Stack** (`legacy`): Multiplier **-1.0x**, Penalty **-30 pts**  
-   *1C Enterprise, SAP/ABAP, Cobol, Salesforce.*
-
-*Note: You can fully customize category titles, multipliers, and caps directly in the web dashboard via the **Skills Matrix** editor.*
+### Step 4: Run Discovery & Review Matches
+1. Click **«🚀 Запустить поиск»**.
+2. Monitor real-time status in the header (`Scraping` $\to$ `Enriching` $\to$ `Idle`).
+3. Use quick filters to focus on high-yield opportunities:
+   - **🔥 TOP (70+)**: Best match for your stack and experience.
+   - **⚡ GOOD (50-69)**: Solid match with minor skill gaps.
+4. Click **«🔗 Открыть вакансию»** to view the posting.
+5. If an ATS portal requires tedious multi-page account creation (e.g. iCIMS, Taleo), click **«🚫 В чёрный список»** to permanently hide it and all future jobs on that domain.
 
 ---
 
 ## 🧪 Running Tests
 
-The test suite covers API endpoints, repository queries, scoring rules, geo tiers, CV diffing, and URL normalizers:
+The automated test suite covers API endpoints, repository queries, scoring rules, geo tiers, CV diffing, and URL normalizers:
 
 ```bash
 # Run all tests
@@ -200,8 +140,7 @@ pytest tests/test_skills_diff.py -v
 
 ---
 
-## 📖 Documentation
+## 📖 Architecture & Deep Dive
 
-Detailed architectural blueprints, subsystem interaction diagrams, and database entity relationships are documented in:
-- [System Design & Architecture Document](docs/design.md)
-
+For detailed system design, folder structure, sequence diagrams, scoring formulas, and environment configuration:
+- 📘 [System Design & Architecture Document](docs/design.md)
