@@ -26,6 +26,12 @@ def save_category(
     cid = category_id.strip().lower()
     t = title.strip()
     skills_repo.upsert_category(conn, cid, t, multiplier, max_points, sort_order)
+    # При обновлении множителя/лимита категории автоматически пересчитываем баллы входящих в неё навыков
+    if multiplier >= 0:
+        rows = conn.execute("SELECT skill_id, years_experience FROM candidate_skills WHERE category_id = ?", (cid,)).fetchall()
+        for r in rows:
+            new_pts = min(round(float(r["years_experience"]) * multiplier), max_points)
+            conn.execute("UPDATE candidate_skills SET weight_points = ? WHERE skill_id = ?", (new_pts, r["skill_id"]))
     conn.commit()
     invalidate_matrix_cache()
     return {"category_id": cid, "title": t, "multiplier": multiplier, "max_points": max_points, "sort_order": sort_order}
