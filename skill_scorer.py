@@ -82,7 +82,7 @@ def get_loaded_skill_matrix(conn: sqlite3.Connection | None = None) -> dict:
         data = get_skill_matrix_data(db_conn)
         if should_close:
             db_conn.close()
-        if data and data.get("categories") and data.get("skills"):
+        if data is not None and "categories" in data:
             _SKILL_MATRIX_CACHE = data
             return data
     except Exception:

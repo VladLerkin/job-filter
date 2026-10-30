@@ -4,12 +4,17 @@ import time
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from agy_enrich import DEFAULT_MODEL
+from cv_parser import (
+    analyze_cv_text_with_llm,
+    compute_skills_diff,
+    extract_text_from_pdf_bytes,
+)
 from enrichment_schema import JobEnrichment
 from main import (
     add_blacklisted_board,
@@ -121,6 +126,16 @@ class CandidateSkillRequest(BaseModel):
     aliases: list[str] = []
 
 
+class ApplyCVAnalysisRequest(BaseModel):
+    update_cv_text: bool = True
+    structured_cv: str = ""
+    update_profile_text: bool = False
+    candidate_summary: str = ""
+    apply_skills: bool = True
+    skills_to_apply: list[dict] = Field(default_factory=list)
+    rescore_jobs: bool = False
+
+
 class AddBlacklistRequest(BaseModel):
     domain_or_url: str | None = None
     company: str | None = None
@@ -195,10 +210,8 @@ def get_pipeline_status(since: int = 0):
     }
 
 
-@app.post("/api/jobs/rescore")
-def rescore_all_enriched_jobs():
-    """Пересчитывает баллы по скиллу для всех уже обогащенных через LLM вакансий без повторного вызова LLM."""
-    conn = init_db()
+def _rescore_jobs_internal(conn) -> int:
+    """Внутренний пересчет скоров вакансий по текущей матрице навыков."""
     rows = conn.execute(
         """
         SELECT job_id, title, company, date_posted, seniority_level, industry, salary, description, enrichment_json
@@ -225,6 +238,14 @@ def rescore_all_enriched_jobs():
             updated += 1
         except Exception:
             continue
+    return updated
+
+
+@app.post("/api/jobs/rescore")
+def rescore_all_enriched_jobs():
+    """Пересчитывает баллы по скиллу для всех уже обогащенных через LLM вакансий без повторного вызова LLM."""
+    conn = init_db()
+    updated = _rescore_jobs_internal(conn)
     conn.close()
     return {"rescored": updated}
 
@@ -253,7 +274,7 @@ def upsert_skill_category(body: SkillCategoryRequest):
     return res
 
 
-@app.delete("/api/skills/category/{category_id}")
+@app.delete("/api/skills/category/{category_id:path}")
 def remove_skill_category(category_id: str):
     conn = init_db()
     delete_skill_category(conn, category_id)
@@ -280,7 +301,7 @@ def upsert_candidate_skill(body: CandidateSkillRequest):
     return res
 
 
-@app.delete("/api/skills/item/{skill_id}")
+@app.delete("/api/skills/item/{skill_id:path}")
 def remove_candidate_skill(skill_id: str):
     conn = init_db()
     delete_candidate_skill(conn, skill_id)
@@ -303,6 +324,100 @@ def update_candidate_profile(body: CandidateProfileRequest):
     data = save_candidate_settings(conn, body.profile_text, body.cv_text)
     conn.close()
     return data
+
+
+@app.post("/api/candidate/upload-cv-pdf")
+async def upload_and_analyze_cv_pdf(file: UploadFile = File(...), model: str = DEFAULT_MODEL):
+    """Принимает файл PDF с резюме, извлекает текст и анализирует через LLM."""
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Поддерживаются только файлы в формате PDF (.pdf)")
+
+    pdf_bytes = await file.read()
+    if not pdf_bytes:
+        raise HTTPException(status_code=400, detail="Загружен пустой файл")
+
+    try:
+        raw_text = extract_text_from_pdf_bytes(pdf_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    conn = init_db()
+    matrix = get_skill_matrix_data(conn)
+    conn.close()
+
+    categories = matrix.get("categories", [])
+    existing_skills = matrix.get("skills", [])
+
+    try:
+        parsed = analyze_cv_text_with_llm(raw_text, categories, model=model)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка ИИ-анализа резюме: {e}")
+
+    diff = compute_skills_diff(parsed.skills, existing_skills, categories)
+
+    return {
+        "raw_text_length": len(raw_text),
+        "filename": file.filename,
+        "structured_cv": parsed.structured_cv_markdown,
+        "candidate_summary": parsed.candidate_summary,
+        "total_years_experience": parsed.total_years_experience,
+        "skills_diff": diff,
+    }
+
+
+@app.post("/api/candidate/apply-cv-analysis")
+def apply_cv_analysis(body: ApplyCVAnalysisRequest):
+    """Применяет утвержденные пользователем изменения из модального окна анализа PDF."""
+    conn = init_db()
+
+    # 1. Обновляем текст резюме и краткое резюме
+    if body.update_cv_text and body.structured_cv:
+        current = get_candidate_settings(conn)
+        profile_text = current.get("profile_text", "")
+        if body.update_profile_text and body.candidate_summary:
+            if profile_text:
+                profile_text = f"{body.candidate_summary}\n\n{profile_text}"
+            else:
+                profile_text = body.candidate_summary
+        save_candidate_settings(conn, profile_text=profile_text, cv_text=body.structured_cv)
+
+    # 2. Обновляем выбранные навыки
+    skills_applied = 0
+    if body.apply_skills and body.skills_to_apply:
+        for s in body.skills_to_apply:
+            sid = s.get("skill_id", "").strip().lower()
+            cid = s.get("category_id", "").strip().lower()
+            name = s.get("name", "").strip()
+            years = float(s.get("years_experience", 0.0))
+            pts = int(s.get("weight_points", 0)) if s.get("weight_points") is not None else None
+            is_prim = bool(s.get("is_primary", False))
+            aliases = s.get("aliases", [])
+            if sid and name and cid:
+                save_candidate_skill(
+                    conn,
+                    skill_id=sid,
+                    category_id=cid,
+                    name=name,
+                    years_experience=years,
+                    weight_points=pts,
+                    is_primary=is_prim,
+                    aliases=aliases,
+                )
+                skills_applied += 1
+        invalidate_skill_matrix_cache()
+
+    # 3. Пересчет скоров всех вакансий (если запрошено)
+    rescored = 0
+    if body.rescore_jobs:
+        rescored = _rescore_jobs_internal(conn)
+
+    conn.close()
+    return {
+        "status": "ok",
+        "cv_updated": body.update_cv_text,
+        "skills_applied": skills_applied,
+        "rescored": rescored,
+    }
 
 
 @app.patch("/api/jobs/{job_id}/status")

@@ -248,6 +248,10 @@
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <span id="candidateUpdatedAt" class="text-xs text-slate-400 mr-2"></span>
+          <label class="text-xs px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition shadow cursor-pointer flex items-center gap-1.5">
+            <span>📄 Загрузить PDF резюме</span>
+            <input type="file" id="cvPdfFileInput" accept=".pdf,application/pdf" onchange="handleCvPdfUpload(event)" class="hidden" />
+          </label>
           <button onclick="exportCandidateJson()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
             ⬇️ Экспорт JSON
           </button>
@@ -295,6 +299,10 @@
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
+          <label class="text-xs px-3 py-1.5 rounded-lg bg-emerald-950/70 hover:bg-emerald-900 text-emerald-200 border border-emerald-700/60 transition shadow cursor-pointer flex items-center gap-1.5" title="Загрузить PDF резюме для авто-распознавания опыта и навыков">
+            <span>📄 Импорт из PDF резюме</span>
+            <input type="file" id="cvPdfFileInputSkills" accept=".pdf,application/pdf" onchange="handleCvPdfUpload(event)" class="hidden" />
+          </label>
           <button onclick="openCategoryModal()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
             ➕ Добавить категорию
           </button>
@@ -471,6 +479,128 @@
       <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
         <button type="button" onclick="closeSkillModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">Отмена</button>
         <button type="button" onclick="saveSkillFromModal()" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow">💾 Сохранить навык</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно предпросмотра и подтверждения анализа PDF резюме -->
+  <div id="cvAnalysisModal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden items-center justify-center z-50 p-4">
+    <div class="card rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col p-6 shadow-2xl border border-indigo-700/60 space-y-4">
+      <div class="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
+        <div>
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <span>📄 ИИ-разбор резюме и матрица навыков</span>
+            <span id="cvModalFileBadge" class="text-xs font-mono font-normal px-2.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700"></span>
+          </h3>
+          <p class="text-xs text-slate-400 mt-1">
+            ИИ извлек структурированный текст резюме и рассчитал стаж по каждому навыку. Выберите, какие изменения применить в базе.
+          </p>
+        </div>
+        <button onclick="closeCvAnalysisModal()" class="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
+      </div>
+
+      <!-- Краткое резюме кандидата (Summary) -->
+      <div id="cvModalSummaryBox" class="p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-800/60 flex items-start gap-3">
+        <span class="text-xl">🤖</span>
+        <div class="text-xs">
+          <div class="font-semibold text-indigo-200 mb-0.5">Резюме профиля кандидата:</div>
+          <div id="cvModalSummaryText" class="text-slate-300 leading-relaxed font-sans"></div>
+        </div>
+      </div>
+
+      <!-- Переключатель вкладок внутри модалки: Навыки / Текст CV -->
+      <div class="flex items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+        <div class="flex gap-2">
+          <button id="cvTabBtnSkills" onclick="switchCvModalTab('skills')" class="px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white">
+            🎯 Навыки и стаж (<span id="cvModalSkillsCount">0</span>)
+          </button>
+          <button id="cvTabBtnText" onclick="switchCvModalTab('text')" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-slate-200">
+            📄 Структурированный текст резюме
+          </button>
+        </div>
+        <div id="cvDiffFilterBadges" class="flex items-center gap-1.5 text-xs">
+          <span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/80 text-[11px]">
+            Новых: <strong id="cvCntNew">0</strong>
+          </span>
+          <span class="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800/80 text-[11px]">
+            Обновленных: <strong id="cvCntUpdated">0</strong>
+          </span>
+          <span class="px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800 text-[11px]">
+            Без изменений: <strong id="cvCntUnchanged">0</strong>
+          </span>
+        </div>
+      </div>
+
+      <!-- Контейнер вкладки 1: Таблица Diff навыков -->
+      <div id="cvModalTabSkills" class="flex-1 overflow-y-auto max-h-[46vh] pr-1 space-y-2">
+        <table class="w-full text-left text-xs">
+          <thead class="sticky top-0 bg-slate-950 border-b border-slate-800 text-slate-400 text-[11px] uppercase tracking-wider z-10">
+            <tr>
+              <th class="py-2 px-2 text-center w-8">
+                <input type="checkbox" id="cvDiffSelectAll" checked onchange="toggleSelectAllCvSkills(event)" class="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-0 cursor-pointer" />
+              </th>
+              <th class="py-2 px-2">Статус</th>
+              <th class="py-2 px-2">Навык & Категория</th>
+              <th class="py-2 px-2 text-center" title="Опыт в годах">Стаж (годы)</th>
+              <th class="py-2 px-2 text-center" title="Баллы в скоринге вакансий">Баллы скоринга</th>
+              <th class="py-2 px-2 text-center">Primary</th>
+              <th class="py-2 px-2">Алиасы</th>
+            </tr>
+          </thead>
+          <tbody id="cvDiffTableBody" class="divide-y divide-slate-800/60 font-sans"></tbody>
+        </table>
+      </div>
+
+      <!-- Контейнер вкладки 2: Структурированный текст резюме -->
+      <div id="cvModalTabText" class="hidden flex-1 overflow-y-auto max-h-[46vh] space-y-2">
+        <textarea id="cvModalStructuredText" rows="16" class="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 font-mono leading-relaxed focus:outline-none focus:border-indigo-500"></textarea>
+      </div>
+
+      <!-- Опции применения -->
+      <div class="pt-3 border-t border-slate-800 space-y-2">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-300">
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="applyOptUpdateCv" checked class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0" />
+            <span>📝 Обновить текст резюме в базе (<code class="text-slate-400">cv_text</code>)</span>
+          </label>
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="applyOptUpdateSkills" checked class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0" />
+            <span>🎯 Применить отмеченные навыки в матрицу скоринга</span>
+          </label>
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="applyOptUpdateProfile" class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0" />
+            <span>👤 Добавить summary в предпочтения кандидата</span>
+          </label>
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="applyOptRescore" checked class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0" />
+            <span>🔄 Пересчитать скоринг всех вакансий сразу</span>
+          </label>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-2">
+          <button type="button" onclick="closeCvAnalysisModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">
+            Отмена
+          </button>
+          <button type="button" onclick="confirmApplyCvAnalysis()" id="btnConfirmApplyCv" class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg transition">
+            ✅ Применить выбранные изменения
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Оверлей ожидания ИИ-анализа PDF -->
+  <div id="cvLoadingOverlay" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="card rounded-2xl max-w-sm w-full p-6 text-center space-y-4 border border-indigo-700/60 shadow-2xl">
+      <div class="inline-flex p-3 rounded-full bg-indigo-950/80 text-indigo-400 border border-indigo-800">
+        <svg class="animate-spin h-8 w-8 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+        </svg>
+      </div>
+      <div>
+        <h4 class="text-base font-bold text-white">ИИ анализирует резюме</h4>
+        <p class="text-xs text-slate-400 mt-1">Извлекаем текст из PDF, восстанавливаем структуру карьеры и оцениваем стаж по навыкам...</p>
       </div>
     </div>
   </div>
@@ -1635,6 +1765,250 @@
         loadSkillsMatrix();
       } catch (err) {
         showToast('Ошибка: ' + err.message);
+      }
+    }
+
+    let currentCvAnalysisData = null;
+
+    async function handleCvPdfUpload(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      event.target.value = '';
+
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
+        showToast('Пожалуйста, выберите файл с расширением .pdf');
+        return;
+      }
+
+      const overlay = document.getElementById('cvLoadingOverlay');
+      if (overlay) {
+        overlay.classList.remove('hidden');
+        overlay.classList.add('flex');
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch('/api/candidate/upload-cv-pdf', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || 'Ошибка разбора PDF файла');
+        }
+
+        const data = await res.json();
+        currentCvAnalysisData = data;
+        openCvAnalysisModal(data);
+      } catch (err) {
+        showToast('Ошибка разбора резюме: ' + err.message);
+      } finally {
+        if (overlay) {
+          overlay.classList.add('hidden');
+          overlay.classList.remove('flex');
+        }
+      }
+    }
+
+    function openCvAnalysisModal(data) {
+      const modal = document.getElementById('cvAnalysisModal');
+      document.getElementById('cvModalFileBadge').textContent = data.filename || 'PDF Resume';
+      document.getElementById('cvModalSummaryText').textContent = data.candidate_summary || 'Резюме распознано успешно.';
+      document.getElementById('cvModalStructuredText').value = data.structured_cv || '';
+
+      const diff = data.skills_diff || [];
+      document.getElementById('cvModalSkillsCount').textContent = diff.length;
+
+      const newCnt = diff.filter(s => s.status === 'new').length;
+      const updCnt = diff.filter(s => s.status === 'updated').length;
+      const unchCnt = diff.filter(s => s.status === 'unchanged').length;
+
+      document.getElementById('cvCntNew').textContent = newCnt;
+      document.getElementById('cvCntUpdated').textContent = updCnt;
+      document.getElementById('cvCntUnchanged').textContent = unchCnt;
+
+      renderCvDiffTable(diff);
+
+      switchCvModalTab('skills');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeCvAnalysisModal() {
+      const modal = document.getElementById('cvAnalysisModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function switchCvModalTab(tab) {
+      const skillsTab = document.getElementById('cvModalTabSkills');
+      const textTab = document.getElementById('cvModalTabText');
+      const btnSkills = document.getElementById('cvTabBtnSkills');
+      const btnText = document.getElementById('cvTabBtnText');
+
+      if (tab === 'skills') {
+        skillsTab.classList.remove('hidden');
+        textTab.classList.add('hidden');
+        btnSkills.className = 'px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white';
+        btnText.className = 'px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-slate-200';
+      } else {
+        skillsTab.classList.add('hidden');
+        textTab.classList.remove('hidden');
+        btnSkills.className = 'px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-slate-200';
+        btnText.className = 'px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 text-white';
+      }
+    }
+
+    function toggleSelectAllCvSkills(event) {
+      const checked = event.target.checked;
+      const tbody = document.getElementById('cvDiffTableBody');
+      tbody.querySelectorAll('input[type="checkbox"].diff-chk').forEach(chk => {
+        chk.checked = checked;
+      });
+    }
+
+    function renderCvDiffTable(diff) {
+      const tbody = document.getElementById('cvDiffTableBody');
+      if (!tbody) return;
+
+      if (!diff || diff.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-4 text-center text-slate-500 italic">Навыки не распознаны</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = diff.map((s, idx) => {
+        let statusBadge = '';
+        if (s.status === 'new') {
+          statusBadge = `<span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-semibold">Новый</span>`;
+        } else if (s.status === 'updated') {
+          statusBadge = `<span class="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 text-[10px] font-semibold">Изменился</span>`;
+        } else {
+          statusBadge = `<span class="px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800 text-[10px]">Без изм.</span>`;
+        }
+
+        const isChecked = s.selected ? 'checked' : '';
+        const aliasesStr = (s.aliases || []).join(', ');
+
+        return `
+          <tr class="hover:bg-slate-900/60 transition ${s.status === 'unchanged' ? 'opacity-70' : ''}">
+            <td class="py-2.5 px-2 text-center">
+              <input type="checkbox" id="cv_chk_${idx}" data-idx="${idx}" class="diff-chk rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0 cursor-pointer" ${isChecked} />
+            </td>
+            <td class="py-2.5 px-2 whitespace-nowrap">
+              ${statusBadge}
+            </td>
+            <td class="py-2.5 px-2 whitespace-nowrap">
+              <div class="font-semibold text-white">${escapeHtml(s.name)}</div>
+              <div class="text-[11px] text-indigo-400">${escapeHtml(s.category_title || s.category_id)}</div>
+            </td>
+            <td class="py-2.5 px-2 text-center whitespace-nowrap font-mono">
+              ${s.status === 'new' ? `
+                <span class="text-emerald-400 font-semibold">${s.new_years} л.</span>
+              ` : s.status === 'updated' ? `
+                <span class="text-slate-500 line-through mr-1">${s.old_years} л.</span>
+                <span class="text-blue-400 font-semibold">➔ ${s.new_years} л.</span>
+              ` : `
+                <span class="text-slate-400">${s.new_years} л.</span>
+              `}
+            </td>
+            <td class="py-2.5 px-2 text-center whitespace-nowrap font-mono">
+              ${s.status === 'new' ? `
+                <span class="text-emerald-400 font-bold">+${s.new_points} б.</span>
+              ` : s.status === 'updated' ? `
+                <span class="text-slate-500 line-through mr-1">${s.old_points}</span>
+                <span class="text-blue-400 font-bold">➔ ${s.new_points} б.</span>
+              ` : `
+                <span class="text-slate-400">${s.new_points} б.</span>
+              `}
+            </td>
+            <td class="py-2.5 px-2 text-center whitespace-nowrap">
+              <input type="checkbox" id="cv_primary_${idx}" ${s.is_primary ? 'checked' : ''} class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0 cursor-pointer" />
+            </td>
+            <td class="py-2.5 px-2">
+              <input type="text" id="cv_aliases_${idx}" value="${escapeHtml(aliasesStr)}" class="w-full min-w-[140px] px-2 py-0.5 bg-slate-950 border border-slate-800 rounded text-[11px] text-slate-300 focus:outline-none focus:border-indigo-500 font-mono" />
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function confirmApplyCvAnalysis() {
+      if (!currentCvAnalysisData) return;
+
+      const btn = document.getElementById('btnConfirmApplyCv');
+      const origText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Применение...';
+
+      const updateCv = document.getElementById('applyOptUpdateCv').checked;
+      const updateSkills = document.getElementById('applyOptUpdateSkills').checked;
+      const updateProfile = document.getElementById('applyOptUpdateProfile').checked;
+      const rescore = document.getElementById('applyOptRescore').checked;
+
+      const structuredCvText = document.getElementById('cvModalStructuredText').value;
+
+      const skillsToApply = [];
+      const diff = currentCvAnalysisData.skills_diff || [];
+
+      if (updateSkills) {
+        diff.forEach((s, idx) => {
+          const chk = document.getElementById('cv_chk_' + idx);
+          if (chk && chk.checked) {
+            const primChk = document.getElementById('cv_primary_' + idx);
+            const aliasesInput = document.getElementById('cv_aliases_' + idx);
+            const aliases = aliasesInput ? aliasesInput.value.split(',').map(a => a.trim()).filter(Boolean) : s.aliases;
+
+            skillsToApply.push({
+              skill_id: s.skill_id,
+              category_id: s.category_id,
+              name: s.name,
+              years_experience: s.new_years,
+              weight_points: s.new_points,
+              is_primary: primChk ? primChk.checked : s.is_primary,
+              aliases: aliases
+            });
+          }
+        });
+      }
+
+      try {
+        const res = await fetch('/api/candidate/apply-cv-analysis', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            update_cv_text: updateCv,
+            structured_cv: structuredCvText,
+            update_profile_text: updateProfile,
+            candidate_summary: currentCvAnalysisData.candidate_summary,
+            apply_skills: updateSkills,
+            skills_to_apply: skillsToApply,
+            rescore_jobs: rescore
+          })
+        });
+
+        if (!res.ok) throw new Error('Ошибка сохранения на сервере');
+        const respData = await res.json();
+
+        closeCvAnalysisModal();
+
+        let msg = '✅ Резюме успешно обработано!';
+        if (respData.skills_applied > 0) msg += ` Применено ${respData.skills_applied} навыков.`;
+        if (respData.rescored > 0) msg += ` Пересчитано ${respData.rescored} вакансий.`;
+        showToast(msg);
+
+        loadCandidateProfile();
+        loadSkillsMatrix();
+        if (respData.rescored > 0) loadJobs();
+
+      } catch (err) {
+        showToast('Ошибка применения данных: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = origText;
       }
     }
 

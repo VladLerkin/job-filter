@@ -163,65 +163,80 @@ def init_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
         """
     )
 
-    # Инициализируем стартовые категории и навыки, если таблицы пустые
-    cat_count = conn.execute("SELECT COUNT(*) FROM skill_categories").fetchone()[0]
-    if cat_count == 0:
-        default_categories = [
-            ("ai_agentic", "🤖 AI & Agentic Systems", 15.0, 30, 1),
-            ("core_backend", "☕ Core Backend & Languages", 2.0, 20, 2),
-            ("secondary_backend", "🐍 Secondary Languages / TS", 3.0, 18, 3),
-            ("arch_infra", "🏗️ Architecture & Cloud / DevOps", 2.0, 15, 4),
-            ("domains", "💼 Business Domains (FinTech / Banking)", 2.0, 10, 5),
-            ("alien", "🚫 Чужой стек (Штрафы)", -1.0, -20, 6),
-            ("legacy", "🦖 Устаревший стек (Штрафы)", -1.0, -30, 7),
-        ]
-        conn.executemany(
-            "INSERT INTO skill_categories (category_id, title, multiplier, max_points, sort_order) VALUES (?, ?, ?, ?, ?)",
-            default_categories,
+    # Системные метаданные для предотвращения повторного автозасева после ручного удаления
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT
         )
+        """
+    )
+    is_seeded = conn.execute(
+        "SELECT value FROM app_metadata WHERE key = 'skills_seeded_v1'"
+    ).fetchone()
 
-        default_skills = [
-            # AI & Agentic
-            ("langgraph", "ai_agentic", "LangGraph", 2.0, 30, 1, '["langgraph", "langchain", "crewai", "koog"]'),
-            ("agentic", "ai_agentic", "AI Agents / Multi-Agent", 2.0, 30, 1, '["agentic", "agentic ai", "ai agentic", "ai agents", "agents", "multi-agent", "multi agent", "a2a"]'),
-            ("rag", "ai_agentic", "RAG & Vector DB", 2.0, 20, 1, '["rag", "embeddings", "vector db", "mem0", "memsearch"]'),
-            ("mcp", "ai_agentic", "MCP Protocol", 1.5, 20, 1, '["mcp", "model context protocol"]'),
-            ("llm", "ai_agentic", "LLMs / GenAI / Prompt Engineering", 2.5, 25, 1, '["llm", "llms", "genai", "generative ai", "prompt engineering", "claude", "openai", "anthropic", "gpt"]'),
-            ("langsmith", "ai_agentic", "LLM Observability", 1.5, 15, 0, '["langsmith", "langfuse", "hivetrace"]'),
-            # Core Backend
-            ("java", "core_backend", "Java", 10.0, 20, 1, '["java", "jvm"]'),
-            ("kotlin", "core_backend", "Kotlin", 5.0, 20, 1, '["kotlin", "kmp", "kotlin multiplatform"]'),
-            ("spring_boot", "core_backend", "Spring Boot", 8.0, 20, 1, '["spring", "spring boot", "spring data", "spring security", "spring ai"]'),
-            ("ktor", "core_backend", "Ktor", 3.0, 15, 0, '["ktor"]'),
-            # Secondary Backend
-            ("python", "secondary_backend", "Python", 4.0, 18, 1, '["python"]'),
-            ("typescript", "secondary_backend", "TypeScript / Node.js", 2.0, 9, 0, '["typescript", "ts", "node", "nodejs", "node.js"]'),
-            # Architecture & Cloud
-            ("microservices", "arch_infra", "Microservices & Distributed Systems", 8.0, 15, 1, '["microservices", "distributed systems", "high-load", "high load", "system design"]'),
-            ("kafka", "arch_infra", "Kafka & Event-Driven", 6.0, 15, 1, '["kafka", "event-driven", "event driven", "event driven architecture", "rabbitmq"]'),
-            ("postgresql", "arch_infra", "PostgreSQL / SQL", 8.0, 15, 1, '["postgresql", "postgres", "sql", "oracle", "mssql"]'),
-            ("docker_k8s", "arch_infra", "Docker & Kubernetes", 6.0, 15, 1, '["docker", "kubernetes", "k8s"]'),
-            ("aws_cloud", "arch_infra", "AWS / Cloud Native", 5.0, 15, 1, '["aws", "google cloud", "gcp", "cloud architecture", "cloud native"]'),
-            ("rest_api", "arch_infra", "REST & OpenAPI", 8.0, 12, 0, '["rest", "rest api", "restful", "openapi", "swagger"]'),
-            # Business Domains
-            ("fintech", "domains", "FinTech & Banking / Payments", 5.0, 10, 1, '["fintech", "banking", "payments", "billing", "brokerage", "custody", "trading"]'),
-            ("enterprise", "domains", "Enterprise Systems (ECM/CRM/ERP)", 4.0, 8, 0, '["enterprise", "ecm", "crm", "bpm", "erp"]'),
-            # Alien stack
-            ("go", "alien", "Golang / Go", 0.0, -20, 0, '["go", "golang"]'),
-            ("csharp", "alien", "C# / .NET", 0.0, -20, 0, '["c#", ".net"]'),
-            ("cpp", "alien", "C++", 0.0, -20, 0, '["c++"]'),
-            ("rust", "alien", "Rust", 0.0, -20, 0, '["rust"]'),
-            ("php", "alien", "PHP", 0.0, -20, 0, '["php", "wordpress", "drupal", "laravel", "symfony"]'),
-            ("ruby", "alien", "Ruby / Rails", 0.0, -20, 0, '["ruby", "rails"]'),
-            # Legacy
-            ("one_c", "legacy", "1C", 0.0, -30, 0, '["1c", "1с", "oscript"]'),
-            ("sap", "legacy", "SAP / ABAP", 0.0, -30, 0, '["sap", "abap"]'),
-            ("salesforce", "legacy", "Salesforce", 0.0, -30, 0, '["salesforce", "apex"]'),
-        ]
-        conn.executemany(
-            "INSERT INTO candidate_skills (skill_id, category_id, name, years_experience, weight_points, is_primary, aliases_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            default_skills,
-        )
+    # Инициализируем стартовые категории и навыки ТОЛЬКО один раз при первом запуске
+    if not is_seeded:
+        cat_count = conn.execute("SELECT COUNT(*) FROM skill_categories").fetchone()[0]
+        if cat_count == 0:
+            default_categories = [
+                ("ai_agentic", "🤖 AI & Agentic Systems", 15.0, 30, 1),
+                ("core_backend", "☕ Core Backend & Languages", 2.0, 20, 2),
+                ("secondary_backend", "🐍 Secondary Languages / TS", 3.0, 18, 3),
+                ("arch_infra", "🏗️ Architecture & Cloud / DevOps", 2.0, 15, 4),
+                ("domains", "💼 Business Domains (FinTech / Banking)", 2.0, 10, 5),
+                ("alien", "🚫 Чужой стек (Штрафы)", -1.0, -20, 6),
+                ("legacy", "🦖 Устаревший стек (Штрафы)", -1.0, -30, 7),
+            ]
+            conn.executemany(
+                "INSERT OR IGNORE INTO skill_categories (category_id, title, multiplier, max_points, sort_order) VALUES (?, ?, ?, ?, ?)",
+                default_categories,
+            )
+
+            default_skills = [
+                # AI & Agentic
+                ("langgraph", "ai_agentic", "LangGraph", 2.0, 30, 1, '["langgraph", "langchain", "crewai", "koog"]'),
+                ("agentic", "ai_agentic", "AI Agents / Multi-Agent", 2.0, 30, 1, '["agentic", "agentic ai", "ai agentic", "ai agents", "agents", "multi-agent", "multi agent", "a2a"]'),
+                ("rag", "ai_agentic", "RAG & Vector DB", 2.0, 20, 1, '["rag", "embeddings", "vector db", "mem0", "memsearch"]'),
+                ("mcp", "ai_agentic", "MCP Protocol", 1.5, 20, 1, '["mcp", "model context protocol"]'),
+                ("llm", "ai_agentic", "LLMs / GenAI / Prompt Engineering", 2.5, 25, 1, '["llm", "llms", "genai", "generative ai", "prompt engineering", "claude", "openai", "anthropic", "gpt"]'),
+                ("langsmith", "ai_agentic", "LLM Observability", 1.5, 15, 0, '["langsmith", "langfuse", "hivetrace"]'),
+                # Core Backend
+                ("java", "core_backend", "Java", 10.0, 20, 1, '["java", "jvm"]'),
+                ("kotlin", "core_backend", "Kotlin", 5.0, 20, 1, '["kotlin", "kmp", "kotlin multiplatform"]'),
+                ("spring_boot", "core_backend", "Spring Boot", 8.0, 20, 1, '["spring", "spring boot", "spring data", "spring security", "spring ai"]'),
+                ("ktor", "core_backend", "Ktor", 3.0, 15, 0, '["ktor"]'),
+                # Secondary Backend
+                ("python", "secondary_backend", "Python", 4.0, 18, 1, '["python"]'),
+                ("typescript", "secondary_backend", "TypeScript / Node.js", 2.0, 9, 0, '["typescript", "ts", "node", "nodejs", "node.js"]'),
+                # Architecture & Cloud
+                ("microservices", "arch_infra", "Microservices & Distributed Systems", 8.0, 15, 1, '["microservices", "distributed systems", "high-load", "high load", "system design"]'),
+                ("kafka", "arch_infra", "Kafka & Event-Driven", 6.0, 15, 1, '["kafka", "event-driven", "event driven", "event driven architecture", "rabbitmq"]'),
+                ("postgresql", "arch_infra", "PostgreSQL / SQL", 8.0, 15, 1, '["postgresql", "postgres", "sql", "oracle", "mssql"]'),
+                ("docker_k8s", "arch_infra", "Docker & Kubernetes", 6.0, 15, 1, '["docker", "kubernetes", "k8s"]'),
+                ("aws_cloud", "arch_infra", "AWS / Cloud Native", 5.0, 15, 1, '["aws", "google cloud", "gcp", "cloud architecture", "cloud native"]'),
+                ("rest_api", "arch_infra", "REST & OpenAPI", 8.0, 12, 0, '["rest", "rest api", "restful", "openapi", "swagger"]'),
+                # Business Domains
+                ("fintech", "domains", "FinTech & Banking / Payments", 5.0, 10, 1, '["fintech", "banking", "payments", "billing", "brokerage", "custody", "trading"]'),
+                ("enterprise", "domains", "Enterprise Systems (ECM/CRM/ERP)", 4.0, 8, 0, '["enterprise", "ecm", "crm", "bpm", "erp"]'),
+                # Alien stack
+                ("go", "alien", "Golang / Go", 0.0, -20, 0, '["go", "golang"]'),
+                ("csharp", "alien", "C# / .NET", 0.0, -20, 0, '["c#", ".net"]'),
+                ("cpp", "alien", "C++", 0.0, -20, 0, '["c++"]'),
+                ("rust", "alien", "Rust", 0.0, -20, 0, '["rust"]'),
+                ("php", "alien", "PHP", 0.0, -20, 0, '["php", "wordpress", "drupal", "laravel", "symfony"]'),
+                ("ruby", "alien", "Ruby / Rails", 0.0, -20, 0, '["ruby", "rails"]'),
+                # Legacy
+                ("one_c", "legacy", "1C", 0.0, -30, 0, '["1c", "1с", "oscript"]'),
+                ("sap", "legacy", "SAP / ABAP", 0.0, -30, 0, '["sap", "abap"]'),
+                ("salesforce", "legacy", "Salesforce", 0.0, -30, 0, '["salesforce", "apex"]'),
+            ]
+            conn.executemany(
+                "INSERT OR IGNORE INTO candidate_skills (skill_id, category_id, name, years_experience, weight_points, is_primary, aliases_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                default_skills,
+            )
+        conn.execute("INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('skills_seeded_v1', '1')")
 
     conn.commit()
     return conn
