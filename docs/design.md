@@ -254,7 +254,19 @@ sequenceDiagram
 
 SQLite in **WAL (Write-Ahead Logging)** mode is used for fast concurrent reads and ACID-compliant writes.
 
-### Key Tables
+### Database Tables Overview
+
+| Table | Primary Key | Description |
+|---|---|---|
+| **`processed_jobs`** | `job_id` | Core vacancy registry: scraped job data, LLM enrichment JSON, scoring points, match tier, ATS links, and review status (`new`, `applied`, `hidden`). |
+| **`candidate_skills`** | `skill_id` | Personalized candidate skills matrix: years of experience, calculated score points, primary flag, and synonym aliases JSON. |
+| **`skill_categories`** | `category_id` | Scoring categories: point multipliers per year, maximum category score caps, and display sort order. |
+| **`candidate_settings`** | `id` (singleton) | Candidate preferences, work authorization notes, and complete structured Markdown CV. |
+| **`blacklisted_boards`** | `domain` | Blocked job board and ATS domains (inaccessible forms, complex logins) with block reasons. |
+| **`company_ats_map`** | `company_key` | Association between specific employer names and their detected ATS domains (e.g. Workday, Greenhouse, Lever). |
+| **`app_metadata`** | `key` | Internal application state, schema version, and seed tracking. |
+
+### Entity-Relationship Diagram
 
 ```
                     ┌──────────────────────────┐
@@ -280,24 +292,36 @@ SQLite in **WAL (Write-Ahead Logging)** mode is used for fast concurrent reads a
                     └──────────────────────────┘
 
 ┌──────────────────────────┐         ┌──────────────────────────┐
-│    candidate_settings    │         │     blacklist_boards     │
+│    candidate_settings    │         │    blacklisted_boards    │
 ├──────────────────────────┤         ├──────────────────────────┤
-│ PK  id (always 1)        │         │ PK  domain_pattern       │
+│ PK  id (always 1)        │         │ PK  domain               │
 │     profile_text         │         │     reason               │
 │     cv_text              │         │     created_at           │
 │     updated_at           │         └──────────────────────────┘
 └──────────────────────────┘
 
+┌──────────────────────────┐         ┌──────────────────────────┐
+│     company_ats_map      │         │       app_metadata       │
+├──────────────────────────┤         ├──────────────────────────┤
+│ PK  company_key          │         │ PK  key                  │
+│     company_name         │         │     value                │
+│     ats_domain           │         └──────────────────────────┘
+│     sample_url           │
+│     updated_at           │
+└──────────────────────────┘
+
 ┌────────────────────────────────────────────────────────┐
-│                        jobs                            │
+│                     processed_jobs                     │
 ├────────────────────────────────────────────────────────┤
-│ PK  id                                                 │
-│     site, job_url, title, company, location            │
-│     date_posted, description                           │
-│     enrichment_json (LLM analysis)                     │
-│     score, match_tier, geo_tier                        │
-│     user_status ('new', 'applied', 'saved', 'hidden')  │
-│     created_at, updated_at                             │
+│ PK  job_id                                             │
+│     site, url, title, company, location, is_remote     │
+│     date_posted, processed_at                          │
+│     seniority_level, employment_type, job_function     │
+│     industry, salary, description, reject_reason       │
+│     enrichment_json (LLM structured analysis)          │
+│     score, tier, score_details_json, matched           │
+│     user_status ('new', 'applied', 'hidden')           │
+│     apply_url, ats_domain                              │
 └────────────────────────────────────────────────────────┘
 ```
 
