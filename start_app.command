@@ -1,6 +1,13 @@
 #!/bin/zsh
 cd "$(dirname "$0")" || exit 1
 
+# Автоматически загружаем переменные из .env, если файл существует
+if [ -f .env ]; then
+  set -a
+  source .env
+  set +a
+fi
+
 PORT=8000
 URL="http://localhost:${PORT}"
 

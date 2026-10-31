@@ -9,6 +9,27 @@ from pathlib import Path
 
 # --- Пути ---
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _load_env_file(path: Path) -> None:
+    """Загружает переменные из .env файла в os.environ, если они ещё не заданы."""
+    if not path.is_file():
+        return
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k, v = k.strip(), v.strip().strip("'\"")
+            if k and k not in os.environ:
+                os.environ[k] = v
+    except Exception:
+        pass
+
+
+_load_env_file(PROJECT_ROOT / ".env")
+
 DB_PATH = Path(os.getenv("JOB_FILTER_DB", PROJECT_ROOT / "jobs.db"))
 STATIC_DIR = PROJECT_ROOT / "static"
 
