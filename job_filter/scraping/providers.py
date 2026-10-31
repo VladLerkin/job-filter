@@ -23,7 +23,7 @@ GLASSDOOR_COUNTRY_NAMES = {
 }
 
 
-SUPPORTED_SITES = ("linkedin", "indeed", "glassdoor")
+SUPPORTED_SITES = ("linkedin", "indeed", "glassdoor", "hirify")
 
 
 def scrape_site(
@@ -36,12 +36,21 @@ def scrape_site(
     easy_apply: bool | None,
     linkedin_company_ids: list[int] | None = None,
 ) -> pd.DataFrame:
-    """Вызывает JobSpy scrape_jobs для проверенных и стабильно работающих провайдеров (LinkedIn, Indeed, Glassdoor)."""
+    """Вызывает JobSpy или специализированный адаптер для проверенных провайдеров (LinkedIn, Indeed, Glassdoor, Hirify)."""
     site = (site or "linkedin").strip().lower()
     if site not in SUPPORTED_SITES:
         raise ValueError(f"Неподдерживаемый или заблокированный провайдер '{site}'. Доступны только: {', '.join(SUPPORTED_SITES)}")
 
     clean_term = re.sub(r"\bremote\b", "", term, flags=re.IGNORECASE).strip() or term
+
+    if site == "hirify":
+        from job_filter.scraping.hirify_adapter import scrape_hirify
+        return scrape_hirify(
+            term=term,
+            location=location,
+            results_wanted=results_wanted,
+            hours_old=hours_old,
+        )
 
     if site == "linkedin":
         return scrape_jobs(

@@ -391,13 +391,28 @@
           { value: "usa", label: "🇺🇸 United States (glassdoor.com)" },
           { value: "canada", label: "🇨🇦 Canada (glassdoor.ca)" }
         ]
+      },
+      hirify: {
+        label: "Локация / Рынок (Hirify)",
+        remoteMechanism: "🌐 REST API • фильтр work_format=remote + worldwide_remote=true",
+        hint: "Hirify: IT-агрегатор для агентов, проверяет доступность удалёнки из вашей страны",
+        supportsEasyApply: false,
+        options: [
+          { value: "Worldwide", label: "🌐 Worldwide (Весь мир)" },
+          { value: "Georgia", label: "🇬🇪 Georgia (country)" },
+          { value: "Europe", label: "🇪🇺 Europe" },
+          { value: "United Kingdom", label: "🇬🇧 United Kingdom" },
+          { value: "Germany", label: "🇩🇪 Germany" },
+          { value: "Poland", label: "🇵🇱 Poland" }
+        ]
       }
     };
 
     const SITE_REMOTE_BADGE_LABELS = {
       linkedin: "🏠 Remote / WFH",
       indeed: "🏠 Remote (DSQF7 • No Hybrid)",
-      glassdoor: "🏠 Work From Home"
+      glassdoor: "🏠 Work From Home",
+      hirify: "🌐 Agent API • Remote"
     };
 
     function getSelectedProvider() {

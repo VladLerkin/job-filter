@@ -4,7 +4,7 @@
 
 **Job Filter** is an intelligent, automated job discovery and scoring system tailored for senior backend and AI/Agentic software engineers. It bridges the gap between raw web scraping and personalized job hunting by:
 
-1. **Scraping** multiple job aggregators (LinkedIn, Indeed, Glassdoor) across target regions (e.g. Remote, EMEA, Worldwide).
+1. **Scraping & Sourcing** multiple job aggregators (LinkedIn, Indeed, Glassdoor, Hirify Agent API) across target regions (e.g. Remote, EMEA, Worldwide).
 2. **Filtering & Normalizing** URLs, detecting Applicant Tracking System (ATS) platforms, and managing domain blacklists.
 3. **Enriching Vacancies with LLM** (via `agy` CLI) to extract structured insights: geographic eligibility (US-only vs. Global Remote), required tech stack, Agentic AI classification, compensation estimates, and company red flags.
 4. **Scoring Vacancies Against Candidate Profile**: Evaluating vacancies against a customizable **Skills Matrix** with category-level multipliers, caps, negative penalty deductions, and geographic tier filters.
@@ -364,6 +364,7 @@ Job Filter works out-of-the-box with sensible defaults defined in [`job_filter/c
 | `AGY_BIN` | Auto-detected | Path to the `agy` CLI executable (e.g. `~/.local/bin/agy`) |
 | `JOB_FILTER_PORT` | `8000` | HTTP port for the web dashboard server |
 | `JOB_FILTER_HOST` | `0.0.0.0` | Bind host for the web server |
+| `HIRIFY_API_KEY` | `""` | Personal Bearer API token for Hirify Agent REST API |
 
 ### Operational Parameters
 - **`TOP_SCORE_THRESHOLD`**: `70` — Vacancies with score $\ge 70$ are highlighted as **TOP Match**.

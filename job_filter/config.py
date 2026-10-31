@@ -18,6 +18,10 @@ DEFAULT_MODEL = os.getenv("JOB_FILTER_MODEL", "gemini-3.8-flash-low")
 JOB_ENRICH_TIMEOUT_SEC = 90
 CV_ANALYZE_TIMEOUT_SEC = 120
 
+# --- Hirify Agent API ---
+HIRIFY_API_KEY = os.getenv("HIRIFY_API_KEY", "")
+HIRIFY_API_URL = os.getenv("HIRIFY_API_URL", "https://api.hirify.me/api/agent")
+
 # --- Пороги скоринга ---
 TOP_SCORE_THRESHOLD = 70
 GOOD_SCORE_THRESHOLD = 50
