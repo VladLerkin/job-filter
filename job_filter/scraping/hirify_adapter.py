@@ -146,8 +146,17 @@ def scrape_hirify(
         "search": clean_term,
         "work_format": ["remote"],
         "worldwide_remote": True,
-        "sort_by": "date",
+        "sort_by": "newest",
     }
+    if hours_old and hours_old > 0:
+        if hours_old <= 24:
+            filters["period"] = "day"
+        elif hours_old <= 72:
+            filters["period"] = "three_days"
+        elif hours_old <= 168:
+            filters["period"] = "week"
+        else:
+            filters["period"] = "month"
 
     loc_lower = (location or "").lower()
     if "georgia" in loc_lower or "ge" == loc_lower:
