@@ -16,7 +16,7 @@ class HirifyClient:
     """REST-клиент для работы с Hirify Agent API."""
 
     def __init__(self, api_key: str | None = None, base_url: str | None = None):
-        self.api_key = api_key or config.HIRIFY_API_KEY
+        self.api_key = api_key if api_key is not None else config.HIRIFY_API_KEY
         self.base_url = (base_url or config.HIRIFY_API_URL).rstrip("/")
         self.session = requests.Session()
         self.session.headers.update({
@@ -66,23 +66,36 @@ def _parse_published_date(val: Any) -> datetime | None:
     if not val:
         return None
     val_str = str(val).strip()
-    # Поддерживаем форматы ISO8601 (2026-10-30T14:20:00Z, 2026-10-30 14:20:00, 2026-10-30)
+    # В Python 3.11+ fromisoformat отлично разбирает форматы ISO с микросекундами и Z
+    try:
+        clean_iso = val_str.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(clean_iso)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        pass
+
     for fmt in (
-        "%Y-%m-%dT%H:%M:%S%z",
-        "%Y-%m-%dT%H:%M:%SZ",
-        "%Y-%m-%dT%H:%M:%S.%f%z",
-        "%Y-%m-%dT%H:%M:%S.%fZ",
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%d",
     ):
         try:
-            dt = datetime.strptime(val_str.replace("Z", "+0000"), fmt)
+            dt = datetime.strptime(val_str, fmt)
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             return dt
         except Exception:
             continue
     return None
+
+
+def _extract_company_name(comp_val: Any, is_masked: bool) -> str:
+    if isinstance(comp_val, dict):
+        return comp_val.get("title") or comp_val.get("name") or "Hirify Employer"
+    if isinstance(comp_val, str) and comp_val.strip():
+        return comp_val.strip()
+    return "Confidential" if is_masked else "Hirify Employer"
 
 
 def _format_salary(salary_obj: Any) -> str | None:
@@ -179,16 +192,32 @@ def scrape_hirify(
         slug = card.get("slug") or str(vac_id)
         job_url = f"https://hirify.me/vacancies/{slug}"
         title = card.get("title") or "Unknown Title"
-        company = card.get("company") or ("Confidential" if card.get("company_masked") else "Hirify Employer")
+        is_masked = bool(card.get("company_masked"))
+        company = _extract_company_name(card.get("company"), is_masked)
 
         # Локация / Регионы
-        regions = card.get("regions") or []
+        region_names = []
+        for reg in (card.get("regions") or []):
+            if isinstance(reg, dict):
+                r_name = reg.get("name_en") or reg.get("name") or reg.get("code")
+                if r_name:
+                    region_names.append(str(r_name))
+            elif reg:
+                region_names.append(str(reg))
+
         remote_type = card.get("remote_type") or "Remote"
-        loc_display = f"{remote_type} ({', '.join(regions)})" if regions else remote_type
+        loc_display = f"{remote_type} ({', '.join(region_names)})" if region_names else str(remote_type)
 
         # Уровень должности
-        grades = card.get("grades") or []
-        job_level = ", ".join(grades) if grades else "Senior"
+        grade_names = []
+        for g in (card.get("grades") or []):
+            if isinstance(g, dict):
+                g_name = g.get("name_en") or g.get("name") or g.get("code")
+                if g_name:
+                    grade_names.append(str(g_name))
+            elif g:
+                grade_names.append(str(g))
+        job_level = ", ".join(grade_names) if grade_names else "Senior"
 
         # Загружаем полное описание вакансии (vacancies.read)
         desc_text = ""
@@ -196,7 +225,9 @@ def scrape_hirify(
             detail = client.read_vacancy(vac_id)
             desc_text = detail.get("description") or detail.get("original_description") or ""
             if not company or company == "Hirify Employer":
-                company = detail.get("company") or company
+                company = _extract_company_name(detail.get("company"), is_masked)
+            if detail.get("url"):
+                job_url = detail["url"]
         except Exception as e:
             logger.warning(f"Не удалось загрузить детальное описание Hirify вакансии #{vac_id}: {e}")
             desc_text = f"{title}\nSkills: {', '.join(card.get('skills') or [])}"
@@ -218,3 +249,4 @@ def scrape_hirify(
         })
 
     return pd.DataFrame(matched_rows, columns=df_cols)
+
