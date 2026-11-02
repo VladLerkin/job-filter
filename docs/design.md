@@ -79,10 +79,11 @@ job-filter/
 │   │   ├── schemas.py          # Pydantic HTTP request models
 │   │   └── routers/            # Endpoint routers
 │   │       ├── candidate.py    # Candidate profile, CV PDF upload & diff application
+│   │       ├── hirify.py       # Hirify Saved Feeds API integration & feed selector
 │   │       ├── jobs.py         # Job listing queries, status updates, open URLs
 │   │       ├── pipeline.py     # Background pipeline trigger & polling
 │   │       ├── skills.py       # Skills & categories CRUD, rescoring, seed reset
-│   │       └── system.py       # ATS domain blacklist CRUD, logs view
+│   │       └── blacklist.py    # ATS domain blacklist CRUD, check & rules
 │   │
 │   ├── db/                     # Database engine & migrations
 │   │   ├── __init__.py

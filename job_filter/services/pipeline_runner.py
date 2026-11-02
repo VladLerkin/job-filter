@@ -76,6 +76,8 @@ class PipelineRunner:
                     llm_model=req.get("llm_model"),
                     llm_limit=req.get("llm_limit", 15),
                     on_progress=self.append_log,
+                    hirify_mode=req.get("hirify_mode", "feeds"),
+                    hirify_feed_id=req.get("hirify_feed_id"),
                 )
             self.append_log("✅ Пайплайн успешно завершен!")
         except Exception as e:

@@ -35,6 +35,22 @@ class HirifyClient:
         resp.raise_for_status()
         return resp.json().get("data") or {}
 
+    def get_feeds(self) -> list[dict[str, Any]]:
+        """GET /api/agent/feeds: список всех сохраненных поисков (фильтров) пользователя."""
+        resp = self.session.get(f"{self.base_url}/feeds", timeout=15)
+        resp.raise_for_status()
+        return resp.json().get("data") or []
+
+    def get_feed_vacancies(self, feed_id: int, page: int = 1, per_page: int = 50) -> dict[str, Any]:
+        """GET /api/agent/feeds/{feed_id}/vacancies: поиск вакансий по сохраненному фильтру."""
+        resp = self.session.get(
+            f"{self.base_url}/feeds/{feed_id}/vacancies",
+            params={"page": page, "per_page": min(max(per_page, 1), 50)},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def search_vacancies(self, filters: dict[str, Any] | None = None, page: int = 1, per_page: int = 50) -> dict[str, Any]:
         """GET /api/agent/vacancies: поиск вакансий (компактные карточки)."""
         params: dict[str, Any] = {
@@ -115,72 +131,19 @@ def _format_salary(salary_obj: Any) -> str | None:
     return None
 
 
-def scrape_hirify(
-    term: str,
-    location: str,
+DF_COLS = [
+    "id", "site", "job_url", "job_url_direct", "title", "company",
+    "location", "date_posted", "salary", "description", "is_remote",
+    "job_level", "job_type",
+]
+
+
+def _cards_to_dataframe(
+    cards: list[dict[str, Any]],
+    client: HirifyClient,
     results_wanted: int = 15,
     hours_old: int = 72,
-    client: HirifyClient | None = None,
 ) -> pd.DataFrame:
-    """
-    Выполняет поиск вакансий на Hirify по заданным критериям и возвращает DataFrame в стандартном формате JobFilter.
-    """
-    client = client or HirifyClient()
-    df_cols = [
-        "id", "site", "job_url", "job_url_direct", "title", "company",
-        "location", "date_posted", "salary", "description", "is_remote",
-        "job_level", "job_type",
-    ]
-
-    if not client.is_configured():
-        msg = "HIRIFY_API_KEY не установлен. Укажите ключ в переменной окружения HIRIFY_API_KEY."
-        logger.warning(msg)
-        df_empty = pd.DataFrame(columns=df_cols)
-        df_empty.attrs["errors"] = {"hirify": msg}
-        return df_empty
-
-    clean_term = re.sub(r"\bremote\b", "", term, flags=re.IGNORECASE).strip() or term
-
-    # Формируем фильтры Hirify
-    filters: dict[str, Any] = {
-        "search": clean_term,
-        "work_format": ["remote"],
-        "worldwide_remote": True,
-        "sort_by": "newest",
-    }
-    if hours_old and hours_old > 0:
-        if hours_old <= 24:
-            filters["period"] = "day"
-        elif hours_old <= 72:
-            filters["period"] = "three_days"
-        elif hours_old <= 168:
-            filters["period"] = "week"
-        else:
-            filters["period"] = "month"
-
-    loc_lower = (location or "").lower()
-    if "georgia" in loc_lower or "ge" == loc_lower:
-        filters["my_location"] = "GE"
-    elif "uk" in loc_lower or "united kingdom" in loc_lower:
-        filters["my_location"] = "GB"
-    elif "poland" in loc_lower:
-        filters["my_location"] = "PL"
-    elif "germany" in loc_lower:
-        filters["my_location"] = "DE"
-
-    try:
-        search_res = client.search_vacancies(filters=filters, page=1, per_page=min(results_wanted * 2, 50))
-    except Exception as e:
-        err_msg = f"Ошибка запроса к Hirify API: {e}"
-        logger.error(err_msg)
-        df_empty = pd.DataFrame(columns=df_cols)
-        df_empty.attrs["errors"] = {"hirify": err_msg}
-        return df_empty
-
-    cards = search_res.get("data") or []
-    if not isinstance(cards, list):
-        cards = []
-
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=hours_old) if hours_old and hours_old > 0 else None
 
@@ -257,5 +220,153 @@ def scrape_hirify(
             "job_type": "full_time",
         })
 
-    return pd.DataFrame(matched_rows, columns=df_cols)
+    return pd.DataFrame(matched_rows, columns=DF_COLS)
+
+
+def scrape_hirify(
+    term: str,
+    location: str,
+    results_wanted: int = 15,
+    hours_old: int = 72,
+    client: HirifyClient | None = None,
+) -> pd.DataFrame:
+    """
+    Выполняет поиск вакансий на Hirify по заданным критериям и возвращает DataFrame в стандартном формате JobFilter.
+    """
+    client = client or HirifyClient()
+
+    if not client.is_configured():
+        msg = "HIRIFY_API_KEY не установлен. Укажите ключ в переменной окружения HIRIFY_API_KEY."
+        logger.warning(msg)
+        df_empty = pd.DataFrame(columns=DF_COLS)
+        df_empty.attrs["errors"] = {"hirify": msg}
+        return df_empty
+
+    clean_term = re.sub(r"\bremote\b", "", term, flags=re.IGNORECASE).strip() or term
+
+    # Формируем фильтры Hirify
+    filters: dict[str, Any] = {
+        "search": clean_term,
+        "work_format": ["remote"],
+        "worldwide_remote": True,
+        "sort_by": "newest",
+    }
+    if hours_old and hours_old > 0:
+        if hours_old <= 24:
+            filters["period"] = "day"
+        elif hours_old <= 72:
+            filters["period"] = "three_days"
+        elif hours_old <= 168:
+            filters["period"] = "week"
+        else:
+            filters["period"] = "month"
+
+    loc_lower = (location or "").lower()
+    if "georgia" in loc_lower or "ge" == loc_lower:
+        filters["my_location"] = "GE"
+    elif "uk" in loc_lower or "united kingdom" in loc_lower:
+        filters["my_location"] = "GB"
+    elif "poland" in loc_lower:
+        filters["my_location"] = "PL"
+    elif "germany" in loc_lower:
+        filters["my_location"] = "DE"
+
+    try:
+        search_res = client.search_vacancies(filters=filters, page=1, per_page=min(results_wanted * 2, 50))
+    except Exception as e:
+        err_msg = f"Ошибка запроса к Hirify API: {e}"
+        logger.error(err_msg)
+        df_empty = pd.DataFrame(columns=DF_COLS)
+        df_empty.attrs["errors"] = {"hirify": err_msg}
+        return df_empty
+
+    cards = search_res.get("data") or []
+    if not isinstance(cards, list):
+        cards = []
+
+    return _cards_to_dataframe(cards, client=client, results_wanted=results_wanted, hours_old=hours_old)
+
+
+def scrape_hirify_feed(
+    feed_id: int,
+    results_wanted: int = 15,
+    hours_old: int = 72,
+    client: HirifyClient | None = None,
+) -> pd.DataFrame:
+    """
+    Выполняет поиск вакансий по конкретному сохранённому фильтру (feed) Hirify.
+    """
+    client = client or HirifyClient()
+
+    if not client.is_configured():
+        msg = "HIRIFY_API_KEY не установлен. Укажите ключ в переменной окружения HIRIFY_API_KEY."
+        logger.warning(msg)
+        df_empty = pd.DataFrame(columns=DF_COLS)
+        df_empty.attrs["errors"] = {"hirify": msg}
+        return df_empty
+
+    try:
+        res = client.get_feed_vacancies(feed_id=feed_id, page=1, per_page=min(max(results_wanted * 2, 20), 50))
+    except Exception as e:
+        err_msg = f"Ошибка запроса к Hirify Feeds API (feed #{feed_id}): {e}"
+        logger.error(err_msg)
+        df_empty = pd.DataFrame(columns=DF_COLS)
+        df_empty.attrs["errors"] = {"hirify": err_msg}
+        return df_empty
+
+    cards = res.get("data") or []
+    if not isinstance(cards, list):
+        cards = []
+
+    return _cards_to_dataframe(cards, client=client, results_wanted=results_wanted, hours_old=hours_old)
+
+
+def scrape_hirify_active_feeds(
+    results_wanted: int = 25,
+    hours_old: int = 72,
+    client: HirifyClient | None = None,
+) -> pd.DataFrame:
+    """
+    Получает вакансии по всем активным фильтрам пользователя в Hirify, объединяя и дедуплицируя результат.
+    """
+    client = client or HirifyClient()
+
+    if not client.is_configured():
+        msg = "HIRIFY_API_KEY не установлен. Укажите ключ в переменной окружения HIRIFY_API_KEY."
+        logger.warning(msg)
+        df_empty = pd.DataFrame(columns=DF_COLS)
+        df_empty.attrs["errors"] = {"hirify": msg}
+        return df_empty
+
+    try:
+        all_feeds = client.get_feeds()
+    except Exception as e:
+        err_msg = f"Ошибка получения списка фильтров Hirify: {e}"
+        logger.error(err_msg)
+        df_empty = pd.DataFrame(columns=DF_COLS)
+        df_empty.attrs["errors"] = {"hirify": err_msg}
+        return df_empty
+
+    active_feeds = [f for f in all_feeds if f.get("is_active")]
+    if not active_feeds:
+        logger.info("У пользователя нет активных фильтров в Hirify.")
+        return pd.DataFrame(columns=DF_COLS)
+
+    frames: list[pd.DataFrame] = []
+    for feed in active_feeds:
+        fid = feed.get("id")
+        if not fid:
+            continue
+        df_feed = scrape_hirify_feed(feed_id=fid, results_wanted=results_wanted, hours_old=hours_old, client=client)
+        if not df_feed.empty:
+            frames.append(df_feed)
+
+    if not frames:
+        return pd.DataFrame(columns=DF_COLS)
+
+    combined = pd.concat(frames, ignore_index=True)
+    combined = combined.drop_duplicates(subset=["id"]).copy()
+    if results_wanted and len(combined) > results_wanted:
+        return combined.iloc[:results_wanted].copy()
+    return combined
 

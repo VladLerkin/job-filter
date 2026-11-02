@@ -180,6 +180,8 @@ def fetch_and_filter_jobs(
     llm_model: str = config.DEFAULT_MODEL,
     llm_limit: int = 25,
     on_progress: Callable[[str], None] | None = None,
+    hirify_mode: str = "feeds",
+    hirify_feed_id: int | str | None = None,
 ) -> list[dict]:
     def emit(msg: str) -> None:
         logger.info("%s", msg)
@@ -201,34 +203,81 @@ def fetch_and_filter_jobs(
     frames: list[pd.DataFrame] = []
     easy_label = " [⚡ Только Easy Apply]" if easy_apply else ""
 
-    for idx, term in enumerate(terms):
-        if idx > 0:
-            time.sleep(random.uniform(2.0, 4.0))
+    if site == "hirify" and hirify_mode == "feeds":
+        from job_filter.scraping.hirify_adapter import HirifyClient, scrape_hirify_feed
+        client = HirifyClient()
+        if not client.is_configured():
+            emit("⚠️ HIRIFY_API_KEY не установлен. Укажите ключ в файле .env.")
+        else:
+            try:
+                feeds = client.get_feeds()
+                active_feeds = [f for f in feeds if f.get("is_active")]
+                target_feeds = []
 
-        try:
-            emit(f"🔍 Поиск [{site}] '{term}' в '{location}' (за последние {hours_old}ч){easy_label}...")
-            df = scrape_site(
-                site=site,
-                term=term,
-                location=location,
-                country_indeed=country_indeed,
-                results_wanted=results_wanted,
-                hours_old=hours_old,
-                easy_apply=easy_apply,
-                linkedin_company_ids=linkedin_company_ids,
-            )
+                if hirify_feed_id is not None and str(hirify_feed_id).strip() not in ("", "all_active", "all"):
+                    try:
+                        fid_int = int(hirify_feed_id)
+                        target_feeds = [f for f in feeds if f.get("id") == fid_int]
+                        if not target_feeds:
+                            target_feeds = [{"id": fid_int, "name": f"Фильтр #{fid_int}"}]
+                    except ValueError:
+                        target_feeds = active_feeds
+                else:
+                    target_feeds = active_feeds
 
-            site_errors = (df.attrs or {}).get("errors") or {}
-            for err_site, err_msg in site_errors.items():
-                emit(f"  ⚠️ [{err_site}] Сообщение провайдера: {err_msg}")
+                emit(f"🔍 [hirify] Поиск по сохранённым фильтрам ({len(target_feeds)} шт., за последние {hours_old}ч)...")
+                for f_info in target_feeds:
+                    fid = f_info.get("id")
+                    fname = f_info.get("name") or f"Feed #{fid}"
+                    emit(f"  ↳ Сбор по фильтру '{fname}' (ID: {fid})...")
+                    df = scrape_hirify_feed(
+                        feed_id=fid,
+                        results_wanted=results_wanted,
+                        hours_old=hours_old,
+                        client=client,
+                    )
+                    site_errors = (df.attrs or {}).get("errors") or {}
+                    for err_site, err_msg in site_errors.items():
+                        emit(f"    ⚠️ [{err_site}] Сообщение: {err_msg}")
 
-            if not df.empty:
-                emit(f"  ↳ [{site}] Найдено по '{term}': {len(df)}")
-                frames.append(df)
-            else:
-                emit(f"  ↳ [{site}] По '{term}' вакансий не найдено.")
-        except Exception as e:
-            emit(f"  ⚠️ [{site}] Ошибка поиска для '{term}': {e}")
+                    if not df.empty:
+                        emit(f"    ↳ Найдено вакансий: {len(df)}")
+                        frames.append(df)
+                    else:
+                        emit(f"    ↳ По фильтру '{fname}' новых вакансий не найдено.")
+            except Exception as e:
+                emit(f"  ⚠️ [hirify] Ошибка при сборе по фильтрам: {e}")
+    else:
+        for idx, term in enumerate(terms):
+            if idx > 0:
+                time.sleep(random.uniform(2.0, 4.0))
+
+            try:
+                emit(f"🔍 Поиск [{site}] '{term}' в '{location}' (за последние {hours_old}ч){easy_label}...")
+                df = scrape_site(
+                    site=site,
+                    term=term,
+                    location=location,
+                    country_indeed=country_indeed,
+                    results_wanted=results_wanted,
+                    hours_old=hours_old,
+                    easy_apply=easy_apply,
+                    linkedin_company_ids=linkedin_company_ids,
+                    hirify_mode=hirify_mode,
+                    hirify_feed_id=hirify_feed_id,
+                )
+
+                site_errors = (df.attrs or {}).get("errors") or {}
+                for err_site, err_msg in site_errors.items():
+                    emit(f"  ⚠️ [{err_site}] Сообщение провайдера: {err_msg}")
+
+                if not df.empty:
+                    emit(f"  ↳ [{site}] Найдено по '{term}': {len(df)}")
+                    frames.append(df)
+                else:
+                    emit(f"  ↳ [{site}] По '{term}' вакансий не найдено.")
+            except Exception as e:
+                emit(f"  ⚠️ [{site}] Ошибка поиска для '{term}': {e}")
 
     new_matches_count = 0
     if frames:

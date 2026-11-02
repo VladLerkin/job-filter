@@ -9,6 +9,8 @@ from job_filter.scraping.hirify_adapter import (
     _parse_published_date,
     _format_salary,
     scrape_hirify,
+    scrape_hirify_feed,
+    scrape_hirify_active_feeds,
 )
 from job_filter.scraping.providers import scrape_site, SUPPORTED_SITES
 
@@ -121,5 +123,86 @@ def test_providers_scrape_site_dispatch_hirify():
         results_wanted=5,
         hours_old=24,
         easy_apply=None,
+    )
+    assert isinstance(df, pd.DataFrame)
+
+
+def test_scrape_hirify_feed_mocked():
+    mock_client = MagicMock(spec=HirifyClient)
+    mock_client.is_configured.return_value = True
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    mock_client.get_feed_vacancies.return_value = {
+        "meta": {"feed": {"id": 60082, "name": "AI Agentic Engineer"}},
+        "data": [
+            {
+                "vacancy_id": 201,
+                "title": "Agentic AI Specialist",
+                "slug": "agentic-ai-specialist-201",
+                "company_masked": False,
+                "company": "AgentLabs",
+                "published_at": now_iso,
+                "regions": ["Worldwide"],
+                "remote_type": "global",
+                "grades": ["Senior"],
+                "salary": {"from": 6000, "to": 9000, "currency": "$", "period": "mo"},
+            }
+        ]
+    }
+    mock_client.read_vacancy.return_value = {
+        "vacancy_id": 201,
+        "description": "Agentic workflows with LangGraph and AutoGen",
+    }
+
+    df = scrape_hirify_feed(feed_id=60082, results_wanted=5, hours_old=24, client=mock_client)
+    assert len(df) == 1
+    row = df.iloc[0]
+    assert row["id"] == "hf-201"
+    assert row["title"] == "Agentic AI Specialist"
+    assert row["company"] == "AgentLabs"
+    assert "LangGraph" in row["description"]
+
+
+def test_scrape_hirify_active_feeds_mocked():
+    mock_client = MagicMock(spec=HirifyClient)
+    mock_client.is_configured.return_value = True
+
+    mock_client.get_feeds.return_value = [
+        {"id": 1, "name": "Feed Active", "is_active": True},
+        {"id": 2, "name": "Feed Inactive", "is_active": False},
+    ]
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    mock_client.get_feed_vacancies.return_value = {
+        "data": [
+            {
+                "vacancy_id": 301,
+                "title": "Staff Backend Engineer",
+                "slug": "staff-backend-301",
+                "company": "TechCorp",
+                "published_at": now_iso,
+            }
+        ]
+    }
+    mock_client.read_vacancy.return_value = {"description": "Java and Spring Boot"}
+
+    df = scrape_hirify_active_feeds(results_wanted=10, hours_old=24, client=mock_client)
+    # Feed 2 is inactive, so only Feed 1 should be queried
+    mock_client.get_feed_vacancies.assert_called_once_with(feed_id=1, page=1, per_page=20)
+    assert len(df) == 1
+    assert df.iloc[0]["id"] == "hf-301"
+
+
+def test_providers_scrape_site_dispatch_hirify_feeds_mode():
+    df = scrape_site(
+        site="hirify",
+        term="",
+        location="",
+        country_indeed="",
+        results_wanted=5,
+        hours_old=24,
+        easy_apply=None,
+        hirify_mode="feeds",
+        hirify_feed_id="all_active",
     )
     assert isinstance(df, pd.DataFrame)

@@ -420,6 +420,91 @@
       return checked ? checked.value : 'linkedin';
     }
 
+    let hirifyFeedsCache = null;
+
+    async function loadHirifyFeeds(force = false) {
+      const select = document.getElementById('hirifyFeedSelect');
+      const statusEl = document.getElementById('hirifyFeedsStatus');
+      if (!select) return;
+
+      if (hirifyFeedsCache && !force) {
+        renderHirifyFeedsSelect(hirifyFeedsCache);
+        return;
+      }
+
+      if (statusEl) statusEl.textContent = 'Загрузка...';
+      try {
+        const res = await fetch('/api/hirify/feeds');
+        const data = await res.json();
+        if (!data.configured) {
+          if (statusEl) statusEl.textContent = 'HIRIFY_API_KEY не задан';
+          select.innerHTML = '<option value="">⚠️ HIRIFY_API_KEY не установлен в .env</option>';
+          return;
+        }
+        if (data.error) {
+          if (statusEl) statusEl.textContent = 'Ошибка загрузки';
+          select.innerHTML = `<option value="">⚠️ Ошибка: ${escapeHtml(data.error)}</option>`;
+          return;
+        }
+        hirifyFeedsCache = data.feeds || [];
+        renderHirifyFeedsSelect(hirifyFeedsCache);
+      } catch (err) {
+        if (statusEl) statusEl.textContent = 'Сбой сети';
+        select.innerHTML = `<option value="">⚠️ Не удалось загрузить фильтры</option>`;
+      }
+    }
+
+    function renderHirifyFeedsSelect(feeds) {
+      const select = document.getElementById('hirifyFeedSelect');
+      const statusEl = document.getElementById('hirifyFeedsStatus');
+      if (!select) return;
+
+      const activeFeeds = feeds.filter(f => f.is_active);
+      const inactiveFeeds = feeds.filter(f => !f.is_active);
+
+      if (statusEl) {
+        statusEl.textContent = `Активных: ${activeFeeds.length} из ${feeds.length}`;
+      }
+
+      let html = `<option value="all_active">★ Все активные фильтры (${activeFeeds.map(f => f.name).join(' + ') || 'нет активных'})</option>`;
+
+      if (activeFeeds.length > 0) {
+        html += `<optgroup label="🟢 Активные фильтры">`;
+        activeFeeds.forEach(f => {
+          html += `<option value="${f.id}">🟢 ${escapeHtml(f.name)} (ID: ${f.id})</option>`;
+        });
+        html += `</optgroup>`;
+      }
+
+      if (inactiveFeeds.length > 0) {
+        html += `<optgroup label="⚪ Неактивные фильтры в Hirify">`;
+        inactiveFeeds.forEach(f => {
+          html += `<option value="${f.id}">⚪ ${escapeHtml(f.name)} (ID: ${f.id}, неактивен)</option>`;
+        });
+        html += `</optgroup>`;
+      }
+
+      select.innerHTML = html;
+    }
+
+    function onHirifyModeChange() {
+      const modeRadio = document.querySelector('input[name="hirifyModeRadio"]:checked');
+      const mode = modeRadio ? modeRadio.value : 'feeds';
+      const feedsWrap = document.getElementById('hirifyFeedsWrap');
+      const searchTermsWrap = document.getElementById('searchTermsWrap');
+      const locationWrap = document.getElementById('locationWrap');
+
+      if (mode === 'feeds') {
+        if (feedsWrap) feedsWrap.classList.remove('hidden');
+        if (searchTermsWrap) searchTermsWrap.classList.add('hidden');
+        if (locationWrap) locationWrap.classList.add('hidden');
+      } else {
+        if (feedsWrap) feedsWrap.classList.add('hidden');
+        if (searchTermsWrap) searchTermsWrap.classList.remove('hidden');
+        if (locationWrap) locationWrap.classList.remove('hidden');
+      }
+    }
+
     function onProviderChange() {
       const provider = getSelectedProvider();
       const cfg = PROVIDER_CONFIG[provider] || PROVIDER_CONFIG.linkedin;
@@ -429,6 +514,10 @@
       const remoteBadgeEl = document.getElementById('remoteMechanismBadge');
       const easyWrap = document.getElementById('easyApplyWrap');
       const easyInput = document.getElementById('easyApply');
+      const modeBar = document.getElementById('hirifyModeBar');
+      const feedsWrap = document.getElementById('hirifyFeedsWrap');
+      const searchTermsWrap = document.getElementById('searchTermsWrap');
+      const locationWrap = document.getElementById('locationWrap');
 
       locLabel.textContent = cfg.label;
       hintEl.textContent = cfg.hint;
@@ -444,6 +533,17 @@
       } else {
         easyInput.checked = false;
         easyWrap.classList.add('opacity-40', 'pointer-events-none');
+      }
+
+      if (provider === 'hirify') {
+        if (modeBar) modeBar.classList.remove('hidden');
+        loadHirifyFeeds();
+        onHirifyModeChange();
+      } else {
+        if (modeBar) modeBar.classList.add('hidden');
+        if (feedsWrap) feedsWrap.classList.add('hidden');
+        if (searchTermsWrap) searchTermsWrap.classList.remove('hidden');
+        if (locationWrap) locationWrap.classList.remove('hidden');
       }
     }
 
@@ -801,6 +901,15 @@
       const countryIndeed = (provider === 'indeed' || provider === 'glassdoor') ? location : 'uk';
       const siteNames = [provider];
 
+      let hirifyMode = 'feeds';
+      let hirifyFeedId = 'all_active';
+      if (provider === 'hirify') {
+        const modeRadio = document.querySelector('input[name="hirifyModeRadio"]:checked');
+        hirifyMode = modeRadio ? modeRadio.value : 'feeds';
+        const feedSelect = document.getElementById('hirifyFeedSelect');
+        hirifyFeedId = feedSelect ? feedSelect.value : 'all_active';
+      }
+
       document.getElementById('logContainer').classList.remove('hidden');
       document.getElementById('logOutput').textContent = '';
       logCursor = 0;
@@ -817,7 +926,9 @@
           hours_old: hoursOld,
           easy_apply: easyApply,
           llm_limit: llmLimit,
-          enrich_only: enrichOnly
+          enrich_only: enrichOnly,
+          hirify_mode: hirifyMode,
+          hirify_feed_id: hirifyFeedId
         })
       });
 

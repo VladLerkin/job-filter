@@ -20,6 +20,8 @@ class RunPipelineRequest(BaseModel):
     llm_model: str = config.DEFAULT_MODEL
     llm_limit: int = 15
     enrich_only: bool = False
+    hirify_mode: Literal["feeds", "custom"] = "feeds"
+    hirify_feed_id: int | str | None = None
 
 
 class UpdateStatusRequest(BaseModel):

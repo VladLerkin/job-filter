@@ -63,3 +63,11 @@ def test_pipeline_status(client):
     assert res.status_code == 200
     assert "running" in res.json()
 
+
+def test_hirify_feeds_endpoint(client):
+    res = client.get("/api/hirify/feeds")
+    assert res.status_code == 200
+    data = res.json()
+    assert "configured" in data
+    assert "feeds" in data
+
