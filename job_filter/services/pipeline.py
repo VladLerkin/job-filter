@@ -130,6 +130,7 @@ def _save_processed_job(
 ) -> None:
     cur = jobs_repo.get_job(conn, job_id)
     user_status = (cur.get("user_status") if cur and cur.get("user_status") else "new")
+    user_reject_reason = cur.get("user_reject_reason") if cur else None
     existing_apply_url = cur.get("apply_url") if cur else None
     existing_ats_domain = cur.get("ats_domain") if cur else None
 
@@ -160,6 +161,7 @@ def _save_processed_job(
             "matched": 1 if matched else 0,
             "reject_reason": reject_reason,
             "user_status": user_status,
+            "user_reject_reason": user_reject_reason,
             "apply_url": final_apply_url,
             "ats_domain": final_ats_domain,
         },

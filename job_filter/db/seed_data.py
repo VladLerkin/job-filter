@@ -51,6 +51,25 @@ DEFAULT_BLACKLISTED_BOARDS: list[tuple[str, str]] = [
     ("icims.com", "iCIMS (icims.com) — невозможно нормально заполнить форму"),
 ]
 
+DEFAULT_GEO_PREFERENCES: dict = {
+    "current_location": "Georgia, Tbilisi (UTC+4)",
+    "allowed_macro_regions": [
+        "Georgia",
+        "Tbilisi",
+        "Batumi",
+        "Caucasus",
+        "South Caucasus",
+        "Eastern Europe",
+        "CEE",
+        "EMEA",
+    ],
+    "allow_worldwide_remote": True,
+    "relocation_policy": "with_sponsorship_only",
+    "reject_unsupported_single_country": True,
+    "custom_notes": "Candidate resides in Georgia and is available for global remote roles via B2B/contractor agreements without visa sponsorship. Open to relocation only if visa sponsorship and relocation assistance are provided.",
+}
+
+
 
 def default_skill_matrix() -> dict:
     """Возвращает копию дефолтной матрицы в формате API (/api/skills/matrix)."""

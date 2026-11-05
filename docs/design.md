@@ -249,6 +249,18 @@ sequenceDiagram
    - Changing a skill's category or experience dynamically recalculates projected points on the client.
 4. **Auto-Creation of Categories**: When applying changes, if a skill references a category not yet stored in SQLite, `cv_service.py` automatically initializes it using the official parameters from `DEFAULT_SKILL_CATEGORIES`.
 
+### 4.4 Graduated Geographic & Remote Scoring (Geo Tiers)
+
+Job Filter dynamically evaluates geographic eligibility using user-defined preferences stored in `candidate_settings.geo_preferences_json`:
+
+| Tier | Criteria | Relocation Policy | Points Impact |
+|---|---|---|:---:|
+| **Tier 1A: Local & Macro** | Candidate's home location (Georgia) or macro-region (Caucasus, Eastern Europe, CEE). | Not required | **+20 pts** |
+| **Tier 1B: True Global Remote** | Worldwide, Anywhere, Global Remote, Work from anywhere (WFA) via B2B/Contractor. | Not required | **+18 pts** |
+| **Tier 2A: Broad EMEA** | EMEA, European timezone overlap (UTC±3h) with contractor/B2B availability. | Not required | **+12 pts** |
+| **Tier 2B: Relocation Opportunity** | Foreign country lock (US, UK, Germany, Spain, etc.) **with** active Visa Sponsorship or Relocation package. | Relocation allowed | **+10 pts** |
+| **Tier 3: Ineligible Single-Country Lock** | Foreign country lock (US-only, UK-only, EU-only, Germany-only, etc.) **without** relocation assistance. | No relocation | **Rejected (`geo_passed = False`)** |
+
 ---
 
 ## 5. Database Schema & Persistence
@@ -298,7 +310,8 @@ SQLite in **WAL (Write-Ahead Logging)** mode is used for fast concurrent reads a
 │ PK  id (always 1)        │         │ PK  domain               │
 │     profile_text         │         │     reason               │
 │     cv_text              │         │     created_at           │
-│     updated_at           │         └──────────────────────────┘
+│     geo_preferences_json │         └──────────────────────────┘
+│     updated_at           │
 └──────────────────────────┘
 
 ┌──────────────────────────┐         ┌──────────────────────────┐

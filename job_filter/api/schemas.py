@@ -25,12 +25,14 @@ class RunPipelineRequest(BaseModel):
 
 
 class UpdateStatusRequest(BaseModel):
-    user_status: Literal["new", "applied", "saved", "hidden"]
+    user_status: Literal["new", "applied", "saved", "hidden", "rejected"]
+    user_reject_reason: str | None = None
 
 
 class CandidateProfileRequest(BaseModel):
     profile_text: str = ""
     cv_text: str = ""
+    geo_preferences: dict | None = None
 
 
 class SkillCategoryRequest(BaseModel):

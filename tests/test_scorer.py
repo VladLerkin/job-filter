@@ -25,6 +25,39 @@ def test_classify_geo_tier_global():
     assert "Tier 1" in tier
 
 
+def test_classify_geo_tier_local_georgia():
+    enr = JobEnrichment(
+        location_restrictions=["Georgia", "Eastern Europe"],
+        remote_policy_detail="Remote within Georgia / Caucasus / Eastern Europe",
+    )
+    passed, tier, reason = classify_geo_tier("Senior Backend Engineer", "Remote Georgia", enr)
+    assert passed is True
+    assert "Tier 1A" in tier
+
+
+def test_classify_geo_tier_country_lock_with_relocation():
+    enr = JobEnrichment(
+        location_restrictions=["Germany only"],
+        relocation_assistance="yes",
+        relocation_benefits_detail="Visa sponsorship and relocation package provided",
+    )
+    passed, tier, reason = classify_geo_tier("Backend Lead", "Based in Berlin with visa support", enr)
+    assert passed is True
+    assert "Tier 2B" in tier
+    assert "Relocation" in tier
+
+
+def test_classify_geo_tier_country_lock_no_relocation():
+    enr = JobEnrichment(
+        location_restrictions=["Germany only"],
+        relocation_assistance="no",
+        remote_policy_detail="Must reside in Germany",
+    )
+    passed, tier, reason = classify_geo_tier("Backend Engineer", "Germany remote", enr)
+    assert passed is False
+    assert "single_country_lock" in (reason or "")
+
+
 def test_score_vacancy_top_match():
     enr = JobEnrichment(
         location_restrictions=["Worldwide"],

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from job_filter.db.seed_data import (
     DEFAULT_BLACKLISTED_BOARDS,
     DEFAULT_CANDIDATE_SKILLS,
+    DEFAULT_GEO_PREFERENCES,
     DEFAULT_SKILL_CATEGORIES,
 )
 
@@ -33,7 +34,8 @@ _DDL = (
         score INTEGER,
         tier TEXT,
         score_details_json TEXT,
-        user_status TEXT DEFAULT 'new'
+        user_status TEXT DEFAULT 'new',
+        user_reject_reason TEXT
     )
     """,
     """
@@ -57,6 +59,7 @@ _DDL = (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         profile_text TEXT,
         cv_text TEXT,
+        geo_preferences_json TEXT,
         updated_at TEXT
     )
     """,
@@ -110,6 +113,7 @@ _PROCESSED_JOBS_MIGRATIONS = {
     "user_status": "TEXT DEFAULT 'new'",
     "apply_url": "TEXT",
     "ats_domain": "TEXT",
+    "user_reject_reason": "TEXT",
 }
 
 
@@ -122,17 +126,29 @@ def apply_schema(conn: sqlite3.Connection) -> None:
         if col_name not in existing_cols:
             conn.execute(f"ALTER TABLE processed_jobs ADD COLUMN {col_name} {col_type}")
 
+    # Мягкая миграция для candidate_settings
+    cand_cols = {row[1] for row in conn.execute("PRAGMA table_info(candidate_settings)").fetchall()}
+    if "geo_preferences_json" not in cand_cols:
+        conn.execute("ALTER TABLE candidate_settings ADD COLUMN geo_preferences_json TEXT")
+
 
 def seed_initial_data(conn: sqlite3.Connection) -> None:
     now_iso = datetime.now(timezone.utc).isoformat()
+    geo_default_json = json.dumps(DEFAULT_GEO_PREFERENCES, ensure_ascii=False)
 
     conn.executemany(
         "INSERT OR IGNORE INTO blacklisted_boards (domain, reason, created_at) VALUES (?, ?, ?)",
         [(dom, rsn, now_iso) for dom, rsn in DEFAULT_BLACKLISTED_BOARDS],
     )
     conn.execute(
-        "INSERT OR IGNORE INTO candidate_settings (id, profile_text, cv_text, updated_at) VALUES (1, '', '', ?)",
-        (now_iso,),
+        "INSERT OR IGNORE INTO candidate_settings (id, profile_text, cv_text, geo_preferences_json, updated_at) "
+        "VALUES (1, '', '', ?, ?)",
+        (geo_default_json, now_iso),
+    )
+    # Если строка уже есть, но geo_preferences_json пустой — инициализируем дефолтом
+    conn.execute(
+        "UPDATE candidate_settings SET geo_preferences_json = ? WHERE id = 1 AND (geo_preferences_json IS NULL OR geo_preferences_json = '')",
+        (geo_default_json,),
     )
 
     # Стартовые категории и навыки засеваются ТОЛЬКО один раз — при первом запуске

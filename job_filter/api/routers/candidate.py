@@ -25,7 +25,12 @@ def update_candidate_profile(
     body: CandidateProfileRequest,
     conn: sqlite3.Connection = Depends(get_db),
 ):
-    return candidate_repo.save_settings(conn, body.profile_text, body.cv_text)
+    return candidate_repo.save_settings(
+        conn,
+        body.profile_text,
+        body.cv_text,
+        body.geo_preferences,
+    )
 
 
 @router.post("/upload-cv-pdf")

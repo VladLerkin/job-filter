@@ -113,6 +113,15 @@
         btn_open_job: "🔗 Open Vacancy ↗",
         btn_open_job_bad: "⚠️ Open (Blacklisted) ↗",
         btn_applied_done: "✅ Applied",
+        btn_not_fit: "❌ Not a fit",
+        btn_not_fit_title: "Mark as not suitable and specify reason for AI learning",
+        modal_reject_title: "❌ Why is this job not a fit?",
+        modal_reject_quick_select: "Quick reason select (1-click):",
+        modal_reject_reason_label: "Reason (will be saved for future AI learning):",
+        modal_reject_placeholder: "Specify details or select an option above...",
+        btn_confirm_reject: "❌ Save & Dismiss",
+        user_reject_reason_label: "Dismissed reason",
+        btn_edit_reason: "Edit",
         btn_return_new: "↩ Return to New",
         btn_blacklist_job: "⛔ Blacklist",
         btn_hide_job: "Dismiss",
@@ -127,6 +136,7 @@
         toast_saved: "Profile saved successfully",
         toast_reset: "Default categories and skills restored",
         toast_applied: "Marked as Applied ✅",
+        toast_rejected: "Marked as not suitable ❌",
         toast_status_updated: "Status updated"
       },
       ru: {
@@ -238,6 +248,15 @@
         btn_open_job: "🔗 Открыть вакансию ↗",
         btn_open_job_bad: "⚠️ Открыть (В чёрном списке) ↗",
         btn_applied_done: "✅ Откликнулся",
+        btn_not_fit: "❌ Не подошла",
+        btn_not_fit_title: "Отметить как не подходящую и указать причину для обучения ИИ",
+        modal_reject_title: "❌ Почему вакансия не подошла?",
+        modal_reject_quick_select: "Быстрый выбор типовой причины:",
+        modal_reject_reason_label: "Причина (будет сохранена для последующего обучения):",
+        modal_reject_placeholder: "Укажите подробности или выберите вариант выше...",
+        btn_confirm_reject: "❌ Сохранить и скрыть",
+        user_reject_reason_label: "Причина отклонения",
+        btn_edit_reason: "Изменить",
         btn_return_new: "↩ Вернуть в новые",
         btn_blacklist_job: "⛔ В черный список",
         btn_hide_job: "Скрыть",
@@ -252,6 +271,7 @@
         toast_saved: "Профиль успешно сохранен",
         toast_reset: "Базовый набор категорий и навыков восстановлен",
         toast_applied: "Отмечено как «Откликнулся» ✅",
+        toast_rejected: "Отмечено как «Не подошла» ❌",
         toast_status_updated: "Статус обновлен"
       }
     };
@@ -726,6 +746,48 @@
       }
     }
 
+    let currentRejectJobId = null;
+
+    function openRejectJobModal(jobId, company, title, existingReason = '') {
+      currentRejectJobId = jobId;
+      const subtitleEl = document.getElementById('modalRejectJobSubtitle');
+      if (subtitleEl) subtitleEl.textContent = `${title || ''} @ ${company || ''}`;
+      const inputEl = document.getElementById('modalRejectReasonInput');
+      if (inputEl) inputEl.value = existingReason || '';
+      const modal = document.getElementById('rejectJobModal');
+      if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+      setTimeout(() => inputEl && inputEl.focus(), 50);
+    }
+
+    function closeRejectJobModal() {
+      currentRejectJobId = null;
+      const modal = document.getElementById('rejectJobModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+    }
+
+    function selectRejectPreset(reason) {
+      const input = document.getElementById('modalRejectReasonInput');
+      if (input) {
+        input.value = reason;
+        input.focus();
+      }
+    }
+
+    async function confirmRejectJobModal() {
+      if (!currentRejectJobId) return;
+      const input = document.getElementById('modalRejectReasonInput');
+      const reason = (input ? input.value.trim() : '') || (currentLang === 'ru' ? 'Не подошла (причина не указана)' : 'Not suitable (no details given)');
+      const jobId = currentRejectJobId;
+      closeRejectJobModal();
+      await setJobStatus(jobId, 'rejected', reason);
+    }
+
     async function addBadDomainFromPanel() {
       const domain_or_url = document.getElementById('newBadDomainInput').value.trim();
       const reason = document.getElementById('newBadReasonInput').value.trim() || 'Невозможно заполнить форму (в чёрном списке)';
@@ -816,26 +878,74 @@
       document.getElementById('cvTextInput').value = data.cv_text || '';
       const tsEl = document.getElementById('candidateUpdatedAt');
       tsEl.textContent = data.updated_at ? `Обновлено: ${data.updated_at.replace('T', ' ').slice(0, 19)} UTC` : '';
+
+      if (data.geo_preferences) {
+        const gp = data.geo_preferences;
+        const curLocEl = document.getElementById('geoCurrentLocation');
+        if (curLocEl) curLocEl.value = gp.current_location || '';
+
+        const macroEl = document.getElementById('geoMacroRegions');
+        if (macroEl) {
+          const macros = Array.isArray(gp.allowed_macro_regions) ? gp.allowed_macro_regions.join(', ') : (gp.allowed_macro_regions || '');
+          macroEl.value = macros;
+        }
+
+        const reloEl = document.getElementById('geoRelocationPolicy');
+        if (reloEl) reloEl.value = gp.relocation_policy || 'with_sponsorship_only';
+
+        const wwEl = document.getElementById('geoAllowWorldwide');
+        if (wwEl) wwEl.checked = gp.allow_worldwide_remote !== false;
+
+        const rejEl = document.getElementById('geoRejectSingleCountry');
+        if (rejEl) rejEl.checked = gp.reject_unsupported_single_country !== false;
+
+        const notesEl = document.getElementById('geoCustomNotes');
+        if (notesEl) notesEl.value = gp.custom_notes || '';
+      }
     }
 
     async function saveCandidateProfile() {
       const profile_text = document.getElementById('profileTextInput').value;
       const cv_text = document.getElementById('cvTextInput').value;
+
+      const rawMacros = document.getElementById('geoMacroRegions')?.value || '';
+      const allowed_macro_regions = rawMacros.split(',').map(s => s.trim()).filter(Boolean);
+
+      const geo_preferences = {
+        current_location: document.getElementById('geoCurrentLocation')?.value?.trim() || 'Georgia, Tbilisi (UTC+4)',
+        allowed_macro_regions: allowed_macro_regions.length > 0 ? allowed_macro_regions : ['Georgia', 'Caucasus', 'Eastern Europe', 'CEE', 'EMEA'],
+        relocation_policy: document.getElementById('geoRelocationPolicy')?.value || 'with_sponsorship_only',
+        allow_worldwide_remote: document.getElementById('geoAllowWorldwide')?.checked !== false,
+        reject_unsupported_single_country: document.getElementById('geoRejectSingleCountry')?.checked !== false,
+        custom_notes: document.getElementById('geoCustomNotes')?.value?.trim() || ''
+      };
+
       const res = await fetch('/api/candidate', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profile_text, cv_text })
+        body: JSON.stringify({ profile_text, cv_text, geo_preferences })
       });
       const data = await res.json();
       const tsEl = document.getElementById('candidateUpdatedAt');
       tsEl.textContent = data.updated_at ? `Обновлено: ${data.updated_at.replace('T', ' ').slice(0, 19)} UTC` : '';
-      showToast('Профиль и CV сохранены в базу данных jobs.db ✅');
+      showToast('Профиль, CV и гео-преференции сохранены в базу данных jobs.db ✅');
     }
 
     function exportCandidateJson() {
+      const rawMacros = document.getElementById('geoMacroRegions')?.value || '';
+      const allowed_macro_regions = rawMacros.split(',').map(s => s.trim()).filter(Boolean);
+
       const payload = {
         profile: document.getElementById('profileTextInput').value,
-        cv: document.getElementById('cvTextInput').value
+        cv: document.getElementById('cvTextInput').value,
+        geo_preferences: {
+          current_location: document.getElementById('geoCurrentLocation')?.value?.trim() || '',
+          allowed_macro_regions: allowed_macro_regions,
+          relocation_policy: document.getElementById('geoRelocationPolicy')?.value || 'with_sponsorship_only',
+          allow_worldwide_remote: document.getElementById('geoAllowWorldwide')?.checked !== false,
+          reject_unsupported_single_country: document.getElementById('geoRejectSingleCountry')?.checked !== false,
+          custom_notes: document.getElementById('geoCustomNotes')?.value?.trim() || ''
+        }
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -873,13 +983,23 @@
       event.target.value = '';
     }
 
-    async function setJobStatus(jobId, status) {
+    async function setJobStatus(jobId, status, rejectReason = null) {
+      const payload = { user_status: status };
+      if (rejectReason !== null) {
+        payload.user_reject_reason = rejectReason;
+      }
       await fetch(`/api/jobs/${encodeURIComponent(jobId)}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_status: status })
+        body: JSON.stringify(payload)
       });
-      showToast(status === 'applied' ? 'Отмечено как «Откликнулся» ✅' : 'Статус обновлен');
+      if (status === 'applied') {
+        showToast(t('toast_applied'));
+      } else if (status === 'rejected') {
+        showToast(t('toast_rejected'));
+      } else {
+        showToast(t('toast_status_updated'));
+      }
       loadJobs();
     }
 
@@ -1067,6 +1187,18 @@
                   ${t('btn_return_new')}
                 </button>
               `}
+              ${job.user_status !== 'rejected' ? `
+                <button onclick="openRejectJobModal('${escapeJsArg(job.job_id)}', '${escapeJsArg(job.company)}', '${escapeJsArg(job.title)}', '${escapeJsArg(job.user_reject_reason || '')}')"
+                  class="px-3 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/40 text-xs font-medium transition"
+                  title="${t('btn_not_fit_title')}">
+                  ${t('btn_not_fit')}
+                </button>
+              ` : (job.user_status !== 'applied' ? `
+                <button onclick="setJobStatus('${escapeJsArg(job.job_id)}', 'new')"
+                  class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition">
+                  ${t('btn_return_new')}
+                </button>
+              ` : '')}
               <button onclick="openBadBoardModal('${escapeJsArg(job.job_id)}', '${escapeJsArg(job.company)}', '${escapeJsArg(job.title)}', '${escapeJsArg(atsDomain)}')"
                 title="Blacklist job board and company"
                 class="px-2.5 py-1.5 rounded-lg bg-red-950/50 hover:bg-red-900/80 text-red-300 border border-red-800/60 text-xs font-medium transition">
@@ -1080,6 +1212,17 @@
               ` : ''}
             </div>
           </div>
+
+          ${job.user_reject_reason ? `
+            <div class="mt-3 text-xs text-rose-200 bg-rose-950/40 border border-rose-800/60 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+              <div>
+                <strong>❌ ${t('user_reject_reason_label')}:</strong> ${escapeHtml(job.user_reject_reason)}
+              </div>
+              <button onclick="openRejectJobModal('${escapeJsArg(job.job_id)}', '${escapeJsArg(job.company)}', '${escapeJsArg(job.title)}', '${escapeJsArg(job.user_reject_reason)}')" class="text-xs text-rose-400 hover:text-rose-200 underline whitespace-nowrap">
+                ${t('btn_edit_reason')}
+              </button>
+            </div>
+          ` : ''}
 
           ${fitSummary ? `
             <div class="mt-3 text-sm text-indigo-200 bg-indigo-950/40 border border-indigo-800/50 rounded-lg px-3 py-2">

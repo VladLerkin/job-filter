@@ -87,7 +87,7 @@ def list_jobs(conn: sqlite3.Connection, tab: str = "actionable") -> dict:
         # Подсчет статистики
         if u_status == "applied":
             stats["applied"] += 1
-        elif u_status == "hidden":
+        elif u_status in ("hidden", "rejected"):
             stats["rejected"] += 1
         elif score is not None:
             if d.get("matched") == 1 and score >= 70:
@@ -106,19 +106,19 @@ def list_jobs(conn: sqlite3.Connection, tab: str = "actionable") -> dict:
             if u_status == "applied":
                 items.append(d)
         elif tab == "pending":
-            if score is None and has_desc and not reject_reason and u_status != "hidden":
+            if score is None and has_desc and not reject_reason and u_status not in ("hidden", "rejected"):
                 items.append(d)
         elif tab == "rejected":
-            if u_status == "hidden" or (score is not None and (score < 50 or d.get("matched") == 0)) or reject_reason:
+            if u_status in ("hidden", "rejected") or (score is not None and (score < 50 or d.get("matched") == 0)) or reject_reason:
                 items.append(d)
         elif tab == "top":
-            if u_status not in ("applied", "hidden") and d.get("matched") == 1 and score is not None and score >= 70:
+            if u_status not in ("applied", "hidden", "rejected") and d.get("matched") == 1 and score is not None and score >= 70:
                 items.append(d)
         elif tab == "good":
-            if u_status not in ("applied", "hidden") and d.get("matched") == 1 and score is not None and 50 <= score < 70:
+            if u_status not in ("applied", "hidden", "rejected") and d.get("matched") == 1 and score is not None and 50 <= score < 70:
                 items.append(d)
         else:  # actionable (top + good)
-            if u_status not in ("applied", "hidden") and d.get("matched") == 1 and score is not None and score >= 50:
+            if u_status not in ("applied", "hidden", "rejected") and d.get("matched") == 1 and score is not None and score >= 50:
                 items.append(d)
 
     def sort_key(item: dict):
@@ -133,10 +133,19 @@ def list_jobs(conn: sqlite3.Connection, tab: str = "actionable") -> dict:
     return {"stats": stats, "jobs": items, "last_opened_job": last_opened_tracker.get()}
 
 
-def update_status(conn: sqlite3.Connection, job_id: str, status: str) -> bool:
-    updated = jobs_repo.set_user_status(conn, job_id, status)
+def update_status(
+    conn: sqlite3.Connection,
+    job_id: str,
+    status: str,
+    user_reject_reason: str | None = None,
+) -> bool:
+    updated = jobs_repo.set_user_status(conn, job_id, status, user_reject_reason=user_reject_reason)
     conn.commit()
     return updated > 0
+
+
+def get_user_rejections(conn: sqlite3.Connection) -> list[dict]:
+    return jobs_repo.get_user_rejected_jobs(conn)
 
 
 def record_opened(conn: sqlite3.Connection, job_id: str) -> dict | None:

@@ -58,28 +58,72 @@ Rules for resume_fit (compare job to the candidate resume provided below):
 - matched_nice_to_have: nice-to-have items the candidate has.
 - Be honest; do not assume skills not in the resume.
 
-Rules for constraints (CRITICAL for remote candidate in Georgia/Tbilisi):
-- sponsorship "no" only if explicitly stated.
+Rules for constraints & geographic eligibility:
+- Evaluate remote work eligibility, constraints, and resume_fit strictly against the CANDIDATE LOCATION & REMOTE WORK PREFERENCES provided below.
+- sponsorship "no" only if explicitly stated as no visa sponsorship / no relocation.
 - location_restrictions: exact countries, regions, or timezones where candidate MUST reside or have work permit (e.g. ["UK only"], ["Poland"], ["EU/EEA only"], ["CET +/- 2h"], ["EMEA"], ["Worldwide"]).
-- relocation_assistance / relocation_benefits_detail / remote_policy_detail / degree_required: use null, [], or "unclear" when not stated. Do not invent.
+- relocation_assistance: "yes" if company explicitly provides visa sponsorship or relocation package; "no" if explicitly stated as no sponsorship/relocation; "unclear" if not stated.
+- relocation_benefits_detail / remote_policy_detail / degree_required: use null, [], or "unclear" when not stated. Do not invent.
 """
 
 RESUME_MAX_CHARS = 12000
 
 
-def load_resume_text() -> str:
-    """Резюме + предпочтения кандидата из БД, склеенные в один блок для промпта."""
+def format_geo_preferences_prompt(geo_prefs: dict | None, profile_text: str = "") -> str:
+    """Формирует структурированный блок географических предпочтений кандидата для передачи в LLM."""
+    prefs = geo_prefs or {}
+    loc = prefs.get("current_location", "Georgia, Tbilisi (UTC+4)")
+    macro_list = prefs.get("allowed_macro_regions") or ["Georgia", "Caucasus", "Eastern Europe", "CEE", "EMEA"]
+    macro = ", ".join(macro_list) if isinstance(macro_list, list) else str(macro_list)
+    ww = "Allowed (Candidate is available for Global Remote via B2B/Contractor)" if prefs.get("allow_worldwide_remote", True) else "Disallowed"
+    relo_pol = prefs.get("relocation_policy", "with_sponsorship_only")
+    relo_desc = {
+        "with_sponsorship_only": "Candidate considers foreign roles ONLY if company provides Visa Sponsorship or Relocation assistance.",
+        "no_relocation": "Remote only, candidate will not relocate.",
+        "open_to_relocation": "Candidate is actively open to relocation for suitable roles.",
+    }.get(relo_pol, relo_pol)
+    notes = prefs.get("custom_notes", "")
+
+    lines = [
+        "=== CANDIDATE LOCATION & REMOTE WORK PREFERENCES ===",
+        f"- Current Base Location: {loc}",
+        f"- Target Local & Macro-Regions: {macro}",
+        f"- Global Remote (Worldwide / Anywhere): {ww}",
+        f"- Relocation Policy: {relo_desc}",
+    ]
+    if prefs.get("reject_unsupported_single_country", True):
+        lines.append(
+            f"- Constraint Rule: If the role strictly requires physical residency/work authorization within a single foreign country (e.g. US only, UK only, Germany only, EU/EEA only) with NO relocation assistance, explicitly record it in location_restrictions as restricted and ineligible for remote from candidate's base location ({loc})."
+        )
+    if notes:
+        lines.append(f"- Additional Candidate Notes: {notes}")
+    if profile_text:
+        lines.append(f"- Candidate Profile & Work Authorization Comments:\n{profile_text}")
+
+    return "\n".join(lines)
+
+
+def load_candidate_context() -> tuple[str, str]:
+    """Загружает текст резюме и отформатированный блок гео-преференций из БД."""
     try:
         with db_session() as conn:
             settings = candidate_repo.get_settings(conn)
     except Exception:
-        return ""
-    resume_text = settings["cv_text"].strip()
-    prefs_text = settings["profile_text"].strip()
-    combined = resume_text
-    if prefs_text:
-        combined += f"\n\n== CANDIDATE PREFERENCES & WORK AUTHORIZATION ==\n{prefs_text}"
-    return combined[:RESUME_MAX_CHARS]
+        return "", ""
+    resume_text = (settings.get("cv_text") or "").strip()
+    profile_text = (settings.get("profile_text") or "").strip()
+    geo_prefs = settings.get("geo_preferences") or {}
+
+    geo_block = format_geo_preferences_prompt(geo_prefs, profile_text)
+    return resume_text[:RESUME_MAX_CHARS], geo_block
+
+
+def load_resume_text() -> str:
+    """Резюме + предпочтения кандидата из БД (обратная совместимость)."""
+    cv_text, geo_block = load_candidate_context()
+    if geo_block:
+        return f"{cv_text}\n\n{geo_block}"[:RESUME_MAX_CHARS]
+    return cv_text[:RESUME_MAX_CHARS]
 
 
 def build_enrich_prompt(
@@ -88,18 +132,21 @@ def build_enrich_prompt(
     location: str | None,
     description: str,
     resume: str,
+    geo_context: str = "",
 ) -> str:
     resume_block = (
         f"\n\n--- candidate resume (for resume_fit only) ---\n{resume}\n--- end resume ---"
         if resume
         else "\n\n(no resume file; set resume_fit score to 0)"
     )
+    geo_section = f"\n\n{geo_context}\n" if geo_context else ""
     return (
         f"{SYSTEM_INSTRUCTIONS}\n\n"
         f"Job Title: {title}\n"
         f"Company: {company or 'not specified'}\n"
         f"Location (LinkedIn): {location or 'EMEA / Remote'}\n\n"
         f"Job Description:\n{description[:8000]}"
+        f"{geo_section}"
         f"{resume_block}"
     )
 
@@ -112,11 +159,17 @@ def enrich_job(
     model: str | None = None,
     resume: str | None = None,
     timeout_sec: int = config.JOB_ENRICH_TIMEOUT_SEC,
+    geo_context: str | None = None,
 ) -> JobEnrichment:
-    """Отправляет вакансию в LLM. `resume` можно передать заранее, чтобы не читать БД на каждую вакансию."""
-    if resume is None:
-        resume = load_resume_text()
-    prompt = build_enrich_prompt(title, company, location, description, resume)
+    """Отправляет вакансию в LLM. `resume` и `geo_context` можно передать заранее, чтобы не читать БД на каждую вакансию."""
+    if resume is None or geo_context is None:
+        cand_resume, cand_geo = load_candidate_context()
+        if resume is None:
+            resume = cand_resume
+        if geo_context is None:
+            geo_context = cand_geo
+
+    prompt = build_enrich_prompt(title, company, location, description, resume, geo_context=geo_context or "")
     raw = run_agy(prompt, model=model, timeout_sec=timeout_sec, json_schema=JobEnrichment.model_json_schema())
     data = unwrap_structured_output(extract_json_object(raw))
     return JobEnrichment.model_validate(data)

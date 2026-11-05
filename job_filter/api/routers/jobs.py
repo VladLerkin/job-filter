@@ -29,10 +29,25 @@ def update_job_status(
     body: UpdateStatusRequest,
     conn: sqlite3.Connection = Depends(get_db),
 ):
-    ok = jobs_service.update_status(conn, job_id, body.user_status)
+    ok = jobs_service.update_status(
+        conn,
+        job_id,
+        body.user_status,
+        user_reject_reason=body.user_reject_reason,
+    )
     if not ok:
         raise HTTPException(status_code=404, detail="Job not found")
-    return {"job_id": job_id, "user_status": body.user_status}
+    return {
+        "job_id": job_id,
+        "user_status": body.user_status,
+        "user_reject_reason": body.user_reject_reason,
+    }
+
+
+@router.get("/user-rejections")
+def list_user_rejections(conn: sqlite3.Connection = Depends(get_db)):
+    """Возвращает список отклоненных пользователем вакансий с причинами для обучения."""
+    return jobs_service.get_user_rejections(conn)
 
 
 @router.post("/{job_id}/opened")

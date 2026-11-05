@@ -8,7 +8,7 @@ _JOB_COLUMNS = (
     "seniority_level", "employment_type", "job_function", "industry", "salary",
     "description", "matched", "reject_reason", "processed_at",
     "enrichment_json", "score", "tier", "score_details_json", "user_status",
-    "apply_url", "ats_domain",
+    "apply_url", "ats_domain", "user_reject_reason",
 )
 
 
@@ -57,9 +57,43 @@ def update_enrichment_and_score(
     )
 
 
-def set_user_status(conn: sqlite3.Connection, job_id: str, user_status: str) -> int:
-    cur = conn.execute("UPDATE processed_jobs SET user_status = ? WHERE job_id = ?", (user_status, job_id))
+def set_user_status(
+    conn: sqlite3.Connection,
+    job_id: str,
+    user_status: str,
+    user_reject_reason: str | None = None,
+) -> int:
+    if user_reject_reason is not None or user_status == "rejected":
+        cur = conn.execute(
+            "UPDATE processed_jobs SET user_status = ?, user_reject_reason = ? WHERE job_id = ?",
+            (user_status, user_reject_reason, job_id),
+        )
+    elif user_status == "new":
+        cur = conn.execute(
+            "UPDATE processed_jobs SET user_status = ?, user_reject_reason = NULL WHERE job_id = ?",
+            (user_status, job_id),
+        )
+    else:
+        cur = conn.execute(
+            "UPDATE processed_jobs SET user_status = ? WHERE job_id = ?",
+            (user_status, job_id),
+        )
     return cur.rowcount
+
+
+def get_user_rejected_jobs(conn: sqlite3.Connection) -> list[dict]:
+    """Возвращает список вакансий, отклоненных пользователем с указанием причины."""
+    cur = conn.execute(
+        """
+        SELECT job_id, site, location, is_remote, title, company, url,
+               enrichment_json, score, tier, score_details_json,
+               user_status, user_reject_reason, description, processed_at
+        FROM processed_jobs
+        WHERE user_status = 'rejected' OR (user_reject_reason IS NOT NULL AND user_reject_reason != '')
+        ORDER BY processed_at DESC
+        """
+    )
+    return [dict(r) for r in cur.fetchall()]
 
 
 def list_all(conn: sqlite3.Connection) -> list[dict]:

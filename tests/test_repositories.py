@@ -75,3 +75,18 @@ def test_jobs_repo_crud(mem_db):
     job = jobs_repo.get_job(mem_db, "test-1")
     assert job["user_status"] == "applied"
 
+    jobs_repo.set_user_status(mem_db, "test-1", "rejected", user_reject_reason="Tech stack mismatch")
+    job = jobs_repo.get_job(mem_db, "test-1")
+    assert job["user_status"] == "rejected"
+    assert job["user_reject_reason"] == "Tech stack mismatch"
+
+    rejected_jobs = jobs_repo.get_user_rejected_jobs(mem_db)
+    assert len(rejected_jobs) == 1
+    assert rejected_jobs[0]["job_id"] == "test-1"
+    assert rejected_jobs[0]["user_reject_reason"] == "Tech stack mismatch"
+
+    jobs_repo.set_user_status(mem_db, "test-1", "new")
+    job = jobs_repo.get_job(mem_db, "test-1")
+    assert job["user_status"] == "new"
+    assert job["user_reject_reason"] is None
+
