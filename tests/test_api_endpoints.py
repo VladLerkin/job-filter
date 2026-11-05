@@ -126,6 +126,14 @@ def test_job_rejection_status_and_learning_data(client):
     assert reset_res.status_code == 200
     assert reset_res.json()["user_status"] == "new"
 
+    # Cleanup test record
+    conn = connect()
+    try:
+        conn.execute("DELETE FROM processed_jobs WHERE job_id = ?", (test_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
 
 def test_blacklist_endpoints(client):
     res = client.get("/api/blacklist")
@@ -135,6 +143,14 @@ def test_blacklist_endpoints(client):
     res_check = client.get("/api/blacklist/check?url=https://careers.icims.com/job&auto_link=false")
     assert res_check.status_code == 200
     assert res_check.json()["is_blacklisted"] is True
+
+    # Aggregators cannot be blacklisted
+    bad_res = client.post(
+        "/api/blacklist",
+        json={"domain_or_url": "https://www.linkedin.com/jobs/view/123", "reason": "test"},
+    )
+    assert bad_res.status_code == 400
+    assert "агрегатор" in bad_res.json()["detail"]
 
 
 def test_pipeline_status(client):

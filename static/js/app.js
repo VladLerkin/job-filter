@@ -693,11 +693,53 @@
       }
     }
 
+    function extractDomainFromUrl(url) {
+      if (!url) return '';
+      try {
+        const raw = url.includes('://') ? url : 'https://' + url;
+        const host = new URL(raw).hostname.toLowerCase().replace(/^www\./, '');
+        if (!host || host === 'localhost' || host === '127.0.0.1') return '';
+
+        // Защищенные поисковые агрегаторы и капчи (никогда не считаются ATS)
+        const IGNORED_DOMAINS = [
+          'linkedin.com', 'hirify.me', 'indeed.com', 'glassdoor.com',
+          'hcaptcha.com', 'recaptcha.net', 'google.com', 'gstatic.com', 'cloudflare.com'
+        ];
+        if (IGNORED_DOMAINS.some(d => host === d || host.endsWith('.' + d))) {
+          return '';
+        }
+        if (/(^|\.)(linkedin|hirify|indeed|glassdoor)\.[a-z.]+$/.test(host)) {
+          return '';
+        }
+
+        const ATS_LIST = [
+          'icims.com', 'cims.com', 'myworkdayjobs.com', 'workday.com',
+          'taleo.net', 'successfactors.com', 'successfactors.eu',
+          'greenhouse.io', 'lever.co', 'ashbyhq.com', 'smartrecruiters.com',
+          'workable.com', 'breezy.hr', 'bamboohr.com', 'jobvite.com',
+          'ultipro.com', 'dayforcehcm.com', 'brassring.com', 'oraclecloud.com'
+        ];
+        for (const ats of ATS_LIST) {
+          if (host === ats || host.endsWith('.' + ats)) return ats;
+        }
+        const parts = host.split('.');
+        if (parts.length >= 3 && ['co', 'com', 'org', 'net', 'gov'].includes(parts[parts.length - 2]) && parts[parts.length - 1].length === 2) {
+          return parts.slice(-3).join('.');
+        }
+        if (parts.length >= 2) {
+          return parts.slice(-2).join('.');
+        }
+        return host;
+      } catch (_) {
+        return '';
+      }
+    }
+
     function openBadBoardModal(jobId, company, title, existingDomain = '') {
       modalTargetJob = { job_id: jobId, company: company, title: title };
       document.getElementById('modalJobSubtitle').textContent =
         `${title || jobId} @ ${company || 'Unknown'}`;
-      document.getElementById('modalBadDomainInput').value = existingDomain || 'cims.com';
+      document.getElementById('modalBadDomainInput').value = existingDomain || '';
       const modal = document.getElementById('badBoardModal');
       modal.classList.remove('hidden');
       modal.classList.add('flex');
@@ -705,11 +747,12 @@
 
     function openBadBoardModalForLastOpened() {
       if (!cachedLastOpenedJob || !cachedLastOpenedJob.job_id) return;
+      const dom = extractDomainFromUrl(cachedLastOpenedJob.apply_url) || extractDomainFromUrl(cachedLastOpenedJob.url) || '';
       openBadBoardModal(
         cachedLastOpenedJob.job_id,
         cachedLastOpenedJob.company,
         cachedLastOpenedJob.title,
-        'cims.com'
+        dom
       );
     }
 
@@ -725,6 +768,11 @@
 
     async function confirmBadBoardModal() {
       const domain_or_url = document.getElementById('modalBadDomainInput').value.trim();
+      const rawDom = (domain_or_url || '').toLowerCase();
+      if (domain_or_url && (/(^|\.)(linkedin|hirify|indeed|glassdoor)\.[a-z.]+$/.test(rawDom) || /hcaptcha\.com|recaptcha\.net/.test(rawDom))) {
+        showToast('Поисковые агрегаторы (LinkedIn, Hirify, Indeed, Glassdoor) нельзя блокировать. Заблокируйте только компанию!');
+        return;
+      }
       const reason = document.getElementById('modalBadReasonInput').value.trim() || 'Невозможно заполнить форму (в чёрном списке)';
       await fetch('/api/blacklist', {
         method: 'POST',
@@ -793,6 +841,11 @@
       const reason = document.getElementById('newBadReasonInput').value.trim() || 'Невозможно заполнить форму (в чёрном списке)';
       if (!domain_or_url) {
         showToast('Укажи домен или URL (например, cims.com)');
+        return;
+      }
+      const rawDom = domain_or_url.toLowerCase();
+      if (/(^|\.)(linkedin|hirify|indeed|glassdoor)\.[a-z.]+$/.test(rawDom) || /hcaptcha\.com|recaptcha\.net/.test(rawDom)) {
+        showToast('Поисковые агрегаторы (LinkedIn, Hirify, Indeed, Glassdoor) нельзя заносить в чёрный список!');
         return;
       }
       await fetch('/api/blacklist', {
@@ -1118,7 +1171,7 @@
         : (remoteDetail ? `🏠 ${remoteDetail}` : '');
 
       const isBadBoard = Boolean(job.is_bad_board);
-      const atsDomain = job.ats_domain || '';
+      const atsDomain = job.ats_domain || extractDomainFromUrl(job.apply_url) || extractDomainFromUrl(job.url) || '';
       const cardBorderClass = isBadBoard
         ? 'border-red-600/80 bg-red-950/15 hover:border-red-500'
         : 'hover:border-slate-600';

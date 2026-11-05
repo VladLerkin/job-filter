@@ -30,6 +30,53 @@ KNOWN_MULTI_TENANT_ATS = (
     "personio.com",
 )
 
+CAPTCHA_AND_UTILITY_DOMAINS = (
+    "hcaptcha.com",
+    "recaptcha.net",
+    "google.com",
+    "gstatic.com",
+    "cloudflare.com",
+    "challenges.cloudflare.com",
+    "arkoselabs.com",
+    "geetest.com",
+    "doubleclick.net",
+    "googletagmanager.com",
+)
+
+SEARCH_AGGREGATOR_DOMAINS = (
+    "linkedin.com",
+    "hirify.me",
+    "indeed.com",
+    "glassdoor.com",
+)
+
+
+def is_search_aggregator_domain(domain_or_url: str | None) -> bool:
+    """Проверяет, является ли домен поисковым агрегатором (LinkedIn, Hirify, Indeed, Glassdoor).
+    Такие домены защищены от добавления в чёрный список, так как по ним ведётся поиск вакансий.
+    """
+    if not domain_or_url:
+        return False
+    host = extract_host(domain_or_url)
+    if not host:
+        return False
+    if any(host == d or host.endswith("." + d) for d in SEARCH_AGGREGATOR_DOMAINS):
+        return True
+    if re.search(r"(^|\.)(linkedin|hirify|indeed|glassdoor)\.[a-z.]+$", host):
+        return True
+    return False
+
+
+def is_utility_or_captcha_domain(domain_or_url: str | None) -> bool:
+    """Проверяет, относится ли адрес к служебным сервисам капчи или трекинга, а не к ATS-бордам."""
+    if not domain_or_url:
+        return False
+    dom = extract_root_domain(domain_or_url)
+    if not dom:
+        return False
+    dom = dom.lower()
+    return any(dom == u or dom.endswith("." + u) for u in CAPTCHA_AND_UTILITY_DOMAINS)
+
 
 def normalize_company_key(company: str | None) -> str:
     if not company:

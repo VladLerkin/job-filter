@@ -1,10 +1,11 @@
 """Роуты чёрного списка нежелательных ATS-бордов и проверки URL из браузерного расширения."""
 import sqlite3
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from job_filter.api.deps import get_db
 from job_filter.api.schemas import AddBlacklistRequest
 from job_filter.services import blacklist_service
+from job_filter.utils.urls import is_search_aggregator_domain, is_utility_or_captcha_domain
 
 router = APIRouter(prefix="/api/blacklist", tags=["blacklist"])
 
@@ -31,6 +32,17 @@ def create_blacklist_entry(
     body: AddBlacklistRequest,
     conn: sqlite3.Connection = Depends(get_db),
 ):
+    if body.domain_or_url and is_search_aggregator_domain(body.domain_or_url):
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя заблокировать поисковый агрегатор (LinkedIn, Hirify, Indeed, Glassdoor). Добавьте компанию в чёрный список или укажите сайт ATS.",
+        )
+    if body.domain_or_url and is_utility_or_captcha_domain(body.domain_or_url):
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя заблокировать служебный сервис капчи/трекинга.",
+        )
+
     job_id = body.job_id
     company = body.company
 

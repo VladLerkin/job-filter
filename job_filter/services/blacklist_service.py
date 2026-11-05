@@ -12,6 +12,8 @@ from job_filter.utils.urls import (
     ATS_DOMAIN_ALIASES,
     extract_host,
     extract_root_domain,
+    is_search_aggregator_domain,
+    is_utility_or_captcha_domain,
     normalize_company_key,
 )
 
@@ -65,7 +67,7 @@ def match_blacklisted_domain(
     if not url_or_domain:
         return None
     raw = url_or_domain.strip()
-    if not raw:
+    if not raw or is_utility_or_captcha_domain(raw) or is_search_aggregator_domain(raw):
         return None
     host = extract_host(raw)
     root = extract_root_domain(host) or host
@@ -106,6 +108,12 @@ def add_blacklisted_board(
 ) -> dict:
     now_iso = datetime.now(timezone.utc).isoformat()
     domain = extract_root_domain(domain_or_url) if domain_or_url else None
+    if domain and is_utility_or_captcha_domain(domain):
+        logger.warning("Попытка добавить в чёрный список служебный домен капчи/трекинга: %s (пропущено)", domain)
+        domain = None
+    elif domain and is_search_aggregator_domain(domain):
+        logger.warning("Попытка добавить в чёрный список поисковый агрегатор: %s (пропущено)", domain)
+        domain = None
 
     if job_id and not company:
         job = jobs_repo.get_job(conn, job_id)
@@ -153,7 +161,10 @@ def check_url(
     frames: str,
     auto_link: bool = True,
 ) -> dict:
-    all_urls = [u.strip() for u in ([url] + frames.split(",")) if u.strip()]
+    all_urls = [
+        u.strip() for u in ([url] + frames.split(","))
+        if u.strip() and not is_utility_or_captcha_domain(u.strip()) and not is_search_aggregator_domain(u.strip())
+    ]
 
     matched_info = None
     hit_url = None

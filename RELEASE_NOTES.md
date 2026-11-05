@@ -1,5 +1,20 @@
 # Release Notes
 
+## v1.1.1
+**Release Date:** November 6, 2026
+
+### Blacklist & ATS Platform Safety
+- **Search Aggregators Protection:** Protected core search aggregators (`linkedin.com`, `hirify.me`, `indeed.com`, `glassdoor.com`) from being blacklisted. API endpoints, background services, and the web UI now strictly reject aggregator blacklisting attempts, ensuring continuous search pipeline functionality.
+- **Captcha & Anti-Bot Service Filtering:** Added automatic filtering for bot-protection and utility domains (`hcaptcha.com`, `recaptcha.net`, `challenges.cloudflare.com`, `arkoselabs.com`, `geetest.com`). Service iframes are no longer mistaken for career ATS boards.
+- **Database Cleanup:** Purged errant utility and aggregator entries (`hcaptcha.com`, `indeed.com`) from `blacklisted_boards`, repairing associated vacancies (such as HashOptima on Lever) back to actionable status.
+
+### UI & Modal Enhancements
+- **Dynamic Domain Extraction in Blacklist Modal:** Replaced the hardcoded `'cims.com'` fallback with dynamic domain parsing from `job.apply_url` and `job.url`. Vacancies without a third-party ATS now open with an empty domain input for company-level blocking.
+- **Quick Platform Chips:** Added 1-click chips for `lever.co` and `greenhouse.io` alongside Workday, Taleo, and iCIMS.
+
+### Testing & Maintenance
+- **Extended Test Suite:** Added unit and integration tests covering aggregator domain protection and API validation (45 tests passing).
+
 ## v1.1.0
 **Release Date:** November 5, 2026
 
