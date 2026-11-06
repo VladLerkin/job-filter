@@ -15,6 +15,43 @@ from job_filter.utils.urls import (
 logger = logging.getLogger(__name__)
 
 
+def parse_auto_reject(reject_reason: str | None, score: int | None) -> tuple[str, str]:
+    rr = (reject_reason or "").strip()
+    if "single_country_lock:" in rr:
+        target = rr.split(":", 1)[1]
+        return "location", f"Ограничение по стране: {target}"
+    elif rr == "us_only_lock":
+        return "location", "Только США (US only)"
+    elif rr == "ru_only_lock":
+        return "location", "Только РФ / RU"
+    elif "low_score" in rr or (score is not None and score < 50):
+        sc = score if score is not None else (rr.split(":", 1)[1] if ":" in rr else "?")
+        return "low_score", f"Низкий скор ИИ: {sc}/100"
+    elif rr == "missing_keywords":
+        return "missing_keywords", "Отсутствуют ключевые слова в описании"
+    elif rr == "excluded_title":
+        return "excluded_title", "Неподходящая должность / профиль"
+    elif "excluded_seniority:" in rr:
+        level = rr.split(":", 1)[1]
+        return "seniority", f"Неподходящий грейд: {level}"
+    elif "required_language:" in rr:
+        lang = rr.split(":", 1)[1]
+        return "language", f"Требуется язык: {lang}"
+    elif "excluded_industry:" in rr:
+        ind = rr.split(":", 1)[1]
+        return "industry", f"Исключенная отрасль: {ind}"
+    elif "bad_board:" in rr:
+        bb = rr.split(":", 1)[1]
+        return "bad_board", f"Чёрный список ATS: {bb}"
+    elif "contract_lock:" in rr:
+        c = rr.split(":", 1)[1]
+        return "contract", f"Формат контракта: {c}"
+    elif rr:
+        return "other", f"Фильтр: {rr}"
+    else:
+        return "unmatched", "Не соответствует критериям отбора"
+
+
 def list_jobs(conn: sqlite3.Connection, tab: str = "actionable") -> dict:
     rows = jobs_repo.list_all(conn)
     bad_rows = blacklist_repo.list_boards(conn)
@@ -31,9 +68,13 @@ def list_jobs(conn: sqlite3.Connection, tab: str = "actionable") -> dict:
         "total_in_db": len(rows),
         "top_match": 0,
         "good_match": 0,
+        "fair_match": 0,
+        "actionable": 0,
         "pending_llm": 0,
         "applied": 0,
         "rejected": 0,
+        "rejected_user": 0,
+        "rejected_auto": 0,
         "bad_boards_count": len(bad_rows),
     }
 
@@ -84,42 +125,102 @@ def list_jobs(conn: sqlite3.Connection, tab: str = "actionable") -> dict:
         has_desc = bool(d.get("description"))
         reject_reason = d.get("reject_reason")
 
+        # Определение источника и категории отсева
+        is_user_rejected = u_status in ("hidden", "rejected")
+        is_auto_rejected = (u_status != "saved") and (
+            (score is not None and (score < 50 or d.get("matched") == 0)) or bool(reject_reason)
+        )
+        is_rejected = is_user_rejected or is_auto_rejected
+
+        if is_user_rejected:
+            d["rejection_source"] = "user"
+            d["rejection_category"] = "user_manual" if u_status == "rejected" else "user_hidden"
+            d["rejection_reason_display"] = d.get("user_reject_reason") or (
+                "Скрыто в корзину" if u_status == "hidden" else "Без указания причины"
+            )
+        elif is_auto_rejected:
+            d["rejection_source"] = "auto"
+            cat, label = parse_auto_reject(reject_reason, score)
+            d["rejection_category"] = cat
+            d["rejection_reason_display"] = label
+        else:
+            d["rejection_source"] = None
+            d["rejection_category"] = None
+            d["rejection_reason_display"] = None
+
         # Подсчет статистики
         if u_status == "applied":
             stats["applied"] += 1
-        elif u_status in ("hidden", "rejected"):
+        elif u_status == "saved":
+            if score is not None and score >= 70:
+                stats["top_match"] += 1
+            elif score is not None and score >= 60:
+                stats["good_match"] += 1
+            else:
+                stats["fair_match"] += 1
+        elif is_user_rejected:
             stats["rejected"] += 1
+            stats["rejected_user"] += 1
         elif score is not None:
             if d.get("matched") == 1 and score >= 70:
                 stats["top_match"] += 1
-            elif d.get("matched") == 1 and 50 <= score < 70:
+            elif d.get("matched") == 1 and 60 <= score < 70:
                 stats["good_match"] += 1
+            elif d.get("matched") == 1 and 50 <= score < 60:
+                stats["fair_match"] += 1
             else:
                 stats["rejected"] += 1
+                stats["rejected_auto"] += 1
         elif has_desc and not reject_reason:
             stats["pending_llm"] += 1
         else:
             stats["rejected"] += 1
+            stats["rejected_auto"] += 1
 
         # Фильтрация по выбранной вкладке
         if tab == "applied":
             if u_status == "applied":
                 items.append(d)
         elif tab == "pending":
-            if score is None and has_desc and not reject_reason and u_status not in ("hidden", "rejected"):
+            if score is None and has_desc and not reject_reason and u_status not in ("hidden", "rejected", "saved"):
                 items.append(d)
         elif tab == "rejected":
-            if u_status in ("hidden", "rejected") or (score is not None and (score < 50 or d.get("matched") == 0)) or reject_reason:
+            if is_rejected:
                 items.append(d)
         elif tab == "top":
-            if u_status not in ("applied", "hidden", "rejected") and d.get("matched") == 1 and score is not None and score >= 70:
+            if (u_status == "saved" and score is not None and score >= 70) or (
+                u_status not in ("applied", "hidden", "rejected", "saved")
+                and d.get("matched") == 1
+                and score is not None
+                and score >= 70
+            ):
                 items.append(d)
         elif tab == "good":
-            if u_status not in ("applied", "hidden", "rejected") and d.get("matched") == 1 and score is not None and 50 <= score < 70:
+            if (u_status == "saved" and score is not None and 60 <= score < 70) or (
+                u_status not in ("applied", "hidden", "rejected", "saved")
+                and d.get("matched") == 1
+                and score is not None
+                and 60 <= score < 70
+            ):
                 items.append(d)
-        else:  # actionable (top + good)
-            if u_status not in ("applied", "hidden", "rejected") and d.get("matched") == 1 and score is not None and score >= 50:
+        elif tab == "fair":
+            if (u_status == "saved" and (score is None or score < 60)) or (
+                u_status not in ("applied", "hidden", "rejected", "saved")
+                and d.get("matched") == 1
+                and score is not None
+                and 50 <= score < 60
+            ):
                 items.append(d)
+        else:  # actionable (top + good + fair: score >= 50)
+            if u_status == "saved" or (
+                u_status not in ("applied", "hidden", "rejected", "saved")
+                and d.get("matched") == 1
+                and score is not None
+                and score >= 50
+            ):
+                items.append(d)
+
+    stats["actionable"] = stats["top_match"] + stats["good_match"] + stats["fair_match"]
 
     def sort_key(item: dict):
         not_bad_board = 0 if item.get("is_bad_board") else 1

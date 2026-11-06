@@ -1,4 +1,4 @@
-    let currentTab = 'actionable';
+    let currentTab = 'top';
     let pollTimer = null;
     let logCursor = 0;
     let currentLang = localStorage.getItem('job_filter_lang') || 'en';
@@ -18,9 +18,9 @@
         source_label: "🌐 Source (select one):",
         pipeline_running: "Pipeline running...",
         hide_log: "Hide Log",
-        tab_actionable_text: "Actionable",
         tab_top_text: "Top Match ≥70",
-        tab_good_text: "Good 50–69",
+        tab_good_text: "Good 60–69",
+        tab_fair_text: "Fair 50–59",
         tab_pending_text: "Pending AI",
         tab_applied_text: "Applied",
         tab_rejected_text: "Dismissed",
@@ -137,7 +137,30 @@
         toast_reset: "Default categories and skills restored",
         toast_applied: "Marked as Applied ✅",
         toast_rejected: "Marked as not suitable ❌",
-        toast_status_updated: "Status updated"
+        toast_status_updated: "Status updated",
+        filter_rejected_scope: "Filter view:",
+        subtab_all_rejected: "All Dismissed",
+        subtab_user_rejected: "👤 Dismissed by Me",
+        subtab_auto_rejected: "🤖 Filtered by Auto/AI",
+        subtab_reasons_title: "📋 Reasons why you dismissed:",
+        subtab_categories_title: "🤖 Auto-filter categories:",
+        click_to_filter_hint: "Click to filter list",
+        all_reasons_chip: "All Reasons",
+        all_categories_chip: "All Categories",
+        user_hidden_reason: "Hidden to trash",
+        btn_restore_to_feed: "↩ Restore to Feed",
+        toast_job_restored: "Job restored to list! ⭐",
+        cat_location: "📍 Country / Location",
+        cat_low_score: "🎯 Low AI Score (<50)",
+        cat_missing_keywords: "🔍 Missing Keywords",
+        cat_excluded_title: "🚫 Excluded Title",
+        cat_seniority: "👶 Seniority Mismatch",
+        cat_language: "🗣️ Language Requirement",
+        cat_industry: "🏢 Staffing / Agency",
+        cat_bad_board: "⛔ Blacklisted ATS",
+        cat_contract: "📄 Contract Lock",
+        cat_other: "⚙️ Other Filters",
+        cat_unmatched: "❓ Search Mismatch"
       },
       ru: {
         app_subtitle: "Кандидат: Владислав Ярыгин • AI Agentic & Senior Backend (Java, Kotlin, Python) • Удалёнка из Грузии (B2B)",
@@ -153,9 +176,9 @@
         source_label: "🌐 Источник (выбери один):",
         pipeline_running: "Выполняется пайплайн...",
         hide_log: "Скрыть лог",
-        tab_actionable_text: "Сухой остаток",
-        tab_top_text: "Top Match ≥70",
-        tab_good_text: "Good 50–69",
+        tab_top_text: "Топ ≥70",
+        tab_good_text: "Хорошие 60–69",
+        tab_fair_text: "Проходные 50–59",
         tab_pending_text: "Ждут ИИ",
         tab_applied_text: "Откликнулся",
         tab_rejected_text: "Отсеянные",
@@ -272,7 +295,30 @@
         toast_reset: "Базовый набор категорий и навыков восстановлен",
         toast_applied: "Отмечено как «Откликнулся» ✅",
         toast_rejected: "Отмечено как «Не подошла» ❌",
-        toast_status_updated: "Статус обновлен"
+        toast_status_updated: "Статус обновлен",
+        filter_rejected_scope: "Срез отсева:",
+        subtab_all_rejected: "Все отсеянные",
+        subtab_user_rejected: "👤 Отклонил я",
+        subtab_auto_rejected: "🤖 Отсеяно автоматом",
+        subtab_reasons_title: "📋 Причины, почему вы отказали:",
+        subtab_categories_title: "🤖 Категории авто-отсева системой:",
+        click_to_filter_hint: "Кликните по причине для фильтрации",
+        all_reasons_chip: "Все причины",
+        all_categories_chip: "Все категории",
+        user_hidden_reason: "Скрыто в корзину",
+        btn_restore_to_feed: "↩ Восстановить в поток",
+        toast_job_restored: "Вакансия возвращена в список! ⭐",
+        cat_location: "📍 Локация / Страна",
+        cat_low_score: "🎯 Низкий скор ИИ (<50)",
+        cat_missing_keywords: "🔍 Не хватает ключевых слов",
+        cat_excluded_title: "🚫 Неподходящий тайтл",
+        cat_seniority: "👶 Неподходящий грейд",
+        cat_language: "🗣️ Языковые требования",
+        cat_industry: "🏢 Отрасль / Рекрутинг",
+        cat_bad_board: "⛔ Чёрный список ATS",
+        cat_contract: "📄 Формат контракта",
+        cat_other: "⚙️ Прочие фильтры",
+        cat_unmatched: "❓ Не соответствует поиску"
       }
     };
 
@@ -579,9 +625,9 @@
 
     function updateTabsText() {
       const tabs = [
-        { tab: 'actionable', countId: 'cntActionable', key: 'tab_actionable_text', icon: '🎯 ' },
         { tab: 'top', countId: 'cntTop', key: 'tab_top_text', icon: '🟢 ' },
         { tab: 'good', countId: 'cntGood', key: 'tab_good_text', icon: '🟡 ' },
+        { tab: 'fair', countId: 'cntFair', key: 'tab_fair_text', icon: '🟠 ' },
         { tab: 'pending', countId: 'cntPending', key: 'tab_pending_text', icon: '⏳ ' },
         { tab: 'applied', countId: 'cntApplied', key: 'tab_applied_text', icon: '✅ ' },
         { tab: 'rejected', countId: 'cntRejected', key: 'tab_rejected_text', icon: '🗑️ ' },
@@ -625,6 +671,17 @@
       const blackSec = document.getElementById('blacklistSection');
       const skillsSec = document.getElementById('skillsSection');
       const jobsSec = document.getElementById('jobsList');
+      const rejBar = document.getElementById('rejectedFilterBar');
+      if (rejBar) {
+        if (tab === 'rejected') {
+          rejBar.classList.remove('hidden');
+        } else {
+          rejBar.classList.add('hidden');
+          rejectedSubtab = 'all';
+          rejectedReasonFilter = null;
+          rejectedCategoryFilter = null;
+        }
+      }
       if (tab === 'candidate') {
         candSec.classList.remove('hidden');
         blackSec.classList.add('hidden');
@@ -1095,7 +1152,7 @@
           site_names: siteNames,
           location: location,
           country_indeed: countryIndeed,
-          results_wanted: 25,
+          results_wanted: 50,
           hours_old: hoursOld,
           easy_apply: easyApply,
           llm_limit: llmLimit,
@@ -1148,9 +1205,10 @@
       const sd = job.score_details || {};
       const score = job.score;
       const isTop = score !== null && score >= 70;
-      const isGood = score !== null && score >= 50 && score < 70;
+      const isGood = score !== null && score >= 60 && score < 70;
+      const isFair = score !== null && score >= 50 && score < 60;
 
-      const scoreBadgeClass = isTop ? 'badge-top' : isGood ? 'badge-good' : 'badge-low';
+      const scoreBadgeClass = isTop ? 'badge-top' : isGood ? 'badge-good' : isFair ? 'badge-fair' : 'badge-low';
       const scoreLabel = score !== null ? `🎯 Score: ${score}/100` : '⏳ Без ИИ-оценки';
 
       const matched = (sd.matched_skills || (e.resume_fit && e.resume_fit.matched_required) || []);
@@ -1205,7 +1263,8 @@
                 ${job.tier ? `<span class="text-xs px-2.5 py-1 rounded-md bg-slate-800 text-slate-200 border border-slate-700">${escapeHtml(job.tier)}</span>` : ''}
                 ${job.seniority_level ? `<span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400">${escapeHtml(job.seniority_level)}</span>` : ''}
                 ${job.salary ? `<span class="text-xs px-2.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">💰 ${escapeHtml(job.salary)}</span>` : ''}
-                ${job.reject_reason ? `<span class="text-xs px-2 py-0.5 rounded bg-red-950 text-red-300 border border-red-800">Причина: ${escapeHtml(job.reject_reason)}</span>` : ''}
+                ${job.user_status === 'saved' ? `<span class="text-xs px-2.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700 font-semibold">⭐ ${currentLang === 'ru' ? 'Восстановлено' : 'Restored'}</span>` : ''}
+                ${job.rejection_reason_display && job.rejection_source === 'auto' ? `<span class="text-xs px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/70">🤖 ${escapeHtml(job.rejection_reason_display)}</span>` : (job.reject_reason ? `<span class="text-xs px-2 py-0.5 rounded bg-red-950 text-red-300 border border-red-800">Причина: ${escapeHtml(job.reject_reason)}</span>` : '')}
               </div>
 
               <h2 class="text-lg font-bold text-white pt-1">
@@ -1240,18 +1299,18 @@
                   ${t('btn_return_new')}
                 </button>
               `}
-              ${job.user_status !== 'rejected' ? `
+              ${(job.user_status === 'rejected' || job.user_status === 'hidden' || job.user_status === 'saved') ? `
+                <button onclick="setJobStatus('${escapeJsArg(job.job_id)}', 'new')"
+                  class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition" title="${t('btn_return_new')}">
+                  ${t('btn_return_new')}
+                </button>
+              ` : `
                 <button onclick="openRejectJobModal('${escapeJsArg(job.job_id)}', '${escapeJsArg(job.company)}', '${escapeJsArg(job.title)}', '${escapeJsArg(job.user_reject_reason || '')}')"
                   class="px-3 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/40 text-xs font-medium transition"
                   title="${t('btn_not_fit_title')}">
                   ${t('btn_not_fit')}
                 </button>
-              ` : (job.user_status !== 'applied' ? `
-                <button onclick="setJobStatus('${escapeJsArg(job.job_id)}', 'new')"
-                  class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition">
-                  ${t('btn_return_new')}
-                </button>
-              ` : '')}
+              `}
               <button onclick="openBadBoardModal('${escapeJsArg(job.job_id)}', '${escapeJsArg(job.company)}', '${escapeJsArg(job.title)}', '${escapeJsArg(atsDomain)}')"
                 title="Blacklist job board and company"
                 class="px-2.5 py-1.5 rounded-lg bg-red-950/50 hover:bg-red-900/80 text-red-300 border border-red-800/60 text-xs font-medium transition">
@@ -1266,16 +1325,52 @@
             </div>
           </div>
 
-          ${job.user_reject_reason ? `
-            <div class="mt-3 text-xs text-rose-200 bg-rose-950/40 border border-rose-800/60 rounded-lg px-3 py-2 flex items-center justify-between gap-2">
-              <div>
-                <strong>❌ ${t('user_reject_reason_label')}:</strong> ${escapeHtml(job.user_reject_reason)}
+          ${job.rejection_source === 'user' ? `
+            <div class="mt-3 text-xs text-rose-200 bg-rose-950/40 border border-rose-800/60 rounded-lg px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <span class="text-sm">${job.user_status === 'hidden' ? '🗑️' : '❌'}</span>
+                <div>
+                  <strong>${job.user_status === 'hidden' ? (t('user_hidden_reason') || 'Скрыто в корзину') : (t('user_reject_reason_label') + ':')}</strong>
+                  ${job.user_status !== 'hidden' ? `<span>${escapeHtml(job.user_reject_reason || 'Без указания причины')}</span>` : ''}
+                </div>
               </div>
-              <button onclick="openRejectJobModal('${escapeJsArg(job.job_id)}', '${escapeJsArg(job.company)}', '${escapeJsArg(job.title)}', '${escapeJsArg(job.user_reject_reason)}')" class="text-xs text-rose-400 hover:text-rose-200 underline whitespace-nowrap">
-                ${t('btn_edit_reason')}
+              <div class="flex items-center gap-2">
+                ${job.user_status !== 'hidden' ? `
+                  <button onclick="openRejectJobModal('${escapeJsArg(job.job_id)}', '${escapeJsArg(job.company)}', '${escapeJsArg(job.title)}', '${escapeJsArg(job.user_reject_reason || '')}')" class="text-xs text-rose-400 hover:text-rose-200 underline whitespace-nowrap">
+                    ${t('btn_edit_reason')}
+                  </button>
+                ` : ''}
+                <button onclick="setJobStatus('${escapeJsArg(job.job_id)}', 'new')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs transition">
+                  ${t('btn_return_new')}
+                </button>
+              </div>
+            </div>
+          ` : (job.rejection_source === 'auto' ? `
+            <div class="mt-3 text-xs text-amber-200 bg-amber-950/40 border border-amber-800/60 rounded-lg px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <span class="text-sm">🤖</span>
+                <div>
+                  <strong>${currentLang === 'ru' ? 'Отсеяно фильтром / ИИ:' : 'Auto-filtered by:'}</strong>
+                  <span>${escapeHtml(job.rejection_reason_display || job.reject_reason || 'Не соответствует критериям')}</span>
+                </div>
+              </div>
+              <button onclick="restoreAutoRejectedJob('${escapeJsArg(job.job_id)}')" class="px-2.5 py-1 rounded bg-emerald-900/70 hover:bg-emerald-800 text-emerald-200 border border-emerald-700 text-xs font-medium transition" title="${currentLang === 'ru' ? 'Одобрить и вернуть в активный список (сухой остаток)' : 'Approve and restore to active list'}">
+                ${t('btn_restore_to_feed')}
               </button>
             </div>
-          ` : ''}
+          ` : (job.user_status === 'saved' ? `
+            <div class="mt-3 text-xs text-emerald-200 bg-emerald-950/40 border border-emerald-800/60 rounded-lg px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <span class="text-sm">⭐</span>
+                <div>
+                  <strong>${currentLang === 'ru' ? 'Восстановлено вами вручную' : 'Manually restored to active list'}</strong>
+                </div>
+              </div>
+              <button onclick="setJobStatus('${escapeJsArg(job.job_id)}', 'new')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs transition">
+                ${t('btn_return_new')}
+              </button>
+            </div>
+          ` : ''))}
 
           ${fitSummary ? `
             <div class="mt-3 text-sm text-indigo-200 bg-indigo-950/40 border border-indigo-800/50 rounded-lg px-3 py-2">
@@ -1353,12 +1448,169 @@
     let cachedJobs = [];
     let cachedStats = {};
 
+    let rejectedSubtab = 'all'; // 'all' | 'user' | 'auto'
+    let rejectedReasonFilter = null;
+    let rejectedCategoryFilter = null;
+
+    function setRejectedSubtab(subtab) {
+      rejectedSubtab = subtab;
+      rejectedReasonFilter = null;
+      rejectedCategoryFilter = null;
+      renderJobsList();
+    }
+
+    function setRejectedReasonFilter(reason) {
+      rejectedReasonFilter = (rejectedReasonFilter === reason) ? null : reason;
+      renderJobsList();
+    }
+
+    function setRejectedCategoryFilter(category) {
+      rejectedCategoryFilter = (rejectedCategoryFilter === category) ? null : category;
+      renderJobsList();
+    }
+
+    async function restoreAutoRejectedJob(jobId) {
+      await setJobStatus(jobId, 'saved');
+      showToast(t('toast_job_restored'));
+    }
+
+    function renderRejectedFilterBar() {
+      const bar = document.getElementById('rejectedFilterBar');
+      if (!bar) return;
+
+      const userJobs = (cachedJobs || []).filter(j => j.rejection_source === 'user');
+      const autoJobs = (cachedJobs || []).filter(j => j.rejection_source === 'auto');
+
+      const cntAll = document.getElementById('cntSubtabAll');
+      const cntUser = document.getElementById('cntSubtabUser');
+      const cntAuto = document.getElementById('cntSubtabAuto');
+      if (cntAll) cntAll.textContent = (cachedJobs || []).length;
+      if (cntUser) cntUser.textContent = userJobs.length;
+      if (cntAuto) cntAuto.textContent = autoJobs.length;
+
+      const allBtn = document.getElementById('btnSubtabAll');
+      const userBtn = document.getElementById('btnSubtabUser');
+      const autoBtn = document.getElementById('btnSubtabAuto');
+      const activeBtnClass = 'px-3 py-1.5 rounded-lg text-xs font-semibold transition bg-indigo-600 text-white shadow';
+      const inactiveBtnClass = 'px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700';
+      if (allBtn) allBtn.className = (rejectedSubtab === 'all') ? activeBtnClass : inactiveBtnClass;
+      if (userBtn) userBtn.className = (rejectedSubtab === 'user') ? activeBtnClass : inactiveBtnClass;
+      if (autoBtn) autoBtn.className = (rejectedSubtab === 'auto') ? activeBtnClass : inactiveBtnClass;
+
+      const userWrap = document.getElementById('rejectedUserReasonsWrap');
+      const autoWrap = document.getElementById('rejectedAutoCategoriesWrap');
+
+      if (rejectedSubtab === 'user') {
+        userWrap?.classList.remove('hidden');
+        autoWrap?.classList.add('hidden');
+      } else if (rejectedSubtab === 'auto') {
+        userWrap?.classList.add('hidden');
+        autoWrap?.classList.remove('hidden');
+      } else {
+        userWrap?.classList.remove('hidden');
+        autoWrap?.classList.remove('hidden');
+      }
+
+      // Причины, указанные пользователем
+      const userChipsContainer = document.getElementById('rejectedUserReasonsChips');
+      if (userChipsContainer) {
+        const reasonCounts = {};
+        userJobs.forEach(j => {
+          const r = j.rejection_reason_display || (j.user_status === 'hidden' ? (t('user_hidden_reason') || 'Скрыто в корзину') : 'Без указания причины');
+          reasonCounts[r] = (reasonCounts[r] || 0) + 1;
+        });
+
+        const activeChipClass = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-rose-600 text-white shadow cursor-pointer transition';
+        const inactiveChipClass = 'px-2.5 py-1 rounded-md text-xs font-medium bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-300 cursor-pointer transition';
+
+        let html = `
+          <button onclick="setRejectedReasonFilter(null)" class="${!rejectedReasonFilter ? activeChipClass : inactiveChipClass}">
+            ${t('all_reasons_chip')} (${userJobs.length})
+          </button>
+        `;
+
+        Object.entries(reasonCounts)
+          .sort((a, b) => b[1] - a[1])
+          .forEach(([reason, count]) => {
+            const isAct = rejectedReasonFilter === reason;
+            html += `
+              <button onclick="setRejectedReasonFilter('${escapeJsArg(reason)}')" class="${isAct ? activeChipClass : inactiveChipClass}">
+                ${escapeHtml(reason)} <span class="opacity-80 font-mono">(${count})</span>
+              </button>
+            `;
+          });
+        userChipsContainer.innerHTML = html;
+      }
+
+      // Категории автоматического отсева
+      const autoChipsContainer = document.getElementById('rejectedAutoCategoriesChips');
+      if (autoChipsContainer) {
+        const catCounts = {};
+        autoJobs.forEach(j => {
+          const c = j.rejection_category || 'other';
+          catCounts[c] = (catCounts[c] || 0) + 1;
+        });
+
+        const activeCatClass = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-600 text-white shadow cursor-pointer transition';
+        const inactiveCatClass = 'px-2.5 py-1 rounded-md text-xs font-medium bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-300 cursor-pointer transition';
+
+        let html = `
+          <button onclick="setRejectedCategoryFilter(null)" class="${!rejectedCategoryFilter ? activeCatClass : inactiveCatClass}">
+            ${t('all_categories_chip')} (${autoJobs.length})
+          </button>
+        `;
+
+        Object.entries(catCounts)
+          .sort((a, b) => b[1] - a[1])
+          .forEach(([cat, count]) => {
+            const isAct = rejectedCategoryFilter === cat;
+            const catTitle = t('cat_' + cat) || cat;
+            html += `
+              <button onclick="setRejectedCategoryFilter('${escapeJsArg(cat)}')" class="${isAct ? activeCatClass : inactiveCatClass}">
+                ${escapeHtml(catTitle)} <span class="opacity-80 font-mono">(${count})</span>
+              </button>
+            `;
+          });
+        autoChipsContainer.innerHTML = html;
+      }
+    }
+
     function renderJobsList() {
       const container = document.getElementById('jobsList');
       if (!container) return;
-      if (!cachedJobs || cachedJobs.length === 0) {
+
+      if (currentTab === 'rejected') {
+        renderRejectedFilterBar();
+      }
+
+      let jobsToRender = cachedJobs || [];
+      if (currentTab === 'rejected') {
+        if (rejectedSubtab === 'user') {
+          jobsToRender = jobsToRender.filter(j => j.rejection_source === 'user');
+        } else if (rejectedSubtab === 'auto') {
+          jobsToRender = jobsToRender.filter(j => j.rejection_source === 'auto');
+        }
+
+        if (rejectedReasonFilter) {
+          jobsToRender = jobsToRender.filter(j => {
+            const r = j.rejection_reason_display || (j.user_status === 'hidden' ? (t('user_hidden_reason') || 'Скрыто в корзину') : 'Без указания причины');
+            return r === rejectedReasonFilter;
+          });
+        }
+        if (rejectedCategoryFilter) {
+          jobsToRender = jobsToRender.filter(j => (j.rejection_category || 'other') === rejectedCategoryFilter);
+        }
+
+        const tipEl = document.getElementById('rejectedActiveFilterTip');
+        if (tipEl) {
+          const filterDesc = rejectedReasonFilter ? ` • ${currentLang === 'ru' ? 'Причина' : 'Reason'}: «${rejectedReasonFilter}»` : (rejectedCategoryFilter ? ` • ${currentLang === 'ru' ? 'Категория' : 'Category'}: «${t('cat_' + rejectedCategoryFilter) || rejectedCategoryFilter}»` : '');
+          tipEl.textContent = `${currentLang === 'ru' ? 'Показано' : 'Showing'}: ${jobsToRender.length} ${currentLang === 'ru' ? 'из' : 'of'} ${(cachedJobs || []).length}${filterDesc}`;
+        }
+      }
+
+      if (!jobsToRender || jobsToRender.length === 0) {
         const pendingCount = cachedStats.pending_llm || 0;
-        const noJobsText = (currentLang === 'ru') ? 'В этой вкладке пока нет вакансий.' : 'No vacancies in this tab yet.';
+        const noJobsText = (currentLang === 'ru') ? 'В этой выборке пока нет вакансий.' : 'No vacancies in this view yet.';
         const pendingTip = (currentLang === 'ru')
           ? `В базе есть ${pendingCount} скачанных вакансий, ожидающих ИИ-разбора — нажми кнопку <strong>«🧠 Только ИИ»</strong> выше!`
           : `There are ${pendingCount} scraped vacancies awaiting AI analysis in DB — click <strong>«🧠 AI Only»</strong> above!`;
@@ -1370,7 +1622,7 @@
         `;
         return;
       }
-      container.innerHTML = cachedJobs.map(renderJobCard).join('');
+      container.innerHTML = jobsToRender.map(renderJobCard).join('');
     }
 
     async function loadJobs() {
@@ -1388,9 +1640,9 @@
         };
 
         setTxt('cntTotal', s.total_in_db || 0);
-        setTxt('cntActionable', (s.top_match || 0) + (s.good_match || 0));
         setTxt('cntTop', s.top_match || 0);
         setTxt('cntGood', s.good_match || 0);
+        setTxt('cntFair', s.fair_match || 0);
         setTxt('cntPending', s.pending_llm || 0);
         setTxt('cntApplied', s.applied || 0);
         setTxt('cntRejected', s.rejected || 0);

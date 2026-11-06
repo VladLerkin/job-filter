@@ -81,3 +81,36 @@ def test_score_vacancy_top_match():
     assert res.match_category == "top"
     assert res.has_clean_title is True
 
+
+def test_classify_geo_tier_us_city_state_does_not_match_georgia():
+    enr = JobEnrichment(
+        location_restrictions=["Remote; San Ramon, CA", "EMEA"],
+        remote_policy_detail="Remote; San Ramon, CA / EMEA",
+        work_authorization=WorkAuthorization(summary="Remote role based in US. 401(k) match."),
+    )
+    passed, tier, reason = classify_geo_tier(
+        "AI Engineer II (AI Security)",
+        "Location: Remote; San Ramon, CA\nAnnual salary: $85,000–$124,000\n401(k) savings plan",
+        enr,
+        job_location="usa (United States)",
+    )
+    assert passed is False
+    assert tier == "Rejected: US-only"
+    assert reason == "us_only_lock"
+
+
+def test_classify_geo_tier_ineligible_clause_not_matching_georgia():
+    enr = JobEnrichment(
+        location_restrictions=["Mexico only (Ineligible for remote from Georgia, Tbilisi)"],
+        remote_policy_detail="Teleworker position; employees may live anywhere in Mexico.",
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Senior Software Development Engineer",
+        "Employees may live anywhere in Mexico",
+        enr,
+        job_location="Remote (Mexico)",
+    )
+    assert passed is False
+    assert "Mexico-only" in tier
+    assert "single_country_lock" in (reason or "")
+

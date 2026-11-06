@@ -30,7 +30,7 @@ def _load_env_file(path: Path) -> None:
 
 _load_env_file(PROJECT_ROOT / ".env")
 
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.2.0"
 DB_PATH = Path(os.getenv("JOB_FILTER_DB", PROJECT_ROOT / "jobs.db"))
 STATIC_DIR = PROJECT_ROOT / "static"
 

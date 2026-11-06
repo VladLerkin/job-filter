@@ -69,7 +69,7 @@ class PipelineRunner:
                     site_names=req.get("site_names"),
                     location=req.get("location", "EMEA"),
                     country_indeed=req.get("country_indeed", "uk"),
-                    results_wanted=req.get("results_wanted", 20),
+                    results_wanted=req.get("results_wanted", 50),
                     hours_old=req.get("hours_old", 4),
                     easy_apply=True if req.get("easy_apply") else None,
                     run_llm_enrichment=True,

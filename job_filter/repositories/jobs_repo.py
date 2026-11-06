@@ -50,7 +50,7 @@ def update_enrichment_and_score(
             tier = ?,
             score_details_json = ?,
             matched = ?,
-            reject_reason = COALESCE(?, reject_reason)
+            reject_reason = ?
         WHERE job_id = ?
         """,
         (enrichment_json, score, tier, score_details_json, matched, reject_reason, job_id),
@@ -68,7 +68,7 @@ def set_user_status(
             "UPDATE processed_jobs SET user_status = ?, user_reject_reason = ? WHERE job_id = ?",
             (user_status, user_reject_reason, job_id),
         )
-    elif user_status == "new":
+    elif user_status in ("new", "saved"):
         cur = conn.execute(
             "UPDATE processed_jobs SET user_status = ?, user_reject_reason = NULL WHERE job_id = ?",
             (user_status, job_id),
@@ -120,7 +120,7 @@ def list_pending_enrichment(conn: sqlite3.Connection, limit: int) -> list[sqlite
 def list_enriched(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return conn.execute(
         """
-        SELECT job_id, title, company, date_posted, seniority_level, industry, salary, description, enrichment_json
+        SELECT job_id, title, company, location, is_remote, date_posted, seniority_level, industry, salary, description, enrichment_json, reject_reason
         FROM processed_jobs
         WHERE enrichment_json IS NOT NULL
         """

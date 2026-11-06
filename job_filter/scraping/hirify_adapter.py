@@ -141,7 +141,7 @@ DF_COLS = [
 def _cards_to_dataframe(
     cards: list[dict[str, Any]],
     client: HirifyClient,
-    results_wanted: int = 15,
+    results_wanted: int = 50,
     hours_old: int = 72,
 ) -> pd.DataFrame:
     now = datetime.now(timezone.utc)
@@ -226,7 +226,7 @@ def _cards_to_dataframe(
 def scrape_hirify(
     term: str,
     location: str,
-    results_wanted: int = 15,
+    results_wanted: int = 50,
     hours_old: int = 72,
     client: HirifyClient | None = None,
 ) -> pd.DataFrame:
@@ -289,7 +289,7 @@ def scrape_hirify(
 
 def scrape_hirify_feed(
     feed_id: int,
-    results_wanted: int = 15,
+    results_wanted: int = 50,
     hours_old: int = 72,
     client: HirifyClient | None = None,
 ) -> pd.DataFrame:
@@ -322,7 +322,7 @@ def scrape_hirify_feed(
 
 
 def scrape_hirify_active_feeds(
-    results_wanted: int = 25,
+    results_wanted: int = 50,
     hours_old: int = 72,
     client: HirifyClient | None = None,
 ) -> pd.DataFrame:

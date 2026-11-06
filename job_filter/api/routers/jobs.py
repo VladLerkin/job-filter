@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 @router.get("")
 def list_jobs(
-    tab: str = Query("actionable", description="actionable | top | good | pending | applied | rejected"),
+    tab: str = Query("top", description="top | good | fair | pending | applied | rejected | actionable"),
     conn: sqlite3.Connection = Depends(get_db),
 ):
     return jobs_service.list_jobs(conn, tab=tab)

@@ -19,10 +19,21 @@ def get_settings(conn: sqlite3.Connection) -> dict[str, Any]:
             "updated_at": "",
         }
 
+    if hasattr(row, "keys"):
+        p_text = row["profile_text"] or ""
+        c_text = row["cv_text"] or ""
+        geo_raw = row["geo_preferences_json"]
+        u_at = row["updated_at"] or ""
+    else:
+        p_text = (row[0] or "") if len(row) > 0 else ""
+        c_text = (row[1] or "") if len(row) > 1 else ""
+        geo_raw = row[2] if len(row) > 2 else None
+        u_at = (row[3] or "") if len(row) > 3 else ""
+
     geo_prefs = None
-    if "geo_preferences_json" in row.keys() and row["geo_preferences_json"]:
+    if geo_raw:
         try:
-            geo_prefs = json.loads(row["geo_preferences_json"])
+            geo_prefs = json.loads(geo_raw)
         except Exception:
             pass
 
@@ -30,10 +41,10 @@ def get_settings(conn: sqlite3.Connection) -> dict[str, Any]:
         geo_prefs = dict(DEFAULT_GEO_PREFERENCES)
 
     return {
-        "profile_text": row["profile_text"] or "",
-        "cv_text": row["cv_text"] or "",
+        "profile_text": p_text,
+        "cv_text": c_text,
         "geo_preferences": geo_prefs,
-        "updated_at": row["updated_at"] or "",
+        "updated_at": u_at,
     }
 
 

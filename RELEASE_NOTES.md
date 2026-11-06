@@ -1,5 +1,30 @@
 # Release Notes
 
+## v1.2.0
+**Release Date:** November 6, 2026
+
+### Features & Granular Scoring
+- **Granular Score Tiers & Tabs:** Replaced the ambiguous combined "Actionable" tab with granular, focused score categories: `Top Match ≥70` (🟢), `Good 60–69` (🟡), and `Fair 50–59` (🟠). Added corresponding `.badge-fair` styling and color-coded score visual indicators. Retained full backward compatibility for `actionable` query requests in backend services and API endpoints.
+- **Increased Location Weighting:** Significantly boosted points for candidate-accessible locations in the scoring model:
+  - `Tier 1A` (Local Georgia / Tbilisi): boosted from +20 to +35 points.
+  - `Tier 1B` (True Global Remote / Worldwide): boosted from +18 to +30 points.
+  - `Tier 2A` (Broad EMEA / Timezone): adjusted to +18 points (from +12).
+  - `Tier 2B` (Relocation / Sponsorship): maintained at +10 points.
+  Ensures jobs legally and practically workable from Georgia rank prominently in top tiers.
+- **Dismissed Tab Breakdown & Feed Restoration:** Split the `Dismissed` (`Отсеянные`) tab into interactive sub-filters: `All Dismissed`, `👤 Dismissed by Me` (`rejection_source = 'user'`), and `🤖 Filtered by Auto/AI` (`rejection_source = 'auto'`). Added dynamic breakdown chips for 1-click filtering by user rejection reasons or auto-filter categories, plus a 1-click `↩ Restore to Feed` button for auto-rejected vacancies (`user_status = 'saved'`).
+
+### Integrations & Scraping
+- **Hirify Feeds Scale & Limits:** Increased maximum vacancy limit per saved filter / feed from 25 to 50 across the Hirify scraping adapter, pipeline services, and UI trigger.
+
+### Geo Disambiguation & Bug Fixes
+- **US vs. Georgia Country Disambiguation:** Fixed US state Georgia vs. country Georgia confusion (US city/state combinations like "San Ramon, CA", "usa", and 401(k) benefits now trigger `us_only_lock` instead of false Tier 1A match).
+- **LLM Commentary Isolation:** Excluded LLM work authorization analysis text from positive location matching to prevent negative phrases (e.g., "ineligible for candidate in Georgia") from triggering false positive matches.
+- **Single-Country Locks:** Added explicit single-country locks for Mexico, Argentina, India, and Brazil.
+- **Rescoring Engine Fixes:** Fixed `AttributeError: 'tuple' object has no attribute 'keys'` in `candidate_repo.get_settings` when reading SQLite row tuples, and updated `jobs_repo.update_enrichment_and_score` to clear stale rejection reasons upon rescore.
+
+### Testing & Maintenance
+- **Extended Test Suite:** Added unit and integration tests covering granular tabs, score distribution stats, geo-classification, and feed limits (49 tests passing).
+
 ## v1.1.1
 **Release Date:** November 6, 2026
 

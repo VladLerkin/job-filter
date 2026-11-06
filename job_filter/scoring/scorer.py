@@ -37,6 +37,7 @@ def score_vacancy_by_skill(
     conn: sqlite3.Connection | None = None,
     matrix: dict | None = None,
     geo_preferences: dict | None = None,
+    job_location: str | None = None,
 ) -> SkillScoreResult:
     """
     Полная реализация скоринговой модели (0..100 баллов) с динамической загрузкой весов,
@@ -50,7 +51,13 @@ def score_vacancy_by_skill(
         except Exception:
             pass
 
-    geo_passed, tier, geo_reason = classify_geo_tier(title, description, enrichment, geo_preferences=geo_preferences)
+    geo_passed, tier, geo_reason = classify_geo_tier(
+        title,
+        description,
+        enrichment,
+        geo_preferences=geo_preferences,
+        job_location=job_location,
+    )
 
     if matrix is None:
         matrix = get_skill_matrix(conn)
@@ -180,16 +187,16 @@ def score_vacancy_by_skill(
         score += 8
         breakdown.append("Mid/Regular (+8)")
 
-    # 3. Location & Format Match (0 to 20 pts)
+    # 3. Location & Format Match (0 to 35 pts) - повышенный вес для подходящих локаций
     if tier.startswith("Tier 1A"):
-        score += 20
-        breakdown.append("Tier 1A Local/Georgia (+20)")
+        score += 35
+        breakdown.append("Tier 1A Local/Georgia (+35)")
     elif tier.startswith("Tier 1B") or tier.startswith("Tier 1"):
-        score += 18
-        breakdown.append("Tier 1B True Global Remote (+18)")
+        score += 30
+        breakdown.append("Tier 1B True Global Remote (+30)")
     elif tier.startswith("Tier 2A"):
-        score += 12
-        breakdown.append("Tier 2A Broad EMEA / Timezone (+12)")
+        score += 18
+        breakdown.append("Tier 2A Broad EMEA / Timezone (+18)")
     elif tier.startswith("Tier 2B"):
         score += 10
         breakdown.append(f"{tier} (+10)")

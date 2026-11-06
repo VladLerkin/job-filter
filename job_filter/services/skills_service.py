@@ -4,7 +4,7 @@ import sqlite3
 
 from job_filter.db.seed_data import default_skill_matrix
 from job_filter.models.enrichment import JobEnrichment
-from job_filter.repositories import jobs_repo, skills_repo
+from job_filter.repositories import candidate_repo, jobs_repo, skills_repo
 from job_filter.scoring.matrix import get_skill_matrix, invalidate_matrix_cache
 from job_filter.scoring.scorer import score_vacancy_by_skill
 
@@ -129,13 +129,16 @@ def reset_to_defaults(conn: sqlite3.Connection) -> dict:
 
 
 def rescore_all_jobs(conn: sqlite3.Connection) -> int:
-    """Пересчитывает скоры всех уже обогащённых вакансий по текущей матрице навыков."""
+    """Пересчитывает скоры всех уже обогащённых вакансий по текущей матрице навыков и гео-правилам."""
     rows = jobs_repo.list_enriched(conn)
     matrix = get_skill_matrix(conn)
+    settings = candidate_repo.get_settings(conn)
+    geo_preferences = settings.get("geo_preferences")
     updated = 0
     for r in rows:
         try:
             enrichment = JobEnrichment.model_validate_json(r["enrichment_json"])
+            job_loc = r["location"] if ("location" in r.keys() and r["location"]) else None
             score_res = score_vacancy_by_skill(
                 title=r["title"] or "",
                 company=r["company"],
@@ -147,11 +150,24 @@ def rescore_all_jobs(conn: sqlite3.Connection) -> int:
                 enrichment=enrichment,
                 conn=conn,
                 matrix=matrix,
+                geo_preferences=geo_preferences,
+                job_location=job_loc,
             )
-            matched = 0 if (not score_res.geo_passed or score_res.score < 50) else 1
-            reject_reason = (
-                score_res.geo_reject_reason if not score_res.geo_passed else (f"low_score:{score_res.score}" if score_res.score < 50 else None)
-            )
+            old_rr = r["reject_reason"] if "reject_reason" in r.keys() else None
+            if not score_res.geo_passed:
+                reject_reason = score_res.geo_reject_reason
+                matched = 0
+            elif score_res.score < 50:
+                reject_reason = f"low_score:{score_res.score}"
+                matched = 0
+            else:
+                if old_rr and old_rr.startswith("bad_board:"):
+                    reject_reason = old_rr
+                    matched = 0
+                else:
+                    reject_reason = None
+                    matched = 1
+
             jobs_repo.update_enrichment_and_score(
                 conn,
                 job_id=r["job_id"],

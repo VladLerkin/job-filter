@@ -18,7 +18,7 @@
             agy CLI + Hirify Skill Scorer
           </span>
           <span id="appVersionBadge" class="text-xs font-mono font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-            v1.1.1
+            v1.2.0
           </span>
         </h1>
         <p class="text-xs text-slate-400 mt-0.5" data-i18n="app_subtitle">
@@ -149,14 +149,14 @@
     <!-- Табы и статистика -->
     <section class="flex items-center justify-between gap-2 border-b border-slate-800 pb-3 overflow-x-auto">
       <div class="flex items-center gap-1.5 whitespace-nowrap" id="tabsBar">
-        <button data-tab="actionable" onclick="switchTab('actionable')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white">
-          🎯 <span data-i18n="tab_actionable_text">Actionable</span> (<span id="cntActionable">0</span>)
-        </button>
-        <button data-tab="top" onclick="switchTab('top')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+        <button data-tab="top" onclick="switchTab('top')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white">
           🟢 <span data-i18n="tab_top_text">Top Match ≥70</span> (<span id="cntTop">0</span>)
         </button>
         <button data-tab="good" onclick="switchTab('good')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
-          🟡 <span data-i18n="tab_good_text">Good 50–69</span> (<span id="cntGood">0</span>)
+          🟡 <span data-i18n="tab_good_text">Good 60–69</span> (<span id="cntGood">0</span>)
+        </button>
+        <button data-tab="fair" onclick="switchTab('fair')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
+          🟠 <span data-i18n="tab_fair_text">Fair 50–59</span> (<span id="cntFair">0</span>)
         </button>
         <button data-tab="pending" onclick="switchTab('pending')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700">
           ⏳ <span data-i18n="tab_pending_text">Pending AI</span> (<span id="cntPending">0</span>)
@@ -410,6 +410,44 @@
 
       <!-- Контейнер карточек категорий и их навыков -->
       <div id="skillsCategoriesContainer" class="space-y-6"></div>
+    </section>
+
+    <!-- Панель фильтрации внутри вкладки "Отсеянные" -->
+    <section id="rejectedFilterBar" class="hidden card rounded-xl p-4 shadow-lg space-y-3.5 border border-slate-800">
+      <!-- Верхний переключатель среза: Все / Отклонил я / Отсеяно автоматом -->
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-xs font-semibold text-slate-400 mr-1" data-i18n="filter_rejected_scope">Срез отсева:</span>
+          <button id="btnSubtabAll" onclick="setRejectedSubtab('all')" class="px-3 py-1.5 rounded-lg text-xs font-medium transition bg-indigo-600 text-white shadow">
+            <span data-i18n="subtab_all_rejected">Все отсеянные</span> (<span id="cntSubtabAll">0</span>)
+          </button>
+          <button id="btnSubtabUser" onclick="setRejectedSubtab('user')" class="px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700">
+            <span data-i18n="subtab_user_rejected">👤 Отклонил я</span> (<span id="cntSubtabUser">0</span>)
+          </button>
+          <button id="btnSubtabAuto" onclick="setRejectedSubtab('auto')" class="px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700">
+            <span data-i18n="subtab_auto_rejected">🤖 Отсеяно автоматом</span> (<span id="cntSubtabAuto">0</span>)
+          </button>
+        </div>
+        <div id="rejectedActiveFilterTip" class="text-xs text-indigo-300 font-medium"></div>
+      </div>
+
+      <!-- Причины, по которым пользователь отклонил вакансию -->
+      <div id="rejectedUserReasonsWrap" class="space-y-1.5">
+        <div class="text-xs text-slate-400 font-medium flex items-center justify-between">
+          <span data-i18n="subtab_reasons_title">📋 Причины, по которым вы отказали:</span>
+          <span class="text-[11px] text-slate-500" data-i18n="click_to_filter_hint">Кликните по причине для фильтрации</span>
+        </div>
+        <div id="rejectedUserReasonsChips" class="flex flex-wrap items-center gap-1.5 pt-1"></div>
+      </div>
+
+      <!-- Категории авто-отсева системой -->
+      <div id="rejectedAutoCategoriesWrap" class="space-y-1.5">
+        <div class="text-xs text-slate-400 font-medium flex items-center justify-between">
+          <span data-i18n="subtab_categories_title">🤖 Категории авто-отсева системой:</span>
+          <span class="text-[11px] text-slate-500" data-i18n="click_to_filter_hint">Кликните по категории для фильтрации</span>
+        </div>
+        <div id="rejectedAutoCategoriesChips" class="flex flex-wrap items-center gap-1.5 pt-1"></div>
+      </div>
     </section>
 
     <!-- Список карточек вакансий -->

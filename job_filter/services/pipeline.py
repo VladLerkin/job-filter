@@ -55,10 +55,11 @@ def enrich_and_score_pending_jobs(
 
         emit(f"🧠 [{idx}/{len(rows)}] ИИ-разбор: {title} @ {company} ({job_id})...")
         try:
+            job_loc = row["location"] or "Remote"
             enrichment = enrich_job(
                 title=title,
                 company=company,
-                location="EMEA / Remote",
+                location=job_loc,
                 description=desc,
                 model=model,
                 resume=resume_text,
@@ -73,6 +74,7 @@ def enrich_and_score_pending_jobs(
                 description=desc,
                 enrichment=enrichment,
                 conn=conn,
+                job_location=job_loc,
             )
             matched = 0 if (not score_res.geo_passed or score_res.score < 50) else 1
             reject_reason = (
@@ -174,7 +176,7 @@ def fetch_and_filter_jobs(
     site_names: list[str] | None = None,
     location: str = "EMEA",
     country_indeed: str = "uk",
-    results_wanted: int = 30,
+    results_wanted: int = 50,
     hours_old: int = 4,
     easy_apply: bool | None = None,
     linkedin_company_ids: list[int] | None = None,

@@ -14,7 +14,7 @@ class RunPipelineRequest(BaseModel):
     site_names: list[str] = ["linkedin"]
     location: str = "EMEA"
     country_indeed: str = "uk"
-    results_wanted: int = 20
+    results_wanted: int = 50
     hours_old: int = 4
     easy_apply: bool = False
     llm_model: str = config.DEFAULT_MODEL
