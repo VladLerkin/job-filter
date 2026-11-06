@@ -104,7 +104,7 @@ def list_pending_enrichment(conn: sqlite3.Connection, limit: int) -> list[sqlite
     """Вакансии с описанием, прошедшие базовый фильтр, но ещё не обогащённые LLM."""
     return conn.execute(
         """
-        SELECT job_id, title, company, url, date_posted, seniority_level, industry, salary, description
+        SELECT job_id, title, company, location, url, date_posted, seniority_level, industry, salary, description
         FROM processed_jobs
         WHERE description IS NOT NULL
           AND description != ''

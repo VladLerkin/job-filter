@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 def enrich_and_score_pending_jobs(
     conn: sqlite3.Connection,
     model: str = config.DEFAULT_MODEL,
-    limit: int = 30,
+    limit: int = 50,
     on_progress: Callable[[str], None] | None = None,
 ) -> int:
     """
@@ -55,7 +55,7 @@ def enrich_and_score_pending_jobs(
 
         emit(f"🧠 [{idx}/{len(rows)}] ИИ-разбор: {title} @ {company} ({job_id})...")
         try:
-            job_loc = row["location"] or "Remote"
+            job_loc = row["location"] if ("location" in row.keys() and row["location"]) else "Remote"
             enrichment = enrich_job(
                 title=title,
                 company=company,
@@ -182,7 +182,7 @@ def fetch_and_filter_jobs(
     linkedin_company_ids: list[int] | None = None,
     run_llm_enrichment: bool = True,
     llm_model: str = config.DEFAULT_MODEL,
-    llm_limit: int = 25,
+    llm_limit: int = 50,
     on_progress: Callable[[str], None] | None = None,
     hirify_mode: str = "feeds",
     hirify_feed_id: int | str | None = None,
@@ -254,7 +254,12 @@ def fetch_and_filter_jobs(
     else:
         for idx, term in enumerate(terms):
             if idx > 0:
-                time.sleep(random.uniform(2.0, 4.0))
+                if site == "linkedin":
+                    delay = random.uniform(12.0, 20.0)
+                    emit(f"⏳ [linkedin] Пауза {delay:.1f}с перед следующим запросом '{term}' для защиты от rate-limit (429)...")
+                    time.sleep(delay)
+                else:
+                    time.sleep(random.uniform(2.0, 4.0))
 
             try:
                 emit(f"🔍 Поиск [{site}] '{term}' в '{location}' (за последние {hours_old}ч){easy_label}...")

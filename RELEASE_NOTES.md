@@ -1,5 +1,20 @@
 # Release Notes
 
+## v1.2.1
+**Release Date:** November 6, 2026
+
+### Scraping & Rate-Limiting Protections
+- **LinkedIn Rate-Limit Protections (Anti-429):**
+  - Increased pause between consecutive LinkedIn search terms from 2–4s to `12.0–20.0s` with live countdown logs, allowing LinkedIn's rate-limiting window to cool down between 50-vacancy queries.
+  - Increased internal page-to-page delay in `JobSpy` from `(3, 7)` to `(5, 9)` seconds.
+  - Increased card detail fetching delay to `(2.0, 3.5)` seconds with an expanded exponential backoff on HTTP 429 (`attempt * 6.0s + (3..6s)`).
+
+### AI Processing Scale
+- **Increased AI Batch Limit to 50:** Raised the default AI processing limit (`llm_limit`) from 15 to 50 across the web UI (`AI Limit` input), API schemas (`RunPipelineRequest`), and backend pipeline runner services (`enrich_and_score_pending_jobs` and `run_pipeline`), matching the increased 50-vacancy feed and scraping scale.
+
+### Bug Fixes & Reliability
+- **LLM Enrichment SQL Column Fix:** Resolved `IndexError: No item with that key` by adding `location` to the `SELECT` query in `jobs_repo.list_pending_enrichment` and adding safe dictionary access in `pipeline.py`.
+
 ## v1.2.0
 **Release Date:** November 6, 2026
 

@@ -58,7 +58,7 @@ def extract_linkedin_apply_url(soup: BeautifulSoup) -> str | None:
 def fetch_job_details(
     session: requests.Session,
     job_id: str,
-    delay_range: tuple[float, float] = (1.5, 2.5),
+    delay_range: tuple[float, float] = (2.0, 3.5),
     max_retries: int = 3,
 ) -> dict[str, str | None] | None:
     """
@@ -99,7 +99,7 @@ def fetch_job_details(
                     "apply_url": apply_url,
                 }
             elif resp.status_code in (429, 502, 503, 504):
-                backoff = attempt * 3.0 + random.uniform(1.0, 2.5)
+                backoff = attempt * 6.0 + random.uniform(3.0, 6.0)
                 logger.warning("[%s] Статус %d (попытка %d/%d), ждем %.1fс...", job_id, resp.status_code, attempt, max_retries, backoff)
                 time.sleep(backoff)
             elif resp.status_code == 404:

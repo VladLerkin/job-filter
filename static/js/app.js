@@ -1126,7 +1126,7 @@
       const provider = getSelectedProvider();
       const location = document.getElementById('location').value.trim() || 'EMEA';
       const hoursOld = parseInt(document.getElementById('hoursOld').value || '4', 10);
-      const llmLimit = parseInt(document.getElementById('llmLimit').value || '15', 10);
+      const llmLimit = parseInt(document.getElementById('llmLimit').value || '50', 10);
       const easyApply = document.getElementById('easyApply').checked;
       const countryIndeed = (provider === 'indeed' || provider === 'glassdoor') ? location : 'uk';
       const siteNames = [provider];

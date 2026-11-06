@@ -18,7 +18,7 @@ class RunPipelineRequest(BaseModel):
     hours_old: int = 4
     easy_apply: bool = False
     llm_model: str = config.DEFAULT_MODEL
-    llm_limit: int = 15
+    llm_limit: int = 50
     enrich_only: bool = False
     hirify_mode: Literal["feeds", "custom"] = "feeds"
     hirify_feed_id: int | str | None = None

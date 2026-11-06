@@ -58,7 +58,7 @@ class PipelineRunner:
                     enrich_and_score_pending_jobs(
                         conn,
                         model=req.get("llm_model"),
-                        limit=req.get("llm_limit", 15),
+                        limit=req.get("llm_limit", 50),
                         on_progress=self.append_log,
                     )
                 finally:
@@ -74,7 +74,7 @@ class PipelineRunner:
                     easy_apply=True if req.get("easy_apply") else None,
                     run_llm_enrichment=True,
                     llm_model=req.get("llm_model"),
-                    llm_limit=req.get("llm_limit", 15),
+                    llm_limit=req.get("llm_limit", 50),
                     on_progress=self.append_log,
                     hirify_mode=req.get("hirify_mode", "feeds"),
                     hirify_feed_id=req.get("hirify_feed_id"),
