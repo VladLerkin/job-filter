@@ -17,7 +17,10 @@
         btn_run_enrich_title: "Enrich already scraped jobs in DB via agy CLI without new scraping",
         source_label: "🌐 Source (select one):",
         pipeline_running: "Pipeline running...",
+        pipeline_finished: "Pipeline finished",
         hide_log: "Hide Log",
+        show_log: "Show Log",
+        clear_log: "Clear",
         tab_top_text: "Top Match ≥70",
         tab_good_text: "Good 60–69",
         tab_fair_text: "Fair 50–59",
@@ -175,7 +178,10 @@
         btn_run_enrich_title: "Обогатить через agy CLI уже скачанные в БД вакансии без нового парсинга",
         source_label: "🌐 Источник (выбери один):",
         pipeline_running: "Выполняется пайплайн...",
+        pipeline_finished: "Пайплайн завершен",
         hide_log: "Скрыть лог",
+        show_log: "Показать лог",
+        clear_log: "Очистить",
         tab_top_text: "Топ ≥70",
         tab_good_text: "Хорошие 60–69",
         tab_fair_text: "Проходные 50–59",
@@ -373,6 +379,10 @@
 
       if (typeof updateTabsText === 'function') {
         updateTabsText();
+      }
+
+      if (typeof updateLogButtonState === 'function') {
+        updateLogButtonState();
       }
 
       if (currentTab === 'skills' && typeof renderSkillsMatrix === 'function' && cachedSkillsMatrix && cachedSkillsMatrix.categories) {
@@ -1140,9 +1150,12 @@
         hirifyFeedId = feedSelect ? feedSelect.value : 'all_active';
       }
 
-      document.getElementById('logContainer').classList.remove('hidden');
-      document.getElementById('logOutput').textContent = '';
+      const logContainer = document.getElementById('logContainer');
+      if (logContainer) logContainer.classList.remove('hidden');
+      const logOutput = document.getElementById('logOutput');
+      if (logOutput) logOutput.textContent = '';
       logCursor = 0;
+      updateLogButtonState(true);
 
       await fetch('/api/pipeline/start', {
         method: 'POST',
@@ -1167,26 +1180,96 @@
       pollPipelineStatus();
     }
 
-    async function pollPipelineStatus() {
-      const res = await fetch(`/api/pipeline/status?since=${logCursor}`);
-      const data = await res.json();
-      const pre = document.getElementById('logOutput');
-      if (data.logs && data.logs.length > 0) {
-        pre.textContent += data.logs.join('\n') + '\n';
-        pre.scrollTop = pre.scrollHeight;
-        logCursor = data.next_index;
-        loadJobs();
-      }
-      const badge = document.getElementById('pipelineBadge');
-      if (!data.running) {
-        badge.innerHTML = '✅ Пайплайн завершен';
-        badge.className = 'text-xs font-medium text-emerald-400';
-        clearInterval(pollTimer);
-        pollTimer = null;
-        loadJobs();
+    function toggleLog() {
+      const container = document.getElementById('logContainer');
+      if (!container) return;
+      const isHidden = container.classList.contains('hidden');
+      if (isHidden) {
+        container.classList.remove('hidden');
       } else {
-        badge.innerHTML = '<span class="animate-ping inline-block w-2 h-2 rounded-full bg-indigo-400"></span> Выполняется пайплайн...';
-        badge.className = 'text-xs font-medium text-indigo-400 flex items-center gap-1.5';
+        container.classList.add('hidden');
+      }
+      updateLogButtonState();
+    }
+
+    function clearLog() {
+      const pre = document.getElementById('logOutput');
+      if (pre) pre.textContent = '';
+      logCursor = 0;
+      updateLogButtonState();
+    }
+
+    function updateLogButtonState(running = null) {
+      const container = document.getElementById('logContainer');
+      const isHidden = container ? container.classList.contains('hidden') : true;
+      const btnText = document.getElementById('btnToggleLogText');
+      const dot = document.getElementById('logStatusDot');
+      const collapseText = document.getElementById('btnCollapseLogText');
+
+      if (running === null) {
+        running = pollTimer !== null;
+      }
+
+      if (dot) {
+        if (running) {
+          dot.className = 'w-2 h-2 rounded-full bg-indigo-400 animate-ping';
+        } else {
+          const pre = document.getElementById('logOutput');
+          const hasLogs = pre && pre.textContent.trim().length > 0;
+          dot.className = hasLogs ? 'w-2 h-2 rounded-full bg-emerald-400' : 'w-2 h-2 rounded-full bg-slate-500';
+        }
+      }
+
+      if (btnText) {
+        if (isHidden) {
+          btnText.textContent = running
+            ? (currentLang === 'ru' ? '⚡ Лог (выполняется...)' : '⚡ Log (running...)')
+            : t('show_log');
+        } else {
+          btnText.textContent = t('hide_log');
+        }
+      }
+
+      if (collapseText) {
+        collapseText.textContent = t('hide_log');
+      }
+    }
+
+    async function pollPipelineStatus() {
+      try {
+        const res = await fetch(`/api/pipeline/status?since=${logCursor}`);
+        const data = await res.json();
+        const pre = document.getElementById('logOutput');
+        if (data.logs && data.logs.length > 0) {
+          pre.textContent += data.logs.join('\n') + '\n';
+          pre.scrollTop = pre.scrollHeight;
+          logCursor = data.next_index;
+          loadJobs();
+        }
+        const badge = document.getElementById('pipelineBadge');
+        if (!data.running) {
+          if (badge) {
+            badge.innerHTML = `✅ ${t('pipeline_finished') || 'Пайплайн завершен'}`;
+            badge.className = 'text-xs font-medium text-emerald-400';
+          }
+          if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+            loadJobs();
+          }
+          updateLogButtonState(false);
+        } else {
+          if (badge) {
+            badge.innerHTML = `<span class="animate-ping inline-block w-2 h-2 rounded-full bg-indigo-400"></span> ${t('pipeline_running') || 'Выполняется пайплайн...'}`;
+            badge.className = 'text-xs font-medium text-indigo-400 flex items-center gap-1.5';
+          }
+          if (!pollTimer) {
+            pollTimer = setInterval(pollPipelineStatus, 1500);
+          }
+          updateLogButtonState(true);
+        }
+      } catch (err) {
+        console.error('Ошибка проверки статуса пайплайна:', err);
       }
     }
 
@@ -2407,3 +2490,5 @@
     onProviderChange();
     loadJobs();
     loadSkillsMatrix();
+    pollPipelineStatus();
+    updateLogButtonState();

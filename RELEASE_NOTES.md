@@ -1,5 +1,22 @@
 # Release Notes
 
+## v1.2.2
+**Release Date:** November 7, 2026
+
+### Integrations & Scraping
+- **Hirify Strict Time Cutoff (`hours_old`):** Fixed an issue where vacancies were not filtered by time because compact cards from Hirify API lacked timestamp fields. The adapter now parses the true publication date (`created_at` / `published_at`) from vacancy details and strictly cuts off vacancies older than the specified `hours_old` threshold (e.g. 4 hours).
+- **Accurate Posting Dates:** Vacancies from Hirify now record their actual creation date in `date_posted` rather than defaulting to today's date.
+- **API Quota & Performance Optimization (`processed_ids`):** Hirify cards whose IDs already exist in the local database (`processed_jobs`) are now skipped immediately before calling `read_vacancy`, saving daily API opens quota and speeding up feed collection.
+
+### UI & Usability
+- **Persistent Pipeline Log Toggle:** Added an always-visible `Show Log` / `Hide Log` toggle button to the main control toolbar, preventing logs from becoming unopenable after being hidden.
+- **Real-Time Pipeline Status Dot:** Added a color-coded status indicator next to the log button (pulsing blue/indigo when running, green when finished with logs, grey when idle).
+- **Log Management Controls:** Added a dedicated `Clear` (🧹) button inside the log modal and enhanced collapsible container styling.
+- **Pipeline Recovery on Page Load:** Automatic detection of running background pipelines on page reload so log streaming and status resume smoothly without needing a restart.
+
+### Testing & Maintenance
+- **Extended Test Suite:** Added unit tests verifying Hirify detail-level date filtering, `processed_ids` skipping, and date accuracy (50 tests passing).
+
 ## v1.2.1
 **Release Date:** November 6, 2026
 

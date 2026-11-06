@@ -206,3 +206,73 @@ def test_providers_scrape_site_dispatch_hirify_feeds_mode():
         hirify_feed_id="all_active",
     )
     assert isinstance(df, pd.DataFrame)
+
+
+def test_scrape_hirify_filters_by_detail_created_at_and_processed_ids():
+    mock_client = MagicMock(spec=HirifyClient)
+    mock_client.is_configured.return_value = True
+
+    now = datetime.now(timezone.utc)
+    fresh_time = (now - timedelta(hours=2)).isoformat()
+    old_time = (now - timedelta(hours=10)).isoformat()
+
+    # Compact cards return NO published_at or created_at (as in real Hirify API)
+    mock_client.get_feed_vacancies.return_value = {
+        "data": [
+            {
+                "vacancy_id": 501,
+                "title": "Fresh AI Engineer",
+                "slug": "fresh-501",
+                "company": "Company A",
+            },
+            {
+                "vacancy_id": 502,
+                "title": "Old AI Engineer",
+                "slug": "old-502",
+                "company": "Company B",
+            },
+            {
+                "vacancy_id": 503,
+                "title": "Already Seen AI Engineer",
+                "slug": "seen-503",
+                "company": "Company C",
+            },
+        ]
+    }
+
+    def fake_read_vacancy(vid: int):
+        if vid == 501:
+            return {
+                "vacancy_id": 501,
+                "created_at": fresh_time,
+                "description": "Building agentic systems with Python.",
+            }
+        elif vid == 502:
+            return {
+                "vacancy_id": 502,
+                "created_at": old_time,
+                "description": "Legacy system developer.",
+            }
+        elif vid == 503:
+            raise AssertionError("read_vacancy should not be called for already processed vacancies!")
+        return {}
+
+    mock_client.read_vacancy.side_effect = fake_read_vacancy
+
+    # hours_old=4: 501 is 2h old (kept), 502 is 10h old (filtered out), 503 is in processed_ids (skipped)
+    df = scrape_hirify_feed(
+        feed_id=123,
+        results_wanted=10,
+        hours_old=4,
+        client=mock_client,
+        processed_ids={"hf-503"},
+    )
+
+    assert len(df) == 1
+    row = df.iloc[0]
+    assert row["id"] == "hf-501"
+    assert row["title"] == "Fresh AI Engineer"
+    # date_posted must match creation date, not fallback to today
+    expected_date = (now - timedelta(hours=2)).strftime("%Y-%m-%d")
+    assert row["date_posted"] == expected_date
+

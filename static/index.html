@@ -18,7 +18,7 @@
             agy CLI + Hirify Skill Scorer
           </span>
           <span id="appVersionBadge" class="text-xs font-mono font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-            v1.2.1
+            v1.2.2
           </span>
         </h1>
         <p class="text-xs text-slate-400 mt-0.5" data-i18n="app_subtitle">
@@ -128,21 +128,30 @@
         <div class="flex flex-wrap items-center gap-2">
           <span id="remoteMechanismBadge" class="px-2.5 py-1 rounded-md bg-emerald-950/70 text-emerald-300 border border-emerald-800/60 font-medium"></span>
           <span id="providerHint" class="text-slate-400 italic"></span>
+          <button id="btnToggleLog" onclick="toggleLog()" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium cursor-pointer shadow-sm transition">
+            <span id="logStatusDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+            <span id="btnToggleLogText" data-i18n="show_log">Show Log</span>
+          </button>
         </div>
       </div>
 
       <!-- Лог выполнения в реальном времени -->
-      <div id="logContainer" class="hidden mt-4">
-        <div class="flex items-center justify-between mb-1">
+      <div id="logContainer" class="hidden mt-4 bg-slate-950/80 border border-slate-800 rounded-xl p-3 shadow-inner">
+        <div class="flex items-center justify-between mb-2 pb-2 border-b border-slate-800/60">
           <span id="pipelineBadge" class="text-xs font-medium text-indigo-400 flex items-center gap-1.5">
             <span class="animate-ping inline-block w-2 h-2 rounded-full bg-indigo-400"></span>
             <span data-i18n="pipeline_running">Pipeline running...</span>
           </span>
-          <button onclick="document.getElementById('logContainer').classList.add('hidden')" data-i18n="hide_log" class="text-xs text-slate-400 hover:text-white">
-            Hide Log
-          </button>
+          <div class="flex items-center gap-2">
+            <button onclick="clearLog()" class="text-xs text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-900 border border-slate-800 hover:border-slate-700 transition" title="Clear log output">
+              🧹 <span data-i18n="clear_log">Clear</span>
+            </button>
+            <button onclick="toggleLog()" class="text-xs text-slate-300 hover:text-white px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 transition font-medium flex items-center gap-1">
+              <span>✕</span> <span id="btnCollapseLogText" data-i18n="hide_log">Hide Log</span>
+            </button>
+          </div>
         </div>
-        <pre id="logOutput" class="bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-300 font-mono max-h-56 overflow-y-auto whitespace-pre-wrap"></pre>
+        <pre id="logOutput" class="bg-slate-950 border border-slate-800/80 rounded-lg p-3 text-xs text-slate-300 font-mono max-h-56 overflow-y-auto whitespace-pre-wrap leading-relaxed select-text"></pre>
       </div>
     </section>
 

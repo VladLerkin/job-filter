@@ -37,6 +37,7 @@ def scrape_site(
     linkedin_company_ids: list[int] | None = None,
     hirify_mode: str = "feeds",
     hirify_feed_id: int | str | None = None,
+    processed_ids: set[str] | None = None,
 ) -> pd.DataFrame:
     """Вызывает JobSpy или специализированный адаптер для проверенных провайдеров (LinkedIn, Indeed, Glassdoor, Hirify)."""
     site = (site or "linkedin").strip().lower()
@@ -59,12 +60,14 @@ def scrape_site(
                         feed_id=feed_id_int,
                         results_wanted=results_wanted,
                         hours_old=hours_old,
+                        processed_ids=processed_ids,
                     )
                 except ValueError:
                     logger.warning("Некорректный feed_id %s, переключаемся на все активные фильтры", hirify_feed_id)
             return scrape_hirify_active_feeds(
                 results_wanted=results_wanted,
                 hours_old=hours_old,
+                processed_ids=processed_ids,
             )
 
         return scrape_hirify(
@@ -72,6 +75,7 @@ def scrape_site(
             location=location,
             results_wanted=results_wanted,
             hours_old=hours_old,
+            processed_ids=processed_ids,
         )
 
     if site == "linkedin":

@@ -143,6 +143,7 @@ def _cards_to_dataframe(
     client: HirifyClient,
     results_wanted: int = 50,
     hours_old: int = 72,
+    processed_ids: set[str] | None = None,
 ) -> pd.DataFrame:
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=hours_old) if hours_old and hours_old > 0 else None
@@ -156,6 +157,12 @@ def _cards_to_dataframe(
         if not vac_id:
             continue
 
+        job_key = f"hf-{vac_id}"
+        if processed_ids and job_key in processed_ids:
+            logger.debug("Пропуск уже обработанной вакансии Hirify %s", job_key)
+            continue
+
+        # Проверка даты на уровне компактной карточки (если передана)
         pub_dt = _parse_published_date(card.get("published_at") or card.get("created_at"))
         if cutoff and pub_dt and pub_dt < cutoff:
             # Старше заданного интервала времени
@@ -193,6 +200,7 @@ def _cards_to_dataframe(
 
         # Загружаем полное описание вакансии (vacancies.read)
         desc_text = ""
+        detail: dict[str, Any] = {}
         try:
             detail = client.read_vacancy(vac_id)
             desc_text = detail.get("description") or detail.get("original_description") or ""
@@ -204,8 +212,22 @@ def _cards_to_dataframe(
             logger.warning(f"Не удалось загрузить детальное описание Hirify вакансии #{vac_id}: {e}")
             desc_text = f"{title}\nSkills: {', '.join(card.get('skills') or [])}"
 
+        # Если дата не была указана в карточке, извлекаем дату создания/публикации из деталей
+        if not pub_dt and detail:
+            raw_date = (
+                detail.get("published_at")
+                or detail.get("created_at")
+                or detail.get("updated_at")
+            )
+            pub_dt = _parse_published_date(raw_date)
+
+        # Отсекаем по времени публикации
+        if cutoff and pub_dt and pub_dt < cutoff:
+            logger.info("Пропуск вакансии Hirify #%s: дата публикации %s старше лимита %sч (%s)", vac_id, pub_dt, hours_old, cutoff)
+            continue
+
         matched_rows.append({
-            "id": f"hf-{vac_id}",
+            "id": job_key,
             "site": "hirify",
             "job_url": job_url,
             "job_url_direct": None,
@@ -229,6 +251,7 @@ def scrape_hirify(
     results_wanted: int = 50,
     hours_old: int = 72,
     client: HirifyClient | None = None,
+    processed_ids: set[str] | None = None,
 ) -> pd.DataFrame:
     """
     Выполняет поиск вакансий на Hirify по заданным критериям и возвращает DataFrame в стандартном формате JobFilter.
@@ -284,7 +307,13 @@ def scrape_hirify(
     if not isinstance(cards, list):
         cards = []
 
-    return _cards_to_dataframe(cards, client=client, results_wanted=results_wanted, hours_old=hours_old)
+    return _cards_to_dataframe(
+        cards,
+        client=client,
+        results_wanted=results_wanted,
+        hours_old=hours_old,
+        processed_ids=processed_ids,
+    )
 
 
 def scrape_hirify_feed(
@@ -292,6 +321,7 @@ def scrape_hirify_feed(
     results_wanted: int = 50,
     hours_old: int = 72,
     client: HirifyClient | None = None,
+    processed_ids: set[str] | None = None,
 ) -> pd.DataFrame:
     """
     Выполняет поиск вакансий по конкретному сохранённому фильтру (feed) Hirify.
@@ -318,13 +348,20 @@ def scrape_hirify_feed(
     if not isinstance(cards, list):
         cards = []
 
-    return _cards_to_dataframe(cards, client=client, results_wanted=results_wanted, hours_old=hours_old)
+    return _cards_to_dataframe(
+        cards,
+        client=client,
+        results_wanted=results_wanted,
+        hours_old=hours_old,
+        processed_ids=processed_ids,
+    )
 
 
 def scrape_hirify_active_feeds(
     results_wanted: int = 50,
     hours_old: int = 72,
     client: HirifyClient | None = None,
+    processed_ids: set[str] | None = None,
 ) -> pd.DataFrame:
     """
     Получает вакансии по всем активным фильтрам пользователя в Hirify, объединяя и дедуплицируя результат.
@@ -357,7 +394,13 @@ def scrape_hirify_active_feeds(
         fid = feed.get("id")
         if not fid:
             continue
-        df_feed = scrape_hirify_feed(feed_id=fid, results_wanted=results_wanted, hours_old=hours_old, client=client)
+        df_feed = scrape_hirify_feed(
+            feed_id=fid,
+            results_wanted=results_wanted,
+            hours_old=hours_old,
+            client=client,
+            processed_ids=processed_ids,
+        )
         if not df_feed.empty:
             frames.append(df_feed)
 

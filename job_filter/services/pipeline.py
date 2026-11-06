@@ -239,6 +239,7 @@ def fetch_and_filter_jobs(
                         results_wanted=results_wanted,
                         hours_old=hours_old,
                         client=client,
+                        processed_ids=processed_ids,
                     )
                     site_errors = (df.attrs or {}).get("errors") or {}
                     for err_site, err_msg in site_errors.items():
@@ -274,6 +275,7 @@ def fetch_and_filter_jobs(
                     linkedin_company_ids=linkedin_company_ids,
                     hirify_mode=hirify_mode,
                     hirify_feed_id=hirify_feed_id,
+                    processed_ids=processed_ids,
                 )
 
                 site_errors = (df.attrs or {}).get("errors") or {}
