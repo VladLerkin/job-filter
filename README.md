@@ -141,7 +141,7 @@ pytest tests/test_skills_diff.py -v
 
 ---
 
-## 📖 Architecture & Deep Dive
+## 📖 Documentation & Release History
 
-For detailed system design, folder structure, sequence diagrams, scoring formulas, and environment configuration:
-- 📘 [System Design & Architecture Document](docs/design.md)
+- 📘 [System Design & Architecture Document](docs/design.md) — detailed system architecture, database schemas, scoring formulas, and pipeline sequence diagrams.
+- 📜 [Release Notes & Version History](RELEASE_NOTES.md) — full changelog, version history, new features, and bug fixes for all releases.
