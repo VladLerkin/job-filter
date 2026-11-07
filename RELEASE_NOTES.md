@@ -1,5 +1,17 @@
 # Release Notes
 
+## v1.2.4
+**Release Date:** November 8, 2026
+
+### Features & Geo-Filtering
+- **Foreign On-site / Hybrid Filter:** Integrated `is_remote` tracking into `score_vacancy_by_skill` and `classify_geo_tier`. Jobs requiring physical presence or hybrid office attendance in another country (e.g. `is_remote == 0`, `Télétravail à hauteur de 50%`, `locaux à Lyon`, `X days in office`) without relocation assistance are now strictly rejected (`Rejected: On-site / Hybrid in <Location>` or `<Country>-only`).
+- **France Country Lock:** Added France (`france`) and major French cities (`Paris`, `Lyon`, `Villeurbanne`, `Marseille`, `Toulouse`, `Bordeaux`, `Lille`, `Nice`, `Nantes`, etc.) to `FOREIGN_COUNTRY_MAP`, resolving an issue where French remote positions were not recognized by country pool locks.
+- **Expanded Country Dictionary:** Added `Sri Lanka`, `Tunisia`, `Tanzania`, `Morocco`, `Serbia` (`Belgrade`, `Novi Sad`), `Montenegro`, and `Monaco` to foreign location mappings.
+- **Pipeline `is_remote` Integration:** Passed `is_remote` from database rows into AI enrichment scoring and skills service rescoring pipelines.
+
+### Testing & Maintenance
+- **Extended Test Suite:** Added unit tests covering France country lock, foreign hybrid/on-site requirements without relocation (rejected), and foreign hybrid roles with relocation (59 tests passing).
+
 ## v1.2.3
 **Release Date:** November 8, 2026
 

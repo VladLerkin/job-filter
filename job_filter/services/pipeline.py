@@ -56,6 +56,7 @@ def enrich_and_score_pending_jobs(
         emit(f"🧠 [{idx}/{len(rows)}] ИИ-разбор: {title} @ {company} ({job_id})...")
         try:
             job_loc = row["location"] if ("location" in row.keys() and row["location"]) else "Remote"
+            is_rem_val = row["is_remote"] if ("is_remote" in row.keys() and row["is_remote"] is not None) else None
             enrichment = enrich_job(
                 title=title,
                 company=company,
@@ -75,6 +76,7 @@ def enrich_and_score_pending_jobs(
                 enrichment=enrichment,
                 conn=conn,
                 job_location=job_loc,
+                is_remote=is_rem_val,
             )
             matched = 0 if (not score_res.geo_passed or score_res.score < 50) else 1
             reject_reason = (

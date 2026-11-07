@@ -38,6 +38,7 @@ def score_vacancy_by_skill(
     matrix: dict | None = None,
     geo_preferences: dict | None = None,
     job_location: str | None = None,
+    is_remote: bool | int | None = None,
 ) -> SkillScoreResult:
     """
     Полная реализация скоринговой модели (0..100 баллов) с динамической загрузкой весов,
@@ -57,6 +58,7 @@ def score_vacancy_by_skill(
         enrichment,
         geo_preferences=geo_preferences,
         job_location=job_location,
+        is_remote=is_remote,
     )
 
     if matrix is None:

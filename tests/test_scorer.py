@@ -225,4 +225,60 @@ def test_classify_geo_tier_wfa_across_single_country_not_global():
     assert "Japan-only" in tier or "Language" in tier
 
 
+def test_classify_geo_tier_france_country_lock():
+    enr = JobEnrichment(
+        location_restrictions=["France"],
+        remote_policy_detail="Remote within France",
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Staff Software Engineer",
+        "Must be located in France",
+        enr,
+        job_location="Paris, France",
+    )
+    assert passed is False
+    assert "France-only" in tier
+    assert "single_country_lock" in (reason or "")
+
+
+def test_classify_geo_tier_foreign_hybrid_office_no_relocation():
+    enr = JobEnrichment(
+        location_restrictions=["France"],
+        remote_policy_detail="Télétravail à hauteur de 50% (locaux à Lyon en face du Parc de la Tête D'Or)",
+        resume_fit=ResumeFit(
+            summary="Отличный стек, но гибридный формат (50% офис в Лионе) не подходит для удаленки из Грузии."
+        ),
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Ingénieure / Ingénieur IA",
+        "Télétravail 50%, locaux à Lyon",
+        enr,
+        job_location="Villeurbanne, Auvergne-Rhône-Alpes, France",
+        is_remote=0,
+    )
+    assert passed is False
+    assert "On-site / Hybrid" in tier or "France-only" in tier
+    assert "onsite_abroad_lock" in (reason or "") or "single_country_lock" in (reason or "")
+
+
+def test_classify_geo_tier_foreign_hybrid_office_with_relocation():
+    enr = JobEnrichment(
+        location_restrictions=["France"],
+        remote_policy_detail="Hybrid (3 days in Paris office)",
+        relocation_assistance="yes",
+        relocation_benefits_detail="Visa sponsorship and relocation to Paris provided",
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Senior Backend Lead",
+        "Hybrid in Paris office with visa support",
+        enr,
+        job_location="Paris, France",
+        is_remote=0,
+    )
+    assert passed is True
+    assert "Tier 2B" in tier
+    assert "Relocation" in tier
+
+
+
 

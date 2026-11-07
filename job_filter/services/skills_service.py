@@ -139,6 +139,7 @@ def rescore_all_jobs(conn: sqlite3.Connection) -> int:
         try:
             enrichment = JobEnrichment.model_validate_json(r["enrichment_json"])
             job_loc = r["location"] if ("location" in r.keys() and r["location"]) else None
+            is_rem_val = r["is_remote"] if ("is_remote" in r.keys() and r["is_remote"] is not None) else None
             score_res = score_vacancy_by_skill(
                 title=r["title"] or "",
                 company=r["company"],
@@ -152,6 +153,7 @@ def rescore_all_jobs(conn: sqlite3.Connection) -> int:
                 matrix=matrix,
                 geo_preferences=geo_preferences,
                 job_location=job_loc,
+                is_remote=is_rem_val,
             )
             old_rr = r["reject_reason"] if "reject_reason" in r.keys() else None
             if not score_res.geo_passed:

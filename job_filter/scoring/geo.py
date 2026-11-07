@@ -10,38 +10,46 @@ FOREIGN_COUNTRY_MAP: dict[str, str] = {
     # UK & Ireland
     "uk": "UK", "united kingdom": "UK", "great britain": "UK", "england": "UK",
     "scotland": "UK", "wales": "UK", "london": "UK", "ireland": "Ireland", "dublin": "Ireland",
+    # France & Monaco
+    "france": "France", "paris": "France", "lyon": "France", "marseille": "France",
+    "toulouse": "France", "bordeaux": "France", "lille": "France", "nice": "France",
+    "nantes": "France", "strasbourg": "France", "rennes": "France", "villeurbanne": "France",
+    "grenoble": "France", "montpellier": "France", "monaco": "Monaco",
     # DACH & Benelux
-    "germany": "Germany", "deutschland": "Germany", "berlin": "Germany",
-    "austria": "Austria", "vienna": "Austria", "switzerland": "Switzerland", "zurich": "Switzerland",
-    "netherlands": "Netherlands", "holland": "Netherlands", "amsterdam": "Netherlands",
+    "germany": "Germany", "deutschland": "Germany", "berlin": "Germany", "munich": "Germany", "frankfurt": "Germany",
+    "austria": "Austria", "vienna": "Austria", "switzerland": "Switzerland", "zurich": "Switzerland", "geneva": "Switzerland",
+    "netherlands": "Netherlands", "holland": "Netherlands", "amsterdam": "Netherlands", "rotterdam": "Netherlands",
     "belgium": "Belgium", "brussels": "Belgium", "luxembourg": "Luxembourg",
     # Southern Europe
-    "spain": "Spain", "madrid": "Spain", "barcelona": "Spain",
-    "portugal": "Portugal", "lisbon": "Portugal",
-    "italy": "Italy", "milan": "Italy", "rome": "Italy",
-    "greece": "Greece", "cyprus": "Cyprus", "malta": "Malta",
+    "spain": "Spain", "madrid": "Spain", "barcelona": "Spain", "valencia": "Spain",
+    "portugal": "Portugal", "lisbon": "Portugal", "porto": "Portugal",
+    "italy": "Italy", "milan": "Italy", "rome": "Italy", "turin": "Italy",
+    "greece": "Greece", "athens": "Greece", "cyprus": "Cyprus", "malta": "Malta",
     # Central & Eastern Europe
-    "poland": "Poland", "warsaw": "Poland", "polska": "Poland",
-    "czech": "Czechia", "czechia": "Czechia", "czech republic": "Czechia", "prague": "Czechia",
+    "poland": "Poland", "warsaw": "Poland", "krakow": "Poland", "cracow": "Poland", "polska": "Poland",
+    "czech": "Czechia", "czechia": "Czechia", "czech republic": "Czechia", "prague": "Czechia", "brno": "Czechia",
     "slovakia": "Slovakia", "bratislava": "Slovakia",
     "hungary": "Hungary", "budapest": "Hungary",
-    "romania": "Romania", "bucharest": "Romania",
+    "romania": "Romania", "bucharest": "Romania", "cluj": "Romania",
     "bulgaria": "Bulgaria", "sofia": "Bulgaria",
-    "croatia": "Croatia", "serbia": "Serbia", "slovenia": "Slovenia",
+    "croatia": "Croatia", "zagreb": "Croatia", "serbia": "Serbia", "belgrade": "Serbia", "novi sad": "Serbia", "slovenia": "Slovenia",
     "estonia": "Estonia", "latvia": "Latvia", "lithuania": "Lithuania",
-    "ukraine": "Ukraine", "moldova": "Moldova", "russia": "Russia", "belarus": "Belarus",
+    "ukraine": "Ukraine", "kyiv": "Ukraine", "kiev": "Ukraine",
+    "moldova": "Moldova", "russia": "Russia", "belarus": "Belarus", "montenegro": "Montenegro",
     # Nordics
     "sweden": "Sweden", "stockholm": "Sweden", "norway": "Norway", "oslo": "Norway",
     "finland": "Finland", "helsinki": "Finland", "denmark": "Denmark", "copenhagen": "Denmark",
     # Americas
-    "canada": "Canada", "mexico": "Mexico", "brazil": "Brazil", "argentina": "Argentina",
+    "canada": "Canada", "toronto": "Canada", "vancouver": "Canada", "montreal": "Canada",
+    "mexico": "Mexico", "brazil": "Brazil", "são paulo": "Brazil", "sao paulo": "Brazil", "argentina": "Argentina",
     "colombia": "Colombia", "chile": "Chile", "costa rica": "Costa Rica", "uruguay": "Uruguay", "peru": "Peru",
     # Asia & Others
     "india": "India", "pakistan": "Pakistan", "nepal": "Nepal", "philippines": "Philippines",
-    "singapore": "Singapore", "japan": "Japan", "south korea": "South Korea",
-    "australia": "Australia", "new zealand": "New Zealand", "israel": "Israel",
-    "turkey": "Turkey", "türkiye": "Turkey", "egypt": "Egypt", "south africa": "South Africa",
-    "uae": "UAE", "united arab emirates": "UAE", "dubai": "UAE",
+    "singapore": "Singapore", "japan": "Japan", "tokyo": "Japan", "south korea": "South Korea", "seoul": "South Korea",
+    "australia": "Australia", "sydney": "Australia", "melbourne": "Australia", "new zealand": "New Zealand", "israel": "Israel",
+    "turkey": "Turkey", "türkiye": "Turkey", "istanbul": "Turkey", "egypt": "Egypt", "south africa": "South Africa",
+    "uae": "UAE", "united arab emirates": "UAE", "dubai": "UAE", "saudi arabia": "Saudi Arabia",
+    "sri lanka": "Sri Lanka", "tunisia": "Tunisia", "tanzania": "Tanzania", "morocco": "Morocco",
 }
 
 
@@ -51,6 +59,7 @@ def classify_geo_tier(
     enrichment: JobEnrichment,
     geo_preferences: dict[str, Any] | None = None,
     job_location: str | None = None,
+    is_remote: bool | int | None = None,
 ) -> tuple[bool, str, str | None]:
     """
     Классифицирует вакансию по географическим правилам на основе предпочтений кандидата:
@@ -140,7 +149,7 @@ def classify_geo_tier(
     # и локализованные фразы (work from anywhere across Japan / in the UK)
     is_scoped_or_temp_wfa = bool(
         re.search(
-            r"(?:work\s+from\s+anywhere|wfa|working\s+remotely\s+from\s+anywhere)\s+(?:for\s+|up\s+to\s+)?\d+\s+(?:days|weeks|months)|"
+            r"(?:work\s+from\s+anywhere|wfa|working\s+remotely\s+from\s+anywhere)\s+(?:for\s+up\s+to\s+|for\s+|up\s+to\s+)?\d+\s+(?:days|weeks|months)|"
             r"\d+\s+(?:days|weeks)\s+(?:of\s+)?(?:work\s+from\s+anywhere|wfa|working\s+abroad)|"
             r"up\s+to\s+\d+\s+(?:days|weeks)\s+(?:per\s+year|\/year|a\s+year)\s+(?:working\s+from\s+anywhere|abroad)|"
             r"(?:work\s+from\s+anywhere|can\s+work\s+from\s+anywhere)\s+(?:in|across|within)\s+(?:the\s+)?[a-z]+|"
@@ -354,6 +363,34 @@ def classify_geo_tier(
             return True, "Tier 2B: Relocation Opportunity (Residency)", None
         if reject_single_country:
             return False, "Rejected: Single-country / regional residency required", "single_country_lock:residency"
+
+    # 9. Проверка требований физического присутствия (On-site / Hybrid) в чужой стране
+    hybrid_office_patterns = [
+        r"\btélétravail\s+(?:partiel|à\s+hauteur\s+de|\d+%)",
+        r"\b(?:locaux|bureau|office)\s+(?:à|in|en)\s+[a-z]+",
+        r"\bhybrid\s+(?:work|model|role|office|policy|position|setup|schedule|environment)\b",
+        r"\d+\s*[-–]\s*\d+\s+days?\s+(?:a|per|\/)\s*week\s+(?:in|from)\s+(?:the\s+)?office\b",
+        r"\d+\s+days?\s+(?:a|per|\/)\s*week\s+(?:in|from)\s+(?:the\s+)?office\b",
+        r"\b(?:in-?office|office-?based|on-?site|onsite)\s+(?:role|work|position|job)\b",
+        r"\b(?:must|required to)\s+(?:work|be|come|attend)\s+(?:in|from)\s+(?:the\s+)?office\b",
+        r"гибридный\s+(?:формат|график|офис)",
+        r"\bpresencial\b",
+    ]
+    is_explicit_non_remote = (is_remote is False) or (is_remote == 0) or (is_remote == "0")
+    has_hybrid_policy = any(
+        re.search(pat, f"{remote_low} | {fit_summary_low} | {desc_clean[:2000]}")
+        for pat in hybrid_office_patterns
+    )
+
+    if (is_explicit_non_remote or has_hybrid_policy) and not is_local_match and not is_true_global:
+        target_label = (
+            list(detected_foreign_countries.values())[0]
+            if detected_foreign_countries
+            else (jl_clean or "Abroad")
+        )
+        if can_consider_relocation:
+            return True, f"Tier 2B: Relocation Opportunity (On-site/Hybrid in {target_label})", None
+        return False, f"Rejected: On-site / Hybrid in {target_label}", f"onsite_abroad_lock:{target_label}"
 
     # 10. Приоритетное ранжирование по Tiers
     if is_local_match:
