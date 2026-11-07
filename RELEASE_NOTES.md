@@ -1,5 +1,21 @@
 # Release Notes
 
+## v1.2.3
+**Release Date:** November 8, 2026
+
+### Features & Geo-Filtering
+- **Country Pool Restrictions (`country_pool_lock`):** Added detection for multi-country closed remote lists (e.g. `Czech Republic, Slovakia, Hungary` or `Poland, Romania`). Vacancies with foreign country pools excluding the candidate's base location (`Georgia`) without visa sponsorship are now strictly rejected (`Rejected: Restricted countries (...)`).
+- **Broad EMEA Disambiguation:** Fixed an issue where localized European country lists formatted as `europe (Country1, Country2, ...)` falsely triggered `Tier 2A: Broad EMEA / Compatible Timezone`, bypassing country-level checks.
+- **Temporary WFA Perks vs. Global Remote:** Differentiated internal employee travel perks (e.g. *"Work From Anywhere up to 90 days/year"* or *"can work from anywhere across Japan"*) from true global remote hiring. Explicit country restrictions in `location_restrictions` now prevent false assignment of `Tier 1B: True Global Remote`.
+- **Regulatory EU/EEA-Only Lock:** Explicitly reject `EU-only` / `EEA-only` restrictions when relocation assistance is absent.
+
+### Language Filtering & AI Schema
+- **Mandatory Foreign Languages Filter:** Expanded mandatory language restrictions to include Portuguese, Japanese, Chinese, Swedish, and others. Vacancies requiring fluent/business proficiency in languages not supported by the candidate's profile are immediately rejected (`Rejected: Language (...)`) prior to relocation assignment.
+- **Structured LLM Geo-Eligibility (`candidate_geo_eligibility`):** Added a tri-state field (`"yes" | "no" | "unclear"`) to `JobEnrichment` schema and updated system prompt to `role-tech-resume-v4`, enabling direct LLM verdicts on geographic eligibility against candidate preferences.
+
+### Testing & Maintenance
+- **Extended Test Suite:** Added unit tests in `test_scorer.py` covering multi-country remote pools, travel WFA perks, localized WFA phrases, and EU-only restrictions (56 tests passing).
+
 ## v1.2.2
 **Release Date:** November 7, 2026
 

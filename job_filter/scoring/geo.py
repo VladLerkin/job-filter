@@ -5,6 +5,45 @@ from typing import Any
 from job_filter.db.seed_data import DEFAULT_GEO_PREFERENCES
 from job_filter.models.enrichment import JobEnrichment
 
+# Словарь сопоставления названий иностранных государств и их вариантов написания
+FOREIGN_COUNTRY_MAP: dict[str, str] = {
+    # UK & Ireland
+    "uk": "UK", "united kingdom": "UK", "great britain": "UK", "england": "UK",
+    "scotland": "UK", "wales": "UK", "london": "UK", "ireland": "Ireland", "dublin": "Ireland",
+    # DACH & Benelux
+    "germany": "Germany", "deutschland": "Germany", "berlin": "Germany",
+    "austria": "Austria", "vienna": "Austria", "switzerland": "Switzerland", "zurich": "Switzerland",
+    "netherlands": "Netherlands", "holland": "Netherlands", "amsterdam": "Netherlands",
+    "belgium": "Belgium", "brussels": "Belgium", "luxembourg": "Luxembourg",
+    # Southern Europe
+    "spain": "Spain", "madrid": "Spain", "barcelona": "Spain",
+    "portugal": "Portugal", "lisbon": "Portugal",
+    "italy": "Italy", "milan": "Italy", "rome": "Italy",
+    "greece": "Greece", "cyprus": "Cyprus", "malta": "Malta",
+    # Central & Eastern Europe
+    "poland": "Poland", "warsaw": "Poland", "polska": "Poland",
+    "czech": "Czechia", "czechia": "Czechia", "czech republic": "Czechia", "prague": "Czechia",
+    "slovakia": "Slovakia", "bratislava": "Slovakia",
+    "hungary": "Hungary", "budapest": "Hungary",
+    "romania": "Romania", "bucharest": "Romania",
+    "bulgaria": "Bulgaria", "sofia": "Bulgaria",
+    "croatia": "Croatia", "serbia": "Serbia", "slovenia": "Slovenia",
+    "estonia": "Estonia", "latvia": "Latvia", "lithuania": "Lithuania",
+    "ukraine": "Ukraine", "moldova": "Moldova", "russia": "Russia", "belarus": "Belarus",
+    # Nordics
+    "sweden": "Sweden", "stockholm": "Sweden", "norway": "Norway", "oslo": "Norway",
+    "finland": "Finland", "helsinki": "Finland", "denmark": "Denmark", "copenhagen": "Denmark",
+    # Americas
+    "canada": "Canada", "mexico": "Mexico", "brazil": "Brazil", "argentina": "Argentina",
+    "colombia": "Colombia", "chile": "Chile", "costa rica": "Costa Rica", "uruguay": "Uruguay", "peru": "Peru",
+    # Asia & Others
+    "india": "India", "pakistan": "Pakistan", "nepal": "Nepal", "philippines": "Philippines",
+    "singapore": "Singapore", "japan": "Japan", "south korea": "South Korea",
+    "australia": "Australia", "new zealand": "New Zealand", "israel": "Israel",
+    "turkey": "Turkey", "türkiye": "Turkey", "egypt": "Egypt", "south africa": "South Africa",
+    "uae": "UAE", "united arab emirates": "UAE", "dubai": "UAE",
+}
+
 
 def classify_geo_tier(
     title: str,
@@ -19,7 +58,7 @@ def classify_geo_tier(
     - Tier 1B: Настоящая глобальная удалёнка (Worldwide / Work from anywhere / Anywhere).
     - Tier 2A: Широкий макрорегион EMEA или подходящий часовой пояс (UTC±3h).
     - Tier 2B: Локация в другой стране, НО компания предоставляет релокацию / Visa Sponsorship.
-    - Tier 3 (Rejected): Удалёнка строго внутри одной чужой страны без релокации (US-only, UK-only, EU-only etc.).
+    - Tier 3 (Rejected): Удалёнка строго внутри закрытого пула чужих стран без релокации (US-only, UK-only, EU-only, Czechia/Slovakia/Hungary etc.).
     """
     prefs = geo_preferences or DEFAULT_GEO_PREFERENCES
     current_loc = str(prefs.get("current_location", "Georgia")).lower()
@@ -37,18 +76,24 @@ def classify_geo_tier(
     restrictions_joined = " | ".join(clean_restrictions).lower()
     remote_low = (enrichment.remote_policy_detail or "").lower()
     fit_summary_low = ((enrichment.resume_fit.summary if enrichment.resume_fit else "") or "").lower()
+    work_auth_summary_low = ((enrichment.work_authorization.summary if enrichment.work_authorization else "") or "").lower()
+    eligible_regions_low = [
+        r.strip().lower() for r in (enrichment.work_authorization.eligible_regions if enrichment.work_authorization else []) if r.strip()
+    ]
+    jl_clean = (job_location or "").strip().lower()
+    desc_clean = (description or "").lower()
 
     # Собираем только текст работодателя (НЕ включаем комментарии LLM о кандидате)
     loc_components = [
         title,
-        job_location or "",
+        jl_clean,
         restrictions_joined,
         remote_low,
-        " ".join(enrichment.work_authorization.eligible_regions).lower(),
+        " ".join(eligible_regions_low),
         (enrichment.relocation_benefits_detail or "").lower(),
     ]
     loc_text = " | ".join(filter(None, loc_components))
-    full_lower = (loc_text + "\n" + (description or "")[:3000]).lower()
+    full_lower = (loc_text + "\n" + desc_clean[:3000]).lower()
 
     has_relocation = (enrichment.relocation_assistance == "yes") or (
         enrichment.work_authorization.sponsorship == "yes"
@@ -87,23 +132,93 @@ def classify_geo_tier(
     for pat in ru_lock_patterns:
         if re.search(pat, full_lower):
             return False, "Rejected: Russia-only", "ru_only_lock"
+    if jl_clean in ("russia", "russia (russia)") and not can_consider_relocation:
+        return False, "Rejected: Russia-only", "ru_only_lock"
 
     # 3. Проверка глобальной удалёнки (Worldwide / Anywhere / Global Remote)
-    is_true_global = allow_worldwide and any(
-        kw in full_lower or kw in restrictions_joined
-        for kw in (
-            "work from anywhere",
-            "remote worldwide",
-            "worldwide remote",
-            "global remote",
-            "anywhere in the world",
-            "100% remote worldwide",
-            "any location",
-            "no location restrictions",
+    # Исключаем временные тревел-перки (work from anywhere up to 90 days/year)
+    # и локализованные фразы (work from anywhere across Japan / in the UK)
+    is_scoped_or_temp_wfa = bool(
+        re.search(
+            r"(?:work\s+from\s+anywhere|wfa|working\s+remotely\s+from\s+anywhere)\s+(?:for\s+|up\s+to\s+)?\d+\s+(?:days|weeks|months)|"
+            r"\d+\s+(?:days|weeks)\s+(?:of\s+)?(?:work\s+from\s+anywhere|wfa|working\s+abroad)|"
+            r"up\s+to\s+\d+\s+(?:days|weeks)\s+(?:per\s+year|\/year|a\s+year)\s+(?:working\s+from\s+anywhere|abroad)|"
+            r"(?:work\s+from\s+anywhere|can\s+work\s+from\s+anywhere)\s+(?:in|across|within)\s+(?:the\s+)?[a-z]+|"
+            r"anywhere\s+(?:in|across|within)\s+(?:the\s+)?(?:uk|united kingdom|japan|brazil|us|usa|united states|germany|spain|poland|canada)|"
+            r"(?:contract|policy)\s+with\s+work\s+from\s+anywhere",
+            full_lower,
         )
     )
 
-    # 4. Проверка жестких страновых локов: США (US)
+    global_hiring_keywords = (
+        "remote worldwide",
+        "worldwide remote",
+        "global remote",
+        "anywhere in the world",
+        "100% remote worldwide",
+        "work from anywhere in the world",
+        "open to candidates worldwide",
+        "no location restrictions",
+    )
+    has_unambiguous_global = any(
+        kw in full_lower or kw in restrictions_joined
+        for kw in global_hiring_keywords
+    ) or any(
+        r in ("worldwide", "global", "anywhere")
+        for r in clean_restrictions
+    )
+
+    is_pure_wfa = (
+        "work from anywhere" in full_lower or "work from anywhere" in restrictions_joined
+    ) and not is_scoped_or_temp_wfa
+
+    is_true_global = allow_worldwide and (has_unambiguous_global or is_pure_wfa)
+
+    # Если в явных ограничениях локации указаны конкретные иностранные государства без Worldwide/Global,
+    # это не глобальная удалёнка
+    has_explicit_country_restriction = any(
+        var in clean_restrictions or var in eligible_regions_low
+        for var in FOREIGN_COUNTRY_MAP
+    )
+    if has_explicit_country_restriction and not any(r in ("worldwide", "global", "anywhere") for r in clean_restrictions):
+        is_true_global = False
+
+    # 4. Формируем локальные ключевые слова для домашнего региона (Грузия / Кавказ / CEE) - БЕЗ EMEA!
+    local_keywords = set()
+    if "georgia" in current_loc:
+        local_keywords.update(["georgia", "tbilisi", "batumi", "sakartvelo", "kutaisi"])
+    for m in macro_regions:
+        m_str = m.lower()
+        if m_str in ("georgia", "tbilisi", "batumi", "sakartvelo", "kutaisi"):
+            local_keywords.add(m_str)
+        elif "caucasus" in m_str:
+            local_keywords.update(["caucasus", "south caucasus", "transcaucasia"])
+        elif "eastern europe" in m_str or m_str == "cee":
+            local_keywords.update(["eastern europe", "cee", "central and eastern europe"])
+
+    has_restr_local = any(re.search(rf"\b{re.escape(kw)}\b", restrictions_joined) for kw in local_keywords)
+    has_desc_local = any(
+        re.search(rf"\b{re.escape(kw)}\b", desc_clean)
+        for kw in ("tbilisi", "batumi", "sakartvelo", "kutaisi", "remote in georgia", "hiring in georgia", "based in tbilisi")
+    )
+    has_jl_local = any(re.search(rf"\b{re.escape(kw)}\b", jl_clean) for kw in local_keywords)
+    is_local_match = has_restr_local or has_desc_local or has_jl_local
+
+    # 5. Проверка языковых требований Native/C1/Fluent (German, French, Spanish, Portuguese, Japanese и др.)
+    foreign_mandatory_languages = (
+        "german", "french", "spanish", "polish", "italian", "dutch",
+        "portuguese", "português", "japanese", "korean", "chinese", "mandarin",
+        "swedish", "norwegian", "danish", "finnish", "hungarian", "czech", "slovak",
+        "romanian", "greek", "turkish", "hebrew", "arabic",
+    )
+    for lang in enrichment.required_languages:
+        l_low = lang.lower()
+        if any(fl in l_low for fl in foreign_mandatory_languages) and not any(
+            a1 in l_low for a1 in ("a1", "a2", "basic", "b1", "b2")
+        ):
+            return False, f"Rejected: Language ({lang})", f"required_language:{lang}"
+
+    # 6. Проверка жестких страновых локов: США (US)
     us_lock_patterns = [
         r"remote within the united states",
         r"must live in.*united states",
@@ -124,7 +239,6 @@ def classify_geo_tier(
     ]
 
     is_us_location = False
-    jl_clean = (job_location or "").strip().lower()
     if jl_clean:
         if re.search(r"\b(usa|united states|u\.s\.a\.|u\.s\.|us)\b", jl_clean):
             is_us_location = True
@@ -148,104 +262,111 @@ def classify_geo_tier(
         if reject_single_country:
             return False, "Rejected: US-only", "us_only_lock"
 
-    # 5. Проверка других единичных стран (UK, Испания, Польша, Мексика, Аргентина, Индия и др.)
-    single_country_names = (
-        "uk", "united kingdom", "great britain", "england", "london",
-        "spain", "bulgaria", "poland", "germany", "france", "italy",
-        "romania", "ukraine", "portugal", "netherlands", "ireland",
-        "hungary", "czech", "austria", "switzerland", "belgium", "sweden",
-        "norway", "finland", "denmark", "greece", "lithuania", "latvia", "estonia",
-        "canada", "australia", "mexico", "argentina", "brazil", "colombia", "chile",
-        "india", "nepal", "pakistan", "philippines", "singapore", "japan", "south korea",
-        "israel", "turkey", "egypt", "south africa", "latam",
+    # 6. Проверка регуляторного лока ЕС/ЕЭЗ (EU/EEA-only)
+    eu_lock_patterns = [
+        r"\beu\s+only\b",
+        r"\beea\s+only\b",
+        r"\beu/eea\s+only\b",
+        r"\beu\s+residents?\s+only\b",
+        r"\beu\s+citizenship\s+required\b",
+        r"\beu\s+work\s+permit\s+required\b",
+        r"must\s+(?:reside|live|be\s+based|be\s+located)\s+in\s+(?:the\s+)?(?:eu|eea|european\s+union)\b",
+        r"remote\s+(?:within|across)\s+(?:the\s+)?(?:eu|eea|european\s+union)\b",
+    ]
+    is_eu_locked = (
+        any(re.search(pat, restrictions_joined) for pat in eu_lock_patterns)
+        or any(re.search(pat, remote_low) for pat in eu_lock_patterns)
+        or any(re.search(pat, full_lower) for pat in eu_lock_patterns)
     )
+    if is_eu_locked and not is_local_match and not is_true_global:
+        if can_consider_relocation:
+            return True, "Tier 2B: Relocation Opportunity (EU-only)", None
+        if reject_single_country:
+            return False, "Rejected: EU-only", "single_country_lock:EU-only"
 
-    has_broad_emea = any(
-        w in restrictions_joined or w in jl_clean
-        for w in ("emea", "europe", "cet", "utc+", "gmt+")
-    )
+    # 7. Проверка закрытого пула иностранных государств (Country Pool / Single Foreign Country Lock)
+    detected_foreign_countries: dict[str, str] = {}
 
-    # Не считаем за лок, если это список из нескольких стран, включающий Грузию
-    is_multi_country_with_georgia = (
-        "georgia" in restrictions_joined and len(clean_restrictions) > 1
-    ) or ("georgia" in jl_clean and ("," in jl_clean or "europe" in jl_clean))
+    # а) Проверка в ограничениях локации и разрешенных регионах
+    for item in clean_restrictions + eligible_regions_low:
+        item_l = item.lower()
+        for var, canon in FOREIGN_COUNTRY_MAP.items():
+            if re.search(rf"\b{re.escape(var)}\b", item_l):
+                detected_foreign_countries[canon] = canon
 
-    if not is_multi_country_with_georgia:
-        for country_name in single_country_names:
-            c_pat = (
-                rf"\b{re.escape(country_name)}(?:\s+only|-based|\s+residents?\s+only)\b|"
-                rf"\b(?:within|across)\s+(?:the\s+)?{re.escape(country_name)}\b|"
-                rf"\bmust (?:reside|live|be based|be located) in (?:the )?{re.escape(country_name)}\b"
-            )
-            has_direct_country_loc = bool(jl_clean and re.search(rf"\b{re.escape(country_name)}\b", jl_clean))
+    # б) Проверка в скобках поля локации (например: "europe (Czech Republic, Hungary, Slovakia)" или "Remote (Mexico)")
+    jl_paren_matches = re.findall(r"\(([^)]+)\)", jl_clean)
+    for p_text in jl_paren_matches:
+        for var, canon in FOREIGN_COUNTRY_MAP.items():
+            if re.search(rf"\b{re.escape(var)}\b", p_text):
+                detected_foreign_countries[canon] = canon
 
-            if re.search(c_pat, f"{restrictions_joined} | {remote_low}") or (
-                has_direct_country_loc and not is_true_global and not has_broad_emea
-            ):
-                label = f"{country_name.upper()}-only" if country_name in ("uk", "us") else f"{country_name.title()}-only"
-                if can_consider_relocation:
-                    return True, f"Tier 2B: Relocation Opportunity ({label})", None
-                if reject_single_country:
-                    return False, f"Rejected: {label}", f"single_country_lock:{label}"
-
-            if not has_broad_emea and not has_relocation:
-                if re.search(rf"\b{re.escape(country_name)}\b", restrictions_joined):
-                    label = f"{country_name.upper()}-only" if country_name in ("uk", "us") else f"{country_name.title()}-only"
-                    if can_consider_relocation:
-                        return True, f"Tier 2B: Relocation Opportunity ({label})", None
-                    if reject_single_country:
-                        return False, f"Rejected: {label}", f"single_country_lock:{label}"
-
-    if re.search(
-        r"(?:требует|ограничена)\s+(?:проживания|базирования|локацией)\s+в\s+(?:великобритании|uk|испании|болгарии|польше|германии|франции|сша)",
-        fit_summary_low,
+    # в) Проверка в самой строке локации, если это не обобщенное название макрорегиона
+    if jl_clean and not any(
+        jl_clean == broad or jl_clean.startswith(f"{broad} -")
+        for broad in ("europe", "emea", "remote", "remote emea", "remote europe")
     ):
+        for var, canon in FOREIGN_COUNTRY_MAP.items():
+            if re.search(rf"\b{re.escape(var)}\b", jl_clean):
+                detected_foreign_countries[canon] = canon
+
+    # г) Проверка в описании условий удаленки через маркерные фразы (remote from X, residents of X, X-only)
+    for var, canon in FOREIGN_COUNTRY_MAP.items():
+        c_pat = (
+            rf"\b{re.escape(var)}(?:\s+only|-based|\s+residents?\s+only)\b|"
+            rf"\b(?:within|across)\s+(?:the\s+)?{re.escape(var)}\b|"
+            rf"\bmust (?:reside|live|be based|be located) in (?:the )?{re.escape(var)}\b|"
+            rf"\b(?:remote|hiring)\s+from\s+(?:the\s+)?{re.escape(var)}\b"
+        )
+        if re.search(c_pat, f"{restrictions_joined} | {remote_low}"):
+            detected_foreign_countries[canon] = canon
+
+    if detected_foreign_countries and not is_local_match and not is_true_global:
+        unique_countries = sorted(set(detected_foreign_countries.values()))
+        if len(unique_countries) == 1:
+            c_name = unique_countries[0]
+            label = f"{c_name.upper()}-only" if c_name.lower() in ("uk", "us", "uae") else f"{c_name}-only"
+            if can_consider_relocation:
+                return True, f"Tier 2B: Relocation Opportunity ({label})", None
+            if reject_single_country:
+                return False, f"Rejected: {label}", f"single_country_lock:{label}"
+        else:
+            c_names = ", ".join(unique_countries)
+            if can_consider_relocation:
+                return True, f"Tier 2B: Relocation Opportunity ({c_names})", None
+            if reject_single_country:
+                return False, f"Rejected: Restricted countries ({c_names})", f"country_pool_lock:{c_names}"
+
+    # 8. Проверка прямых вердиктов LLM о жестком страновом или региональном ограничении
+    llm_rejection_patterns = [
+        r"(?:строго\s+)?ограничена\s+(?:ремоутом|удаленкой|проживанием|базированием|локацией)\s+(?:из|в)\s+",
+        r"недоступна\s+для\s+удаленки\s+из\s+грузии",
+        r"ineligible\s+for\s+remote\s+from\s+georgia",
+        r"restricted\s+to\s+(?:residents|tax\s+residents)\s+in\s+",
+        r"strictly\s+restricted\s+to\s+",
+    ]
+    has_llm_lock = any(
+        re.search(pat, fit_summary_low) or re.search(pat, work_auth_summary_low)
+        for pat in llm_rejection_patterns
+    )
+    if (has_llm_lock or getattr(enrichment, "candidate_geo_eligibility", "unclear") == "no") and not is_local_match and not is_true_global:
         if can_consider_relocation:
             return True, "Tier 2B: Relocation Opportunity (Residency)", None
         if reject_single_country:
-            return False, "Rejected: Single-country residency required", "single_country_lock:residency"
+            return False, "Rejected: Single-country / regional residency required", "single_country_lock:residency"
 
-    # 6. Проверка языковых требований Native/C1 (German, French, Dutch)
-    for lang in enrichment.required_languages:
-        l_low = lang.lower()
-        if any(fl in l_low for fl in ("german", "french", "spanish", "polish", "italian", "dutch")) and not any(
-            a1 in l_low for a1 in ("a1", "a2", "basic", "b1", "b2")
-        ):
-            return False, f"Rejected: Language ({lang})", f"required_language:{lang}"
-
-    # 7. Формируем локальные ключевые слова для домашнего региона (Грузия / Кавказ / CEE) - БЕЗ EMEA!
-    local_keywords = set()
-    if "georgia" in current_loc:
-        local_keywords.update(["georgia", "tbilisi", "batumi", "sakartvelo", "kutaisi"])
-    for m in macro_regions:
-        m_str = m.lower()
-        if m_str in ("georgia", "tbilisi", "batumi", "sakartvelo", "kutaisi"):
-            local_keywords.add(m_str)
-        elif "caucasus" in m_str:
-            local_keywords.update(["caucasus", "south caucasus", "transcaucasia"])
-        elif "eastern europe" in m_str or m_str == "cee":
-            local_keywords.update(["eastern europe", "cee", "central and eastern europe"])
-
-    is_local_match = False
-    if not is_us_locked:
-        desc_clean = (description or "").lower()
-        # Поиск совпадений в restrictions_joined (очищенном от ineligibility)
-        has_restr_local = any(re.search(rf"\b{re.escape(kw)}\b", restrictions_joined) for kw in local_keywords)
-        # Поиск совпадений в описании вакансии от работодателя
-        has_desc_local = any(
-            re.search(rf"\b{re.escape(kw)}\b", desc_clean)
-            for kw in ("tbilisi", "batumi", "sakartvelo", "kutaisi", "remote in georgia", "hiring in georgia", "based in tbilisi")
-        )
-        is_local_match = has_restr_local or has_desc_local
-
-    # 8. Приоритетное ранжирование по Tiers
+    # 10. Приоритетное ранжирование по Tiers
     if is_local_match:
         return True, "Tier 1A: Local & Macro (Georgia)", None
 
     if is_true_global:
         return True, "Tier 1B: True Global Remote", None
 
-    if has_broad_emea or any(w in restrictions_joined or w in remote_low for w in ("emea", "europe", "cet", "utc")):
+    has_broad_emea = any(
+        w in restrictions_joined or w in jl_clean or w in remote_low
+        for w in ("emea", "europe", "cet", "utc", "gmt")
+    )
+    if has_broad_emea:
         return True, "Tier 2A: Broad EMEA / Compatible Timezone", None
 
     return True, "Tier 2A: EMEA / Remote", None

@@ -114,3 +114,115 @@ def test_classify_geo_tier_ineligible_clause_not_matching_georgia():
     assert "Mexico-only" in tier
     assert "single_country_lock" in (reason or "")
 
+
+def test_classify_geo_tier_country_pool_no_relocation():
+    enr = JobEnrichment(
+        location_restrictions=["Czech Republic", "Slovakia", "Hungary"],
+        remote_policy_detail="Fully remote from Czechia, Slovakia or Hungary (full-time B2B engagement)",
+        work_authorization=WorkAuthorization(
+            summary="Fully remote role restricted to residents/tax residents in Czechia, Slovakia, or Hungary via B2B.",
+            eligible_regions=["Czech Republic", "Slovakia", "Hungary"],
+        ),
+        resume_fit=ResumeFit(
+            summary="Отличный стек Java/Kotlin, но вакансия строго ограничена ремоутом из Чехии, Словакии или Венгрии без релокации."
+        ),
+        relocation_assistance="unclear",
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Senior Backend Developer (Java/Kotlin)",
+        "Fully remote from Czechia, Slovakia or Hungary",
+        enr,
+        job_location="europe (Czech Republic, Hungary, Slovakia)",
+    )
+    assert passed is False
+    assert "Restricted countries" in tier
+    assert "Czechia" in tier
+    assert "Hungary" in tier
+    assert "Slovakia" in tier
+    assert "country_pool_lock" in (reason or "")
+
+
+def test_classify_geo_tier_country_pool_with_relocation():
+    enr = JobEnrichment(
+        location_restrictions=["Czech Republic", "Slovakia", "Hungary"],
+        relocation_assistance="yes",
+        relocation_benefits_detail="Relocation package provided",
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Senior Backend Developer",
+        "Relocation offered to Prague",
+        enr,
+        job_location="europe (Czech Republic, Hungary, Slovakia)",
+    )
+    assert passed is True
+    assert "Tier 2B" in tier
+    assert "Relocation" in tier
+
+
+def test_classify_geo_tier_country_pool_with_georgia_included():
+    enr = JobEnrichment(
+        location_restrictions=["Poland", "Georgia", "Romania"],
+        remote_policy_detail="Remote from Poland, Georgia, Romania",
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Senior Java Engineer",
+        "Hiring in Poland, Georgia or Romania",
+        enr,
+        job_location="europe (Poland, Georgia, Romania)",
+    )
+    assert passed is True
+    assert "Tier 1A" in tier
+
+
+def test_classify_geo_tier_eu_only_no_relocation():
+    enr = JobEnrichment(
+        location_restrictions=["EU only"],
+        remote_policy_detail="Remote within EU/EEA only",
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Platform Engineer",
+        "Must be located in the EU",
+        enr,
+        job_location="Europe",
+    )
+    assert passed is False
+    assert "EU-only" in tier
+
+
+def test_classify_geo_tier_temp_wfa_perk_does_not_make_global():
+    enr = JobEnrichment(
+        location_restrictions=["Brazil"],
+        remote_policy_detail="Remote-first within Brazil, with the option to work from São Paulo office; Work From Anywhere up to 90 days/year",
+        work_authorization=WorkAuthorization(
+            summary="Remote-first within Brazil; requires location/work authorization in Brazil.",
+            eligible_regions=["Brazil"],
+        ),
+        required_languages=["Portuguese (Fluent)", "English (Excellent)"],
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Staff Software Engineer - Frameworks",
+        "Work From Anywhere up to 90 days/year. Must reside in Brazil.",
+        enr,
+        job_location="Remote (Brazil)",
+    )
+    assert passed is False
+    assert "Brazil-only" in tier or "Language" in tier
+
+
+def test_classify_geo_tier_wfa_across_single_country_not_global():
+    enr = JobEnrichment(
+        location_restrictions=["Japan"],
+        remote_policy_detail="Full Remote / Flextime & Hybrid Work; can work from anywhere across Japan (offices or home)",
+        required_languages=["Japanese (Business)", "English"],
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Product Engineer",
+        "can work from anywhere across Japan",
+        enr,
+        job_location="Tokyo, Japan",
+    )
+    assert passed is False
+    assert "Japan-only" in tier or "Language" in tier
+
+
+

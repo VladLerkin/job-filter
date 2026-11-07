@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-PROMPT_VERSION = "role-tech-resume-v3"
+PROMPT_VERSION = "role-tech-resume-v4"
 
 Sponsorship = Literal["yes", "no", "unclear"]
 TriState = Literal["yes", "no", "unclear"]
@@ -43,6 +43,7 @@ class JobEnrichment(BaseModel):
     relocation_benefits_detail: str | None = None
     remote_policy_detail: str | None = None
     degree_required: DegreeRequired = Field(default_factory=DegreeRequired)
+    candidate_geo_eligibility: TriState = "unclear"
 
 
 JobConstraintsEnrichment = JobEnrichment

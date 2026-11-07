@@ -36,7 +36,8 @@ Return ONLY valid JSON matching this schema (no markdown fences, no commentary):
   "degree_required": {
     "required": "yes" | "no" | "unclear",
     "detail": string or null
-  }
+  },
+  "candidate_geo_eligibility": "yes" | "no" | "unclear"
 }
 
 Rules for role sections (from the job description only):
@@ -64,6 +65,10 @@ Rules for constraints & geographic eligibility:
 - location_restrictions: exact countries, regions, or timezones where candidate MUST reside or have work permit (e.g. ["UK only"], ["Poland"], ["EU/EEA only"], ["CET +/- 2h"], ["EMEA"], ["Worldwide"]).
 - relocation_assistance: "yes" if company explicitly provides visa sponsorship or relocation package; "no" if explicitly stated as no sponsorship/relocation; "unclear" if not stated.
 - relocation_benefits_detail / remote_policy_detail / degree_required: use null, [], or "unclear" when not stated. Do not invent.
+- candidate_geo_eligibility: evaluate whether the candidate is eligible for this role based on CANDIDATE LOCATION & REMOTE WORK PREFERENCES.
+  * "yes": Candidate's base location matches (e.g. Georgia / Caucasus / open Eastern Europe / broad EMEA / Worldwide remote), OR company explicitly provides Visa Sponsorship / Relocation assistance.
+  * "no": Role strictly requires residency, local citizenship, or tax residency in a specific foreign country or restricted country pool (e.g. Czechia/Slovakia/Hungary only, US only, UK only, Germany only, EU/EEA only) with NO relocation assistance.
+  * "unclear": Location constraints are not clearly specified or role is open remote.
 """
 
 RESUME_MAX_CHARS = 12000
