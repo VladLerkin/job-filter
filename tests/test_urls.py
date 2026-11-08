@@ -68,3 +68,43 @@ def test_is_search_aggregator_domain():
     assert is_search_aggregator_domain("cims.com") is False
     assert is_search_aggregator_domain(None) is False
 
+
+def test_scrape_linkedin_search_retries_on_429_and_dns(monkeypatch):
+    import requests
+    from job_filter.scraping.linkedin import scrape_linkedin_search
+
+    html_page = """
+    <div class="base-search-card" data-entity-urn="urn:li:jobPosting:999001">
+      <h3 class="base-search-card__title">Senior AI Agent Engineer (Remote)</h3>
+      <h4 class="base-search-card__subtitle"><a href="https://linkedin.com/company/acme">Acme AI</a></h4>
+      <span class="job-search-card__location">EMEA</span>
+      <time datetime="2026-11-08">Today</time>
+    </div>
+    """
+
+    calls = {"count": 0}
+
+    class DummyResp:
+        def __init__(self, status_code: int, text: str = "", headers: dict | None = None):
+            self.status_code = status_code
+            self.text = text
+            self.headers = headers or {}
+
+    def fake_get(self, url, params=None, headers=None, timeout=15):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise requests.ConnectionError("NameResolutionError: Failed to resolve www.linkedin.com")
+        if calls["count"] == 2:
+            return DummyResp(429, headers={"Retry-After": "0"})
+        return DummyResp(200, text=html_page)
+
+    monkeypatch.setattr(requests.Session, "get", fake_get)
+    monkeypatch.setattr("job_filter.scraping.linkedin.time.sleep", lambda _: None)
+
+    df = scrape_linkedin_search("Agentic Engineer Remote", "EMEA", results_wanted=10, page_delay_range=(0, 0))
+    assert len(df) == 1
+    assert df.iloc[0]["id"] == "li-999001"
+    assert bool(df.iloc[0]["is_remote"]) is True
+    assert df.attrs.get("had_rate_limit") is True
+    assert not df.attrs.get("errors")
+

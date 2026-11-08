@@ -14,6 +14,13 @@ def invalidate_matrix_cache() -> None:
     _MATRIX_CACHE = None
 
 
+def calculate_skill_points(years: float, multiplier: float, max_points: int) -> int:
+    """Единая формула расчёта весовых баллов навыка по стажу, множителю и потолку категории."""
+    if multiplier < 0 or max_points < 0:
+        return int(max_points)
+    return int(min(round(float(years) * float(multiplier)), int(max_points)))
+
+
 def get_skill_matrix(conn: sqlite3.Connection | None = None) -> dict:
     global _MATRIX_CACHE
     if _MATRIX_CACHE is not None and conn is None:

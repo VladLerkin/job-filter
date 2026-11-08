@@ -1,5 +1,28 @@
 # Release Notes
 
+## v1.3.0
+**Release Date:** November 8, 2026
+
+### Features & Architecture
+- **Application Tracker Integration (`@job-application-tracker`) & Applied Funnel:**
+  - Added company response tracking columns (`application_stage`, `company_reject_reason`, `application_email_url`, `application_updated_at`) to `processed_jobs` with automatic SQLite migration.
+  - Added an interactive **Application Funnel** toolbar inside the `Applied` tab (`All Applied`, `⏳ Waiting Reply`, `📩 Confirmed`, `🎤 HR / Interview`, `❌ Company Rejected`) with clickable chips to filter by specific company rejection reasons.
+  - Added `GET /api/jobs/applied-tracker/prompt` and `POST /api/jobs/applied-tracker/sync` (`job_filter/llm/application_tracker.py`) to generate active-company prompts for the `@job-application-tracker` Gemini skill (automatically excluding companies that already sent a rejection) and parse reports via `agy` CLI (with a deterministic heuristic fallback).
+  - Added automatic and manual `✉️ Open Email ↗` Gmail / Calendly links for `interview` invitations (`build_gmail_search_url`) and quick per-card stage controls (`PATCH /api/jobs/{job_id}/application-stage`).
+- **Parallel LLM Enrichment & Cooperative Pipeline Stop:** Parallelized LLM vacancy enrichment via `ThreadPoolExecutor` (`JOB_FILTER_LLM_WORKERS`) while keeping scoring and SQLite persistence serialized in the main thread, and added `POST /api/pipeline/stop` for graceful cancellation.
+- **Scoring & Geo Enhancements:** Added `work_arrangement` (`remote_only`, `remote_or_hybrid_optional`, `hybrid_required`, `onsite_required`) and `regular_travel_required` classification, `is_primary` core stack scaling (`0.70x` when no primary or agentic skill matches), and publication freshness bonuses (`+1..+3 pts`).
+- **Dry-Run Rescore Preview:** Added `GET /api/jobs/rescore-diff` and CLI flag `python -m job_filter rescore --diff` to preview score deltas and promotions/demotions without modifying the database.
+
+### Integrations & Scraping
+- **Resilient Custom LinkedIn Guest Scraper:** Implemented coherent browser profiles (`Sec-CH-UA`, XHR headers), fast-first human-like intervals with reactive HTTP 429/5xx session rotation and backoff, and early pagination termination when encountering already-processed job IDs.
+
+### UI & Usability
+- **Lazy Vacancy Description Loading:** Omitted full `description` blobs from `/api/jobs` list payloads in favor of `has_description` and on-demand fetching via `GET /api/jobs/{job_id}/description`, significantly reducing payload size and speeding up tab switching.
+- **Comprehensive Architecture Documentation:** Added `docs/adr.md` (Architecture Decision Records ADR-001..ADR-006) and expanded `docs/design.md`.
+
+### Bug Fixes & Maintenance
+- **SQLite Auto-Commit Transactions & Indexes:** Updated `get_db` dependency to automatically commit or roll back per request, added composite indexes on `processed_jobs`, and expanded the automated pytest suite to 66 passing tests.
+
 ## v1.2.4
 **Release Date:** November 8, 2026
 

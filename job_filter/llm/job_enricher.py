@@ -37,7 +37,8 @@ Return ONLY valid JSON matching this schema (no markdown fences, no commentary):
     "required": "yes" | "no" | "unclear",
     "detail": string or null
   },
-  "candidate_geo_eligibility": "yes" | "no" | "unclear"
+  "candidate_geo_eligibility": "yes" | "no" | "unclear",
+  "work_arrangement": "remote_only" | "hybrid_required" | "onsite_required" | "remote_or_hybrid_optional" | "unknown"
 }
 
 Rules for role sections (from the job description only):
@@ -69,6 +70,12 @@ Rules for constraints & geographic eligibility:
   * "yes": Candidate's base location matches (e.g. Georgia / Caucasus / open Eastern Europe / broad EMEA / Worldwide remote), OR company explicitly provides Visa Sponsorship / Relocation assistance.
   * "no": Role strictly requires residency, local citizenship, or tax residency in a specific foreign country or restricted country pool (e.g. Czechia/Slovakia/Hungary only, US only, UK only, Germany only, EU/EEA only) with NO relocation assistance.
   * "unclear": Location constraints are not clearly specified or role is open remote.
+- work_arrangement:
+  * "remote_only": 100% remote work without mandatory office attendance.
+  * "remote_or_hybrid_optional": Candidate can work 100% remotely, while office or hybrid attendance is optional.
+  * "hybrid_required": Mandatory hybrid schedule requiring regular attendance at a physical office (e.g. 2-3 days/week or 50% telework).
+  * "onsite_required": Full-time on-site office role.
+  * "unknown": Not specified.
 """
 
 RESUME_MAX_CHARS = 12000
@@ -99,6 +106,10 @@ def format_geo_preferences_prompt(geo_prefs: dict | None, profile_text: str = ""
     if prefs.get("reject_unsupported_single_country", True):
         lines.append(
             f"- Constraint Rule: If the role strictly requires physical residency/work authorization within a single foreign country (e.g. US only, UK only, Germany only, EU/EEA only) with NO relocation assistance, explicitly record it in location_restrictions as restricted and ineligible for remote from candidate's base location ({loc})."
+        )
+    if prefs.get("reject_business_travel", True):
+        lines.append(
+            "- Business Travel Policy: Candidate does NOT accept roles requiring regular business travel, visits to factories/client sites, or mandatory periodic office visits. Record any required travel or on-site visits in remote_policy_detail and requirements."
         )
     if notes:
         lines.append(f"- Additional Candidate Notes: {notes}")

@@ -21,7 +21,7 @@ def read_blacklist(conn: sqlite3.Connection = Depends(get_db)):
 def check_url_in_blacklist(
     url: str = Query("", description="Текущий URL вкладки"),
     frames: str = Query("", description="Через запятую URL всех iframe на странице"),
-    auto_link: bool = Query(True, description="Автоматически привязать обнаруженный говносайт к последней открытой вакансии"),
+    auto_link: bool = Query(False, description="Автоматически привязать обнаруженный говносайт к последней открытой вакансии"),
     conn: sqlite3.Connection = Depends(get_db),
 ):
     return blacklist_service.check_url(conn, url=url, frames=frames, auto_link=auto_link)

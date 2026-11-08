@@ -19,3 +19,9 @@ def start_pipeline(req: RunPipelineRequest):
 def get_pipeline_status(since: int = 0):
     return pipeline_runner.get_status(since=since)
 
+
+@router.post("/stop")
+def stop_pipeline():
+    stopped = pipeline_runner.stop()
+    return {"status": "stopping" if stopped else "not_running"}
+

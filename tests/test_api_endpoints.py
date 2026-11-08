@@ -1,8 +1,21 @@
-"""Интеграционные тесты API через FastAPI TestClient."""
+"""Интеграционные тесты API через FastAPI TestClient на изолированной тестовой БД."""
 import pytest
 from fastapi.testclient import TestClient
 
 from app import app
+from job_filter import config
+from job_filter.db.connection import init_db
+from job_filter.scoring.matrix import invalidate_matrix_cache
+
+
+@pytest.fixture(autouse=True)
+def isolated_test_db(tmp_path, monkeypatch):
+    test_db = tmp_path / "test_api_jobs.db"
+    monkeypatch.setattr(config, "DB_PATH", test_db)
+    invalidate_matrix_cache()
+    init_db(test_db)
+    yield test_db
+    invalidate_matrix_cache()
 
 
 @pytest.fixture
@@ -37,16 +50,24 @@ def test_candidate_endpoints(client):
     put_res = client.put(
         "/api/candidate",
         json={
-            "profile_text": data["profile_text"],
-            "cv_text": data["cv_text"],
+            "profile_text": "Updated profile text",
+            "cv_text": "Updated CV markdown",
             "geo_preferences": {
                 **data["geo_preferences"],
-                "relocation_policy": "with_sponsorship_only",
+                "relocation_policy": "no_relocation",
             },
         },
     )
     assert put_res.status_code == 200
-    assert put_res.json()["geo_preferences"]["relocation_policy"] == "with_sponsorship_only"
+    assert put_res.json()["geo_preferences"]["relocation_policy"] == "no_relocation"
+
+    # Проверяем, что изменения реально закоммитились в SQLite после закрытия соединения
+    get_after = client.get("/api/candidate")
+    assert get_after.status_code == 200
+    after_data = get_after.json()
+    assert after_data["profile_text"] == "Updated profile text"
+    assert after_data["cv_text"] == "Updated CV markdown"
+    assert after_data["geo_preferences"]["relocation_policy"] == "no_relocation"
 
 
 def test_skills_matrix_endpoint(client):
@@ -311,4 +332,140 @@ def test_hirify_feeds_endpoint(client):
     data = res.json()
     assert "configured" in data
     assert "feeds" in data
+
+
+def test_job_description_and_rescore_diff_endpoints(client):
+    from job_filter.db.connection import connect
+    from job_filter.repositories import jobs_repo
+
+    conn = connect()
+    try:
+        jobs_repo.replace_job(conn, {
+            "job_id": "test-desc-1",
+            "title": "Senior AI Engineer",
+            "company": "AgentCo",
+            "url": "http://example.com/desc",
+            "description": "Full vacancy markdown description here",
+            "matched": 0,
+            "score": 40,
+            "reject_reason": "country_pool_lock:Czechia, Slovakia",
+        })
+        conn.commit()
+    finally:
+        conn.close()
+
+    desc_res = client.get("/api/jobs/test-desc-1/description")
+    assert desc_res.status_code == 200
+    assert desc_res.json()["description"] == "Full vacancy markdown description here"
+
+    rej_res = client.get("/api/jobs?tab=rejected")
+    assert rej_res.status_code == 200
+    job = next((j for j in rej_res.json()["jobs"] if j["job_id"] == "test-desc-1"), None)
+    assert job is not None
+    assert job["has_description"] is True
+    assert job["rejection_category"] == "location"
+    assert "Czechia, Slovakia" in job["rejection_reason_display"]
+
+    diff_res = client.get("/api/jobs/rescore-diff")
+    assert diff_res.status_code == 200
+    assert "promoted_to_matched" in diff_res.json()
+
+
+def test_applied_tracker_sync_and_stages(client, monkeypatch):
+    import json
+    from job_filter.db.connection import connect
+    from job_filter.llm import application_tracker
+    from job_filter.repositories import jobs_repo
+
+    conn = connect()
+    try:
+        for jid, comp, title in [
+            ("app-1", "Teradata", "Staff AI Engineer"),
+            ("app-2", "ITHAKA", "Principal Software Engineer (Backend)"),
+            ("app-3", "Glia", "Senior Software Engineer - Conversational AI"),
+            ("app-4", "SilentCorp", "Backend Kotlin Developer"),
+        ]:
+            jobs_repo.replace_job(conn, {
+                "job_id": jid,
+                "title": title,
+                "company": comp,
+                "url": f"http://example.com/{jid}",
+                "matched": 1,
+                "score": 80,
+                "user_status": "applied",
+            })
+        conn.commit()
+    finally:
+        conn.close()
+
+    # 1. Check prompt generation for @job-application-tracker
+    prompt_res = client.get("/api/jobs/applied-tracker/prompt")
+    assert prompt_res.status_code == 200
+    prompt_data = prompt_res.json()
+    assert prompt_data["applied_count"] == 4
+    assert "@job-application-tracker" in prompt_data["prompt"]
+    assert "Teradata" in prompt_data["prompt"]
+    assert "ITHAKA" in prompt_data["prompt"]
+    assert "Glia" in prompt_data["prompt"]
+
+    # 2. Test sync with mocked LLM response
+    fake_llm_json = json.dumps({
+        "summary": "1 подтверждение, 1 отказ, 1 приглашение на интервью",
+        "updates": [
+            {"company": "Teradata", "stage": "confirmed", "reason": "Подтверждение получено"},
+            {"company": "ITHAKA", "stage": "rejected_by_company", "reason": "Выбрали кандидатов с опытом в США"},
+            {"company": "Glia", "stage": "interview", "reason": "Приглашение на HR-скрининг 30 мин"},
+        ],
+    })
+    monkeypatch.setattr(application_tracker, "run_agy", lambda *a, **kw: fake_llm_json)
+
+    sync_res = client.post(
+        "/api/jobs/applied-tracker/sync",
+        json={"report_text": "Teradata confirmed, ITHAKA rejected, Glia invited to HR screening"},
+    )
+    assert sync_res.status_code == 200
+    sync_data = sync_res.json()
+    assert sync_data["updated_count"] == 3
+    assert sync_data["stage_counts"]["confirmed"] == 1
+    assert sync_data["stage_counts"]["rejected_by_company"] == 1
+    assert sync_data["stage_counts"]["interview"] == 1
+
+    # 3. Check tab=applied stats and ordering (interview first!)
+    app_res = client.get("/api/jobs?tab=applied")
+    assert app_res.status_code == 200
+    app_data = app_res.json()
+    stats = app_data["stats"]
+    assert stats["applied"] == 4
+    assert stats["applied_waiting"] == 1
+    assert stats["applied_confirmed"] == 1
+    assert stats["applied_interview"] == 1
+    assert stats["applied_rejected"] == 1
+
+    jobs = app_data["jobs"]
+    assert jobs[0]["job_id"] == "app-3"
+    assert jobs[0]["application_stage"] == "interview"
+    assert jobs[0]["application_email_url"] is not None
+    assert "mail.google.com/mail/u/0/#search/" in jobs[0]["application_email_url"]
+    ithaka = next(j for j in jobs if j["job_id"] == "app-2")
+    assert ithaka["application_stage"] == "rejected_by_company"
+    assert ithaka["company_reject_reason"] == "Выбрали кандидатов с опытом в США"
+
+    # 4. Verify next prompt excludes already-rejected company (ITHAKA) from active check list
+    prompt_res2 = client.get("/api/jobs/applied-tracker/prompt")
+    assert prompt_res2.status_code == 200
+    next_prompt = prompt_res2.json()["prompt"]
+    assert "Principal Software Engineer (Backend)" not in next_prompt
+    assert "Не включай в отчёт компании, по которым отказ уже занесён в базу: ITHAKA" in next_prompt
+
+    # 5. Test manual PATCH /api/jobs/{job_id}/application-stage
+    stage_res = client.patch(
+        "/api/jobs/app-4/application-stage",
+        json={
+            "application_stage": "confirmed",
+            "company_reject_reason": "Auto-acknowledgement email",
+        },
+    )
+    assert stage_res.status_code == 200
+    assert stage_res.json()["application_stage"] == "confirmed"
+
 

@@ -29,6 +29,18 @@ class UpdateStatusRequest(BaseModel):
     user_reject_reason: str | None = None
 
 
+class UpdateApplicationStageRequest(BaseModel):
+    application_stage: Literal["applied", "confirmed", "interview", "rejected_by_company"]
+    company_reject_reason: str | None = None
+    application_email_url: str | None = None
+
+
+class SyncTrackerRequest(BaseModel):
+    report_text: str | None = None
+    skill_name: str = "@job-application-tracker"
+    apply_updates: bool = True
+
+
 class CandidateProfileRequest(BaseModel):
     profile_text: str = ""
     cv_text: str = ""

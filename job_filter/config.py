@@ -30,7 +30,7 @@ def _load_env_file(path: Path) -> None:
 
 _load_env_file(PROJECT_ROOT / ".env")
 
-APP_VERSION = "1.2.4"
+APP_VERSION = "1.3.0"
 DB_PATH = Path(os.getenv("JOB_FILTER_DB", PROJECT_ROOT / "jobs.db"))
 STATIC_DIR = PROJECT_ROOT / "static"
 
@@ -39,6 +39,7 @@ AGY_BIN = os.getenv("AGY_BIN") or shutil.which("agy") or str(Path.home() / ".loc
 DEFAULT_MODEL = os.getenv("JOB_FILTER_MODEL", "gemini-3.8-flash-low")
 JOB_ENRICH_TIMEOUT_SEC = 90
 CV_ANALYZE_TIMEOUT_SEC = 120
+LLM_ENRICH_WORKERS = max(1, int(os.getenv("JOB_FILTER_LLM_WORKERS", "2")))
 
 # --- Hirify Agent API ---
 HIRIFY_API_KEY = os.getenv("HIRIFY_API_KEY", "")
@@ -46,7 +47,9 @@ HIRIFY_API_URL = os.getenv("HIRIFY_API_URL", "https://api.hirify.me/api/agent")
 
 # --- Пороги скоринга ---
 TOP_SCORE_THRESHOLD = 70
-GOOD_SCORE_THRESHOLD = 50
+GOOD_SCORE_THRESHOLD = 60
+FAIR_SCORE_THRESHOLD = 50
+NON_PROFILE_TITLE_SCORE_CAP = 68
 
 # --- Связка «последняя открытая вакансия» -> ATS (сек.) ---
 LAST_OPENED_TTL_SEC = 1800

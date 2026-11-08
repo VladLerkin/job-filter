@@ -39,6 +39,8 @@ def get_settings(conn: sqlite3.Connection) -> dict[str, Any]:
 
     if not isinstance(geo_prefs, dict):
         geo_prefs = dict(DEFAULT_GEO_PREFERENCES)
+    else:
+        geo_prefs.setdefault("reject_business_travel", True)
 
     return {
         "profile_text": p_text,
@@ -82,6 +84,7 @@ def save_settings(
         """,
         (profile_text, cv_text, geo_json, now_iso),
     )
+    conn.commit()
     return {
         "profile_text": profile_text,
         "cv_text": cv_text,

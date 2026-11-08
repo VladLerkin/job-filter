@@ -66,6 +66,7 @@ DEFAULT_GEO_PREFERENCES: dict = {
     "allow_worldwide_remote": True,
     "relocation_policy": "with_sponsorship_only",
     "reject_unsupported_single_country": True,
+    "reject_business_travel": True,
     "custom_notes": "Candidate resides in Georgia and is available for global remote roles via B2B/contractor agreements without visa sponsorship. Open to relocation only if visa sponsorship and relocation assistance are provided.",
 }
 

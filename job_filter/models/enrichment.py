@@ -7,6 +7,13 @@ PROMPT_VERSION = "role-tech-resume-v4"
 
 Sponsorship = Literal["yes", "no", "unclear"]
 TriState = Literal["yes", "no", "unclear"]
+WorkArrangement = Literal[
+    "remote_only",
+    "hybrid_required",
+    "onsite_required",
+    "remote_or_hybrid_optional",
+    "unknown",
+]
 
 
 class WorkAuthorization(BaseModel):
@@ -44,6 +51,7 @@ class JobEnrichment(BaseModel):
     remote_policy_detail: str | None = None
     degree_required: DegreeRequired = Field(default_factory=DegreeRequired)
     candidate_geo_eligibility: TriState = "unclear"
+    work_arrangement: WorkArrangement = "unknown"
 
 
 JobConstraintsEnrichment = JobEnrichment

@@ -9,6 +9,10 @@ def get_db() -> Iterator[sqlite3.Connection]:
     conn = connect()
     try:
         yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 

@@ -163,7 +163,28 @@
         cat_bad_board: "⛔ Blacklisted ATS",
         cat_contract: "📄 Contract Lock",
         cat_other: "⚙️ Other Filters",
-        cat_unmatched: "❓ Search Mismatch"
+        cat_unmatched: "❓ Search Mismatch",
+        applied_funnel_label: "Application Funnel:",
+        applied_stage_all: "All Applied",
+        applied_stage_waiting: "Waiting Reply",
+        applied_stage_confirmed: "Confirmed",
+        applied_stage_interview: "HR / Interview",
+        applied_stage_rejected: "Company Rejected",
+        btn_copy_tracker_prompt: "Prompt for @job-application-tracker",
+        btn_sync_tracker: "Sync with @job-application-tracker",
+        applied_company_reasons_title: "📋 Company Rejection Reasons (from emails):",
+        modal_tracker_title: "Sync Applications with @job-application-tracker",
+        modal_tracker_desc: "Query @job-application-tracker directly via agy CLI or paste its report from Web Gemini — AI will match companies and mark confirmations, rejections with reasons, and interview invites.",
+        modal_tracker_step1: "Query for @job-application-tracker (with your Applied companies):",
+        btn_copy_prompt: "Copy Prompt for Gemini",
+        btn_run_direct_agy: "Query Directly via agy CLI",
+        modal_tracker_show_prompt: "Show prompt text with companies list",
+        modal_tracker_step2: "Or paste the response from @job-application-tracker here (text, table, list):",
+        modal_tracker_placeholder: "Paste output from @job-application-tracker (e.g. list of companies with confirmations, rejections + reasons, or HR screening invites)...",
+        btn_parse_and_mark: "Parse with AI & Mark Vacancies",
+        modal_company_stage_title: "📬 Company Response Status",
+        modal_company_stage_select_label: "Application Stage:",
+        modal_company_reason_label: "Company rejection reason or interview details:"
       },
       ru: {
         app_subtitle: "Кандидат: Владислав Ярыгин • AI Agentic & Senior Backend (Java, Kotlin, Python) • Удалёнка из Грузии (B2B)",
@@ -324,7 +345,28 @@
         cat_bad_board: "⛔ Чёрный список ATS",
         cat_contract: "📄 Формат контракта",
         cat_other: "⚙️ Прочие фильтры",
-        cat_unmatched: "❓ Не соответствует поиску"
+        cat_unmatched: "❓ Не соответствует поиску",
+        applied_funnel_label: "Воронка откликов:",
+        applied_stage_all: "Все отклики",
+        applied_stage_waiting: "Ждём ответа",
+        applied_stage_confirmed: "Подтверждено",
+        applied_stage_interview: "HR / Интервью",
+        applied_stage_rejected: "Отказ компании",
+        btn_copy_tracker_prompt: "Промпт для @job-application-tracker",
+        btn_sync_tracker: "Синхронизировать с @job-application-tracker",
+        applied_company_reasons_title: "📋 Причины отказов от компаний (из писем):",
+        modal_tracker_title: "Синхронизация откликов с @job-application-tracker",
+        modal_tracker_desc: "Опросите скилл @job-application-tracker напрямую через agy CLI или вставьте его отчёт из веб-Gemini — ИИ сопоставит компании и проставит подтверждения, отказы с причинами и приглашения на интервью.",
+        modal_tracker_step1: "Запрос к скиллу @job-application-tracker (со списком ваших Applied-компаний):",
+        btn_copy_prompt: "Скопировать запрос для Gemini",
+        btn_run_direct_agy: "Опросить напрямую через agy CLI",
+        modal_tracker_show_prompt: "Показать текст промпта со списком компаний",
+        modal_tracker_step2: "Или вставьте сюда ответ от @job-application-tracker из Gemini (текст, таблица, список):",
+        modal_tracker_placeholder: "Вставьте ответ от @job-application-tracker (например, список компаний с подтверждениями, отказами и причинами или приглашениями на HR-скрининг)...",
+        btn_parse_and_mark: "Разобрать через ИИ и отметить вакансии",
+        modal_company_stage_title: "📬 Статус ответа компании",
+        modal_company_stage_select_label: "Этап отклика:",
+        modal_company_reason_label: "Причина отказа компании или детали приглашения на интервью:"
       }
     };
 
@@ -682,6 +724,7 @@
       const skillsSec = document.getElementById('skillsSection');
       const jobsSec = document.getElementById('jobsList');
       const rejBar = document.getElementById('rejectedFilterBar');
+      const appBar = document.getElementById('appliedTrackerBar');
       if (rejBar) {
         if (tab === 'rejected') {
           rejBar.classList.remove('hidden');
@@ -690,6 +733,15 @@
           rejectedSubtab = 'all';
           rejectedReasonFilter = null;
           rejectedCategoryFilter = null;
+        }
+      }
+      if (appBar) {
+        if (tab === 'applied') {
+          appBar.classList.remove('hidden');
+        } else {
+          appBar.classList.add('hidden');
+          appliedStageFilter = 'all';
+          appliedCompanyReasonFilter = null;
         }
       }
       if (tab === 'candidate') {
@@ -770,7 +822,8 @@
         // Защищенные поисковые агрегаторы и капчи (никогда не считаются ATS)
         const IGNORED_DOMAINS = [
           'linkedin.com', 'hirify.me', 'indeed.com', 'glassdoor.com',
-          'hcaptcha.com', 'recaptcha.net', 'google.com', 'gstatic.com', 'cloudflare.com'
+          'hcaptcha.com', 'recaptcha.net', 'google.com', 'gstatic.com', 'cloudflare.com',
+          'challenges.cloudflare.com', 'arkoselabs.com', 'geetest.com', 'doubleclick.net', 'googletagmanager.com'
         ];
         if (IGNORED_DOMAINS.some(d => host === d || host.endsWith('.' + d))) {
           return '';
@@ -784,7 +837,9 @@
           'taleo.net', 'successfactors.com', 'successfactors.eu',
           'greenhouse.io', 'lever.co', 'ashbyhq.com', 'smartrecruiters.com',
           'workable.com', 'breezy.hr', 'bamboohr.com', 'jobvite.com',
-          'ultipro.com', 'dayforcehcm.com', 'brassring.com', 'oraclecloud.com'
+          'ultipro.com', 'dayforcehcm.com', 'brassring.com', 'oraclecloud.com',
+          'pageuppeople.com', 'avature.net', 'recruitee.com', 'teamtailor.com',
+          'personio.de', 'personio.com'
         ];
         for (const ats of ATS_LIST) {
           if (host === ats || host.endsWith('.' + ats)) return ats;
@@ -814,7 +869,7 @@
 
     function openBadBoardModalForLastOpened() {
       if (!cachedLastOpenedJob || !cachedLastOpenedJob.job_id) return;
-      const dom = extractDomainFromUrl(cachedLastOpenedJob.apply_url) || extractDomainFromUrl(cachedLastOpenedJob.url) || '';
+      const dom = cachedLastOpenedJob.ats_domain || extractDomainFromUrl(cachedLastOpenedJob.apply_url) || extractDomainFromUrl(cachedLastOpenedJob.url) || '';
       openBadBoardModal(
         cachedLastOpenedJob.job_id,
         cachedLastOpenedJob.company,
@@ -1019,6 +1074,9 @@
         const rejEl = document.getElementById('geoRejectSingleCountry');
         if (rejEl) rejEl.checked = gp.reject_unsupported_single_country !== false;
 
+        const rejTravelEl = document.getElementById('geoRejectBusinessTravel');
+        if (rejTravelEl) rejTravelEl.checked = gp.reject_business_travel !== false;
+
         const notesEl = document.getElementById('geoCustomNotes');
         if (notesEl) notesEl.value = gp.custom_notes || '';
       }
@@ -1037,6 +1095,7 @@
         relocation_policy: document.getElementById('geoRelocationPolicy')?.value || 'with_sponsorship_only',
         allow_worldwide_remote: document.getElementById('geoAllowWorldwide')?.checked !== false,
         reject_unsupported_single_country: document.getElementById('geoRejectSingleCountry')?.checked !== false,
+        reject_business_travel: document.getElementById('geoRejectBusinessTravel')?.checked !== false,
         custom_notes: document.getElementById('geoCustomNotes')?.value?.trim() || ''
       };
 
@@ -1064,6 +1123,7 @@
           relocation_policy: document.getElementById('geoRelocationPolicy')?.value || 'with_sponsorship_only',
           allow_worldwide_remote: document.getElementById('geoAllowWorldwide')?.checked !== false,
           reject_unsupported_single_country: document.getElementById('geoRejectSingleCountry')?.checked !== false,
+          reject_business_travel: document.getElementById('geoRejectBusinessTravel')?.checked !== false,
           custom_notes: document.getElementById('geoCustomNotes')?.value?.trim() || ''
         }
       };
@@ -1283,6 +1343,21 @@
       return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
     }
 
+    async function loadJobDescriptionOnToggle(detailsEl, jobId) {
+      if (!detailsEl || !detailsEl.open || detailsEl.dataset.loaded === '1') return;
+      const preEl = detailsEl.querySelector('pre');
+      if (!preEl) return;
+      try {
+        const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/description`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        preEl.textContent = data.description || '';
+        detailsEl.dataset.loaded = '1';
+      } catch (err) {
+        preEl.textContent = 'Не удалось загрузить описание: ' + err.message;
+      }
+    }
+
     function renderJobCard(job) {
       const e = job.enrichment || {};
       const sd = job.score_details || {};
@@ -1408,6 +1483,55 @@
             </div>
           </div>
 
+          ${job.user_status === 'applied' ? (() => {
+            const st = job.application_stage || 'applied';
+            const rsn = job.company_reject_reason || '';
+            const compName = (job.company || '').trim();
+            const fallbackGmailUrl = (compName && compName.toLowerCase() !== 'unknown' && compName.toLowerCase() !== 'confidential')
+              ? `https://mail.google.com/mail/u/0/#search/${encodeURIComponent('"' + compName + '"')}`
+              : '';
+            const emailUrl = job.application_email_url || (st === 'interview' ? fallbackGmailUrl : '');
+            let boxClass = 'bg-slate-900/80 border-slate-700/80 text-slate-300';
+            let badgeHtml = `<span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-semibold">⏳ ${currentLang === 'ru' ? 'Отправлено • Ждём ответа' : 'Sent • Waiting for reply'}</span>`;
+            if (st === 'confirmed') {
+              boxClass = 'bg-sky-950/40 border-sky-700/60 text-sky-200';
+              badgeHtml = `<span class="px-2.5 py-0.5 rounded bg-sky-900/80 text-sky-200 border border-sky-600 font-semibold">📩 ${currentLang === 'ru' ? 'Подтверждение получено' : 'Confirmation received'}</span>`;
+            } else if (st === 'interview') {
+              boxClass = 'bg-emerald-950/50 border-emerald-600/80 text-emerald-200';
+              badgeHtml = `<span class="px-2.5 py-0.5 rounded bg-emerald-800/90 text-white border border-emerald-500 font-bold shadow">🎤 ${currentLang === 'ru' ? 'HR-скрининг / Интервью!' : 'HR Screening / Interview!'}</span>`;
+            } else if (st === 'rejected_by_company') {
+              boxClass = 'bg-rose-950/45 border-rose-700/70 text-rose-200';
+              badgeHtml = `<span class="px-2.5 py-0.5 rounded bg-rose-900/80 text-rose-200 border border-rose-600 font-semibold">❌ ${currentLang === 'ru' ? 'Отказ от компании' : 'Rejected by company'}</span>`;
+            }
+            return `
+              <div class="mt-3 text-xs ${boxClass} border rounded-lg px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  ${badgeHtml}
+                  ${rsn ? `<span class="text-xs font-medium">${st === 'rejected_by_company' ? `<strong>${currentLang === 'ru' ? 'Причина:' : 'Reason:'}</strong> ` : ''}${escapeHtml(rsn)}</span>` : ''}
+                  ${emailUrl ? `
+                    <a href="${escapeHtml(emailUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-emerald-700 hover:bg-emerald-600 text-white font-semibold shadow transition">
+                      ✉️ ${currentLang === 'ru' ? 'Открыть письмо ↗' : 'Open Email ↗'}
+                    </a>
+                  ` : ''}
+                </div>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <button onclick="quickSetCompanyStage('${escapeJsArg(job.job_id)}', 'confirmed')" class="px-2 py-1 rounded ${st === 'confirmed' ? 'bg-sky-700 text-white font-semibold' : 'bg-slate-800 hover:bg-slate-700 text-sky-300'} border border-sky-800/60 text-[11px] transition" title="${currentLang === 'ru' ? 'Отметить получение подтверждения' : 'Mark confirmation received'}">
+                    📩 ${currentLang === 'ru' ? 'Подтверждено' : 'Confirmed'}
+                  </button>
+                  <button onclick="openCompanyStageModal('${escapeJsArg(job.job_id)}', '${escapeJsArg(job.company)}', '${escapeJsArg(job.title)}', 'interview', '${escapeJsArg(rsn)}', '${escapeJsArg(job.application_email_url || '')}')" class="px-2 py-1 rounded ${st === 'interview' ? 'bg-emerald-700 text-white font-semibold' : 'bg-slate-800 hover:bg-slate-700 text-emerald-300'} border border-emerald-800/60 text-[11px] transition" title="${currentLang === 'ru' ? 'Отметить приглашение на HR-скрининг или интервью' : 'Mark HR screening / interview invite'}">
+                    🎤 ${currentLang === 'ru' ? 'Интервью' : 'Interview'}
+                  </button>
+                  <button onclick="openCompanyStageModal('${escapeJsArg(job.job_id)}', '${escapeJsArg(job.company)}', '${escapeJsArg(job.title)}', 'rejected_by_company', '${escapeJsArg(rsn)}', '${escapeJsArg(job.application_email_url || '')}')" class="px-2 py-1 rounded ${st === 'rejected_by_company' ? 'bg-rose-700 text-white font-semibold' : 'bg-slate-800 hover:bg-slate-700 text-rose-300'} border border-rose-800/60 text-[11px] transition" title="${currentLang === 'ru' ? 'Отметить отказ от компании и указать причину' : 'Mark company rejection & reason'}">
+                    ❌ ${currentLang === 'ru' ? 'Отказ компании' : 'Rejected'}
+                  </button>
+                  <button onclick="openCompanyStageModal('${escapeJsArg(job.job_id)}', '${escapeJsArg(job.company)}', '${escapeJsArg(job.title)}', '${escapeJsArg(st)}', '${escapeJsArg(rsn)}', '${escapeJsArg(job.application_email_url || '')}')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[11px] transition" title="${currentLang === 'ru' ? 'Изменить статус / комментарий / ссылку на письмо' : 'Edit status / note / email link'}">
+                    ✏️
+                  </button>
+                </div>
+              </div>
+            `;
+          })() : ''}
+
           ${job.rejection_source === 'user' ? `
             <div class="mt-3 text-xs text-rose-200 bg-rose-950/40 border border-rose-800/60 rounded-lg px-3 py-2 flex flex-wrap items-center justify-between gap-2">
               <div class="flex items-center gap-2">
@@ -1516,12 +1640,13 @@
           ` : ''}
 
           <!-- Спойлер с полным текстом описания -->
-          ${job.description ? `
-            <details class="mt-3 pt-2 border-t border-slate-800/60 text-xs">
+          ${(job.description || job.has_description) ? `
+            <details class="mt-3 pt-2 border-t border-slate-800/60 text-xs"
+              ${job.description ? 'data-loaded="1"' : `ontoggle="loadJobDescriptionOnToggle(this, '${escapeJsArg(job.job_id)}')"`}>
               <summary class="cursor-pointer text-slate-400 hover:text-slate-200 select-none">
                 📄 Показать оригинальный текст вакансии
               </summary>
-              <pre class="mt-2 p-3 rounded-lg bg-slate-950 text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-96 overflow-y-auto">${escapeHtml(job.description)}</pre>
+              <pre class="mt-2 p-3 rounded-lg bg-slate-950 text-slate-300 whitespace-pre-wrap font-sans leading-relaxed max-h-96 overflow-y-auto">${job.description ? escapeHtml(job.description) : 'Загрузка текста вакансии...'}</pre>
             </details>
           ` : ''}
         </article>
@@ -1658,16 +1783,116 @@
       }
     }
 
+    let appliedStageFilter = 'all'; // 'all' | 'applied' | 'confirmed' | 'interview' | 'rejected_by_company'
+    let appliedCompanyReasonFilter = null;
+
+    function setAppliedStageFilter(stage) {
+      appliedStageFilter = stage;
+      appliedCompanyReasonFilter = null;
+      renderJobsList();
+    }
+
+    function setAppliedCompanyReasonFilter(reason) {
+      appliedCompanyReasonFilter = (appliedCompanyReasonFilter === reason) ? null : reason;
+      renderJobsList();
+    }
+
+    function renderAppliedTrackerBar() {
+      const bar = document.getElementById('appliedTrackerBar');
+      if (!bar) return;
+
+      const allJobs = cachedJobs || [];
+      const waitingJobs = allJobs.filter(j => (j.application_stage || 'applied') === 'applied');
+      const confirmedJobs = allJobs.filter(j => j.application_stage === 'confirmed');
+      const interviewJobs = allJobs.filter(j => j.application_stage === 'interview');
+      const rejectedJobs = allJobs.filter(j => j.application_stage === 'rejected_by_company');
+
+      const setCnt = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+      };
+      setCnt('cntAppliedAll', allJobs.length);
+      setCnt('cntAppliedWaiting', waitingJobs.length);
+      setCnt('cntAppliedConfirmed', confirmedJobs.length);
+      setCnt('cntAppliedInterview', interviewJobs.length);
+      setCnt('cntAppliedRejected', rejectedJobs.length);
+
+      const btnMap = {
+        all: { id: 'btnAppliedStageAll', active: 'px-3 py-1.5 rounded-lg text-xs font-semibold transition bg-indigo-600 text-white shadow', inactive: 'px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700' },
+        applied: { id: 'btnAppliedStageWaiting', active: 'px-3 py-1.5 rounded-lg text-xs font-semibold transition bg-slate-600 text-white shadow', inactive: 'px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-slate-300 hover:bg-slate-700' },
+        confirmed: { id: 'btnAppliedStageConfirmed', active: 'px-3 py-1.5 rounded-lg text-xs font-semibold transition bg-sky-600 text-white shadow', inactive: 'px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-sky-300 hover:bg-slate-700' },
+        interview: { id: 'btnAppliedStageInterview', active: 'px-3 py-1.5 rounded-lg text-xs font-semibold transition bg-emerald-600 text-white shadow', inactive: 'px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-emerald-300 hover:bg-slate-700' },
+        rejected_by_company: { id: 'btnAppliedStageRejected', active: 'px-3 py-1.5 rounded-lg text-xs font-semibold transition bg-rose-600 text-white shadow', inactive: 'px-3 py-1.5 rounded-lg text-xs font-medium transition bg-slate-800 text-rose-300 hover:bg-slate-700' },
+      };
+
+      Object.entries(btnMap).forEach(([stageKey, cfg]) => {
+        const el = document.getElementById(cfg.id);
+        if (el) el.className = (appliedStageFilter === stageKey) ? cfg.active : cfg.inactive;
+      });
+
+      const reasonsWrap = document.getElementById('appliedCompanyReasonsWrap');
+      const reasonsChips = document.getElementById('appliedCompanyReasonsChips');
+      if (reasonsWrap && reasonsChips) {
+        if (rejectedJobs.length > 0 && (appliedStageFilter === 'all' || appliedStageFilter === 'rejected_by_company')) {
+          reasonsWrap.classList.remove('hidden');
+          const reasonCounts = {};
+          rejectedJobs.forEach(j => {
+            const r = (j.company_reject_reason || (currentLang === 'ru' ? 'Без указания причины в письме' : 'No specific reason stated')).trim();
+            reasonCounts[r] = (reasonCounts[r] || 0) + 1;
+          });
+
+          const activeChip = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-rose-600 text-white shadow cursor-pointer transition';
+          const inactiveChip = 'px-2.5 py-1 rounded-md text-xs font-medium bg-slate-900 border border-slate-700 hover:border-slate-500 text-rose-200 cursor-pointer transition';
+
+          let html = `
+            <button onclick="setAppliedCompanyReasonFilter(null)" class="${!appliedCompanyReasonFilter ? activeChip : inactiveChip}">
+              ${t('all_reasons_chip')} (${rejectedJobs.length})
+            </button>
+          `;
+          Object.entries(reasonCounts)
+            .sort((a, b) => b[1] - a[1])
+            .forEach(([reason, cnt]) => {
+              const isAct = appliedCompanyReasonFilter === reason;
+              html += `
+                <button onclick="setAppliedCompanyReasonFilter('${escapeJsArg(reason)}')" class="${isAct ? activeChip : inactiveChip}">
+                  ${escapeHtml(reason)} <span class="opacity-80 font-mono">(${cnt})</span>
+                </button>
+              `;
+            });
+          reasonsChips.innerHTML = html;
+        } else {
+          reasonsWrap.classList.add('hidden');
+        }
+      }
+    }
+
     function renderJobsList() {
       const container = document.getElementById('jobsList');
       if (!container) return;
 
       if (currentTab === 'rejected') {
         renderRejectedFilterBar();
+      } else if (currentTab === 'applied') {
+        renderAppliedTrackerBar();
       }
 
       let jobsToRender = cachedJobs || [];
-      if (currentTab === 'rejected') {
+      if (currentTab === 'applied') {
+        if (appliedStageFilter !== 'all') {
+          jobsToRender = jobsToRender.filter(j => (j.application_stage || 'applied') === appliedStageFilter);
+        }
+        if (appliedCompanyReasonFilter) {
+          jobsToRender = jobsToRender.filter(j => {
+            if (j.application_stage !== 'rejected_by_company') return false;
+            const r = (j.company_reject_reason || (currentLang === 'ru' ? 'Без указания причины в письме' : 'No specific reason stated')).trim();
+            return r === appliedCompanyReasonFilter;
+          });
+        }
+        const tipEl = document.getElementById('appliedActiveFilterTip');
+        if (tipEl) {
+          tipEl.textContent = `${currentLang === 'ru' ? 'Показано' : 'Showing'}: ${jobsToRender.length} ${currentLang === 'ru' ? 'из' : 'of'} ${(cachedJobs || []).length}`;
+        }
+      } else if (currentTab === 'rejected') {
         if (rejectedSubtab === 'user') {
           jobsToRender = jobsToRender.filter(j => j.rejection_source === 'user');
         } else if (rejectedSubtab === 'auto') {
@@ -2484,6 +2709,275 @@
         btn.disabled = false;
         btn.textContent = origText;
       }
+    }
+
+    // --- Синхронизация со скиллом @job-application-tracker и статусы ответов компаний в Applied ---
+    let companyStageTarget = { job_id: null, company: null, title: null, stage: 'applied' };
+
+    async function quickSetCompanyStage(jobId, stage, reason = null, emailUrl = null) {
+      try {
+        const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/application-stage`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            application_stage: stage,
+            company_reject_reason: reason,
+            application_email_url: emailUrl
+          })
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        showToast(currentLang === 'ru' ? 'Статус ответа компании обновлён ✅' : 'Company response stage updated ✅');
+        loadJobs();
+      } catch (err) {
+        showToast('Ошибка обновления статуса: ' + err.message);
+      }
+    }
+
+    function fillGmailSearchLinkInModal() {
+      const comp = (companyStageTarget.company || '').trim();
+      const urlEl = document.getElementById('modalCompanyStageEmailUrlInput');
+      if (!urlEl || !comp) return;
+      urlEl.value = `https://mail.google.com/mail/u/0/#search/${encodeURIComponent('"' + comp + '"')}`;
+    }
+
+    function openCompanyStageModal(jobId, company, title, initialStage = 'applied', initialReason = '', initialEmailUrl = '') {
+      companyStageTarget = {
+        job_id: jobId,
+        company: company || 'Unknown',
+        title: title || jobId,
+        stage: initialStage || 'applied'
+      };
+      const subEl = document.getElementById('modalCompanyStageSubtitle');
+      if (subEl) subEl.textContent = `${title || jobId} @ ${company || 'Unknown'}`;
+      const rsnEl = document.getElementById('modalCompanyStageReasonInput');
+      if (rsnEl) rsnEl.value = initialReason || '';
+      const urlEl = document.getElementById('modalCompanyStageEmailUrlInput');
+      if (urlEl) {
+        if (initialEmailUrl) {
+          urlEl.value = initialEmailUrl;
+        } else if (initialStage === 'interview' && company && company !== 'Unknown') {
+          urlEl.value = `https://mail.google.com/mail/u/0/#search/${encodeURIComponent('"' + company + '"')}`;
+        } else {
+          urlEl.value = '';
+        }
+      }
+      selectCompanyStageInModal(initialStage || 'applied');
+
+      const modal = document.getElementById('companyStageModal');
+      if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+    }
+
+    function closeCompanyStageModal() {
+      const modal = document.getElementById('companyStageModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+    }
+
+    function selectCompanyStageInModal(stage) {
+      companyStageTarget.stage = stage;
+      const styles = {
+        applied: { active: 'border-indigo-500 bg-indigo-950/80 text-white font-semibold', inactive: 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-500' },
+        confirmed: { active: 'border-sky-500 bg-sky-950/80 text-sky-200 font-semibold', inactive: 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-500' },
+        interview: { active: 'border-emerald-500 bg-emerald-950/80 text-emerald-200 font-semibold', inactive: 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-500' },
+        rejected_by_company: { active: 'border-rose-500 bg-rose-950/80 text-rose-200 font-semibold', inactive: 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-500' },
+      };
+      Object.entries(styles).forEach(([key, cls]) => {
+        const btn = document.getElementById('stageBtn_' + key);
+        if (btn) {
+          btn.className = `px-3 py-2 rounded-lg border text-xs text-left transition ${stage === key ? cls.active : cls.inactive}`;
+        }
+      });
+    }
+
+    function setCompanyStageReasonPreset(text) {
+      const rsnEl = document.getElementById('modalCompanyStageReasonInput');
+      if (rsnEl) rsnEl.value = text;
+    }
+
+    async function confirmCompanyStageModal() {
+      if (!companyStageTarget.job_id) return;
+      const rsnEl = document.getElementById('modalCompanyStageReasonInput');
+      const urlEl = document.getElementById('modalCompanyStageEmailUrlInput');
+      const reason = rsnEl ? rsnEl.value.trim() : '';
+      const emailUrl = urlEl ? urlEl.value.trim() : '';
+      await quickSetCompanyStage(companyStageTarget.job_id, companyStageTarget.stage, reason || null, emailUrl || null);
+      closeCompanyStageModal();
+    }
+
+    async function fetchTrackerPromptText() {
+      const res = await fetch('/api/jobs/applied-tracker/prompt');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      return data.prompt || '';
+    }
+
+    async function copyTrackerPromptQuick() {
+      try {
+        const promptText = await fetchTrackerPromptText();
+        await navigator.clipboard.writeText(promptText);
+        showToast(currentLang === 'ru'
+          ? '📋 Промпт для @job-application-tracker со списком компаний скопирован!'
+          : '📋 @job-application-tracker prompt with your applied companies copied!');
+      } catch (err) {
+        showToast('Ошибка копирования промпта: ' + err.message);
+      }
+    }
+
+    async function openTrackerSyncModal() {
+      const modal = document.getElementById('trackerSyncModal');
+      if (!modal) return;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      const hintEl = document.getElementById('trackerSyncStatusHint');
+      if (hintEl) hintEl.textContent = '';
+
+      try {
+        const promptText = await fetchTrackerPromptText();
+        const previewEl = document.getElementById('trackerPromptPreview');
+        if (previewEl) previewEl.value = promptText;
+      } catch (err) {
+        console.error('Failed to load tracker prompt:', err);
+      }
+    }
+
+    function closeTrackerSyncModal() {
+      const modal = document.getElementById('trackerSyncModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+    }
+
+    async function copyModalTrackerPrompt(openGemini = false) {
+      const previewEl = document.getElementById('trackerPromptPreview');
+      const text = previewEl && previewEl.value ? previewEl.value : await fetchTrackerPromptText();
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast(currentLang === 'ru'
+          ? '📋 Запрос скопирован! Вставьте его в чат со скиллом в Gemini'
+          : '📋 Query copied! Paste it into your Gemini chat');
+        if (openGemini) {
+          window.open('https://gemini.google.com/app', '_blank', 'noopener');
+        }
+      } catch (err) {
+        showToast('Не удалось скопировать: ' + err.message);
+      }
+    }
+
+    function renderTrackerSyncResults(data) {
+      const box = document.getElementById('trackerSyncResultBox');
+      const sumEl = document.getElementById('trackerSyncSummaryText');
+      const cntEl = document.getElementById('trackerSyncCounters');
+      const listEl = document.getElementById('trackerSyncUpdatesList');
+      if (!box || !sumEl || !cntEl || !listEl) return;
+
+      box.classList.remove('hidden');
+      sumEl.textContent = data.summary || `Обновлено вакансий: ${data.updated_count || 0}`;
+      const sc = data.stage_counts || {};
+      cntEl.innerHTML = `
+        <span class="px-2 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-800">📩 Подтверждено: <strong>${sc.confirmed || 0}</strong></span>
+        <span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">🎤 Интервью: <strong>${sc.interview || 0}</strong></span>
+        <span class="px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800">❌ Отказов: <strong>${sc.rejected_by_company || 0}</strong></span>
+      `;
+
+      const updates = data.updates || [];
+      if (updates.length === 0) {
+        listEl.innerHTML = `<div class="text-slate-400 italic py-1">${currentLang === 'ru' ? 'Совпадений с компаниями из раздела Applied не найдено.' : 'No matching companies found in Applied.'}</div>`;
+        return;
+      }
+
+      listEl.innerHTML = updates.map(u => {
+        let badge = `<span class="px-1.5 py-0.5 rounded bg-sky-900/80 text-sky-200 text-[11px]">📩 Подтверждено</span>`;
+        if (u.stage === 'interview') {
+          badge = `<span class="px-1.5 py-0.5 rounded bg-emerald-800 text-white font-semibold text-[11px]">🎤 HR / Интервью</span>`;
+        } else if (u.stage === 'rejected_by_company') {
+          badge = `<span class="px-1.5 py-0.5 rounded bg-rose-900/80 text-rose-200 text-[11px]">❌ Отказ</span>`;
+        }
+        return `
+          <div class="p-2 rounded-lg bg-slate-950 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <strong class="text-white">${escapeHtml(u.company || '')}</strong>
+              <span class="text-slate-400"> • ${escapeHtml(u.title || u.job_id || '')}</span>
+              ${u.reason ? `<div class="text-slate-300 mt-0.5">${escapeHtml(u.reason)}</div>` : ''}
+            </div>
+            <div class="flex items-center gap-2">
+              ${u.email_url ? `<a href="${escapeHtml(u.email_url)}" target="_blank" rel="noopener" class="px-2 py-0.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-[11px] font-semibold">✉️ Письмо ↗</a>` : ''}
+              ${badge}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function executeTrackerSync(reportText) {
+      const btnParse = document.getElementById('btnParseTrackerReport');
+      const btnDirect = document.getElementById('btnTrackerDirectAgy');
+      const hintEl = document.getElementById('trackerSyncStatusHint');
+      if (btnParse) btnParse.disabled = true;
+      if (btnDirect) btnDirect.disabled = true;
+      if (hintEl) {
+        hintEl.textContent = currentLang === 'ru'
+          ? '⏳ ИИ сопоставляет компании и обновляет статусы в Applied...'
+          : '⏳ AI is matching companies and updating Applied statuses...';
+      }
+
+      try {
+        const res = await fetch('/api/jobs/applied-tracker/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            report_text: reportText || null,
+            skill_name: '@job-application-tracker',
+            apply_updates: true
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || ('HTTP ' + res.status));
+        }
+        renderTrackerSyncResults(data);
+        if (hintEl) {
+          hintEl.textContent = `✅ Обновлено вакансий в базе: ${data.updated_count || 0}`;
+        }
+        showToast(`✅ Отмечено вакансий: ${data.updated_count || 0}`);
+        loadJobs();
+        fetchTrackerPromptText().then(newPrompt => {
+          const previewEl = document.getElementById('trackerPromptPreview');
+          if (previewEl) previewEl.value = newPrompt;
+        }).catch(() => {});
+      } catch (err) {
+        if (hintEl) hintEl.textContent = '⚠️ ' + err.message;
+        showToast('⚠️ ' + err.message, 5000);
+      } finally {
+        if (btnParse) btnParse.disabled = false;
+        if (btnDirect) btnDirect.disabled = false;
+      }
+    }
+
+    async function runTrackerSyncDirectAgy() {
+      await executeTrackerSync(null);
+    }
+
+    async function runTrackerSyncFromModal() {
+      const reportEl = document.getElementById('trackerReportInput');
+      const reportText = reportEl ? reportEl.value.trim() : '';
+      if (!reportText) {
+        const hintEl = document.getElementById('trackerSyncStatusHint');
+        const msg = currentLang === 'ru'
+          ? '⚠️ Сначала вставьте в поле выше ответ от вашего скилла @job-application-tracker из веб-Gemini!'
+          : '⚠️ Please paste the response from your @job-application-tracker skill in Web Gemini first!';
+        if (hintEl) hintEl.textContent = msg;
+        showToast(msg, 4500);
+        if (reportEl) reportEl.focus();
+        return;
+      }
+      await executeTrackerSync(reportText);
     }
 
     applyLanguage();

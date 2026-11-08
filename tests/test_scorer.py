@@ -280,5 +280,84 @@ def test_classify_geo_tier_foreign_hybrid_office_with_relocation():
     assert "Relocation" in tier
 
 
+def test_classify_geo_tier_worldwide_with_optional_hybrid_passes():
+    enr = JobEnrichment(
+        location_restrictions=["Worldwide"],
+        remote_policy_detail="Worldwide; fully remote, office-based, or hybrid work options are available.",
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Senior Backend Engineer",
+        "Fully remote, office-based, or hybrid work options are available.",
+        enr,
+        job_location="global",
+        is_remote=1,
+    )
+    assert passed is True
+    assert "Tier 1B" in tier
+    assert reason is None
+
+
+def test_classify_geo_tier_emea_full_remote_or_hybrid_optional_passes():
+    enr = JobEnrichment(
+        location_restrictions=["EMEA"],
+        remote_policy_detail="Full remote or hybrid model (if based in NL or Serbia).",
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Senior Python Engineer",
+        "Full remote or hybrid model",
+        enr,
+        job_location="EMEA",
+        is_remote=None,
+    )
+    assert passed is True
+    assert "Tier 2A" in tier
+    assert reason is None
+
+
+def test_classify_geo_tier_business_travel_rejected_by_default():
+    # Кейс gd-1010317921608: Worldwide remote, но требуются регулярные выезды на фабрики в UK и US
+    enr = JobEnrichment(
+        location_restrictions=["Worldwide"],
+        remote_policy_detail="Remote anywhere, or from offices in London or Cambridge (UK), with regular visits to factories in the UK and US.",
+        requirements=["Curiosity about physical manufacturing and willingness to regularly visit US and UK factories"],
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Senior AI Engineer",
+        "Remote anywhere with regular visits to factories in the UK and US.",
+        enr,
+        job_location="Cambridge, England",
+        is_remote=1,
+    )
+    assert passed is False
+    assert "Business travel" in tier
+    assert reason == "business_travel_required"
+
+
+def test_classify_geo_tier_business_travel_allowed_when_disabled():
+    enr = JobEnrichment(
+        location_restrictions=["Worldwide"],
+        remote_policy_detail="Remote anywhere, or from offices in London or Cambridge (UK), with regular visits to factories in the UK and US.",
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Senior AI Engineer",
+        "Remote anywhere with regular visits to factories in the UK and US.",
+        enr,
+        geo_preferences={
+            "current_location": "Georgia, Tbilisi",
+            "allowed_macro_regions": ["Georgia", "EMEA"],
+            "allow_worldwide_remote": True,
+            "relocation_policy": "with_sponsorship_only",
+            "reject_unsupported_single_country": True,
+            "reject_business_travel": False,
+        },
+        job_location="Cambridge, England",
+        is_remote=1,
+    )
+    assert passed is True
+    assert "Tier 1B" in tier
+    assert reason is None
+
+
+
 
 

@@ -32,10 +32,14 @@ def init_db(db_path: Path | str | None = None) -> None:
 
 @contextmanager
 def db_session(db_path: Path | str | None = None) -> Iterator[sqlite3.Connection]:
-    """Контекст-менеджер с гарантированным закрытием соединения."""
+    """Контекст-менеджер с атомарным коммитом/откатом и гарантированным закрытием соединения."""
     conn = connect(db_path)
     try:
         yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 

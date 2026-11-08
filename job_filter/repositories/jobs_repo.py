@@ -9,6 +9,7 @@ _JOB_COLUMNS = (
     "description", "matched", "reject_reason", "processed_at",
     "enrichment_json", "score", "tier", "score_details_json", "user_status",
     "apply_url", "ats_domain", "user_reject_reason",
+    "application_stage", "company_reject_reason", "application_email_url", "application_updated_at",
 )
 
 
@@ -68,10 +69,31 @@ def set_user_status(
             "UPDATE processed_jobs SET user_status = ?, user_reject_reason = ? WHERE job_id = ?",
             (user_status, user_reject_reason, job_id),
         )
+    elif user_status == "applied":
+        now_iso = datetime.now(timezone.utc).isoformat()
+        cur = conn.execute(
+            """
+            UPDATE processed_jobs
+            SET user_status = ?,
+                application_stage = COALESCE(application_stage, 'applied'),
+                application_updated_at = COALESCE(application_updated_at, ?)
+            WHERE job_id = ?
+            """,
+            (user_status, now_iso, job_id),
+        )
     elif user_status in ("new", "saved"):
         cur = conn.execute(
-            "UPDATE processed_jobs SET user_status = ?, user_reject_reason = NULL WHERE job_id = ?",
-            (user_status, job_id),
+            """
+            UPDATE processed_jobs
+            SET user_status = ?,
+                user_reject_reason = NULL,
+                application_stage = CASE WHEN ? = 'new' THEN NULL ELSE application_stage END,
+                company_reject_reason = CASE WHEN ? = 'new' THEN NULL ELSE company_reject_reason END,
+                application_email_url = CASE WHEN ? = 'new' THEN NULL ELSE application_email_url END,
+                application_updated_at = CASE WHEN ? = 'new' THEN NULL ELSE application_updated_at END
+            WHERE job_id = ?
+            """,
+            (user_status, user_status, user_status, user_status, user_status, job_id),
         )
     else:
         cur = conn.execute(
@@ -79,6 +101,45 @@ def set_user_status(
             (user_status, job_id),
         )
     return cur.rowcount
+
+
+def set_application_stage(
+    conn: sqlite3.Connection,
+    job_id: str,
+    application_stage: str,
+    company_reject_reason: str | None = None,
+    application_email_url: str | None = None,
+) -> int:
+    """Обновляет этап отклика (applied | confirmed | interview | rejected_by_company), причину/детали и ссылку на письмо."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        """
+        UPDATE processed_jobs
+        SET user_status = 'applied',
+            application_stage = ?,
+            company_reject_reason = ?,
+            application_email_url = COALESCE(?, application_email_url),
+            application_updated_at = ?
+        WHERE job_id = ?
+        """,
+        (application_stage, company_reject_reason, application_email_url, now_iso, job_id),
+    )
+    return cur.rowcount
+
+
+def list_applied_jobs(conn: sqlite3.Connection) -> list[dict]:
+    """Возвращает все вакансии со статусом applied."""
+    cur = conn.execute(
+        """
+        SELECT job_id, site, location, is_remote, title, company, url, date_posted,
+               processed_at, score, tier, user_status, apply_url, ats_domain,
+               application_stage, company_reject_reason, application_email_url, application_updated_at
+        FROM processed_jobs
+        WHERE user_status = 'applied'
+        ORDER BY processed_at DESC
+        """
+    )
+    return [dict(r) for r in cur.fetchall()]
 
 
 def get_user_rejected_jobs(conn: sqlite3.Connection) -> list[dict]:
@@ -96,15 +157,37 @@ def get_user_rejected_jobs(conn: sqlite3.Connection) -> list[dict]:
     return [dict(r) for r in cur.fetchall()]
 
 
-def list_all(conn: sqlite3.Connection) -> list[dict]:
-    return [dict(r) for r in conn.execute("SELECT * FROM processed_jobs ORDER BY processed_at DESC")]
+def list_all(conn: sqlite3.Connection, include_description: bool = False) -> list[dict]:
+    if include_description:
+        return [dict(r) for r in conn.execute("SELECT * FROM processed_jobs ORDER BY processed_at DESC")]
+    return [
+        dict(r)
+        for r in conn.execute(
+            """
+            SELECT job_id, site, location, is_remote, title, company, url, date_posted,
+                   seniority_level, employment_type, job_function, industry, salary,
+                   (description IS NOT NULL AND description != '') AS has_description,
+                   matched, reject_reason, processed_at,
+                   enrichment_json, score, tier, score_details_json, user_status,
+                   apply_url, ats_domain, user_reject_reason,
+                   application_stage, company_reject_reason, application_email_url, application_updated_at
+            FROM processed_jobs
+            ORDER BY processed_at DESC
+            """
+        )
+    ]
+
+
+def get_job_description(conn: sqlite3.Connection, job_id: str) -> str | None:
+    row = conn.execute("SELECT description FROM processed_jobs WHERE job_id = ?", (job_id,)).fetchone()
+    return row["description"] if row else None
 
 
 def list_pending_enrichment(conn: sqlite3.Connection, limit: int) -> list[sqlite3.Row]:
     """Вакансии с описанием, прошедшие базовый фильтр, но ещё не обогащённые LLM."""
     return conn.execute(
         """
-        SELECT job_id, title, company, location, url, date_posted, seniority_level, industry, salary, description
+        SELECT job_id, title, company, location, is_remote, url, date_posted, seniority_level, industry, salary, description
         FROM processed_jobs
         WHERE description IS NOT NULL
           AND description != ''
@@ -120,7 +203,9 @@ def list_pending_enrichment(conn: sqlite3.Connection, limit: int) -> list[sqlite
 def list_enriched(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return conn.execute(
         """
-        SELECT job_id, title, company, location, is_remote, date_posted, seniority_level, industry, salary, description, enrichment_json, reject_reason
+        SELECT job_id, title, company, location, is_remote, date_posted, seniority_level,
+               industry, salary, description, enrichment_json, reject_reason,
+               score, tier, matched
         FROM processed_jobs
         WHERE enrichment_json IS NOT NULL
         """

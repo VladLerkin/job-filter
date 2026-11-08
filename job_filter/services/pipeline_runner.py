@@ -14,6 +14,7 @@ class PipelineRunner:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._running = False
+        self._cancel_event = threading.Event()
         self._logs: list[str] = []
         self._started_at: str | None = None
         self._finished_at: str | None = None
@@ -26,6 +27,14 @@ class PipelineRunner:
     def is_running(self) -> bool:
         with self._lock:
             return self._running
+
+    def stop(self) -> bool:
+        with self._lock:
+            if not self._running:
+                return False
+            self._cancel_event.set()
+        self.append_log("⏹️ Запрошена остановка пайплайна...")
+        return True
 
     def get_status(self, since: int = 0) -> dict[str, Any]:
         with self._lock:
@@ -42,6 +51,7 @@ class PipelineRunner:
             if self._running:
                 return False
             self._running = True
+            self._cancel_event.clear()
             self._logs = []
             self._started_at = time.strftime("%Y-%m-%d %H:%M:%S")
             self._finished_at = None
@@ -60,6 +70,7 @@ class PipelineRunner:
                         model=req.get("llm_model"),
                         limit=req.get("llm_limit", 50),
                         on_progress=self.append_log,
+                        cancel_event=self._cancel_event,
                     )
                 finally:
                     conn.close()
@@ -78,6 +89,7 @@ class PipelineRunner:
                     on_progress=self.append_log,
                     hirify_mode=req.get("hirify_mode", "feeds"),
                     hirify_feed_id=req.get("hirify_feed_id"),
+                    cancel_event=self._cancel_event,
                 )
             self.append_log("✅ Пайплайн успешно завершен!")
         except Exception as e:

@@ -49,7 +49,7 @@ FOREIGN_COUNTRY_MAP: dict[str, str] = {
     "australia": "Australia", "sydney": "Australia", "melbourne": "Australia", "new zealand": "New Zealand", "israel": "Israel",
     "turkey": "Turkey", "türkiye": "Turkey", "istanbul": "Turkey", "egypt": "Egypt", "south africa": "South Africa",
     "uae": "UAE", "united arab emirates": "UAE", "dubai": "UAE", "saudi arabia": "Saudi Arabia",
-    "sri lanka": "Sri Lanka", "tunisia": "Tunisia", "tanzania": "Tanzania", "morocco": "Morocco",
+    "sri lanka": "Sri Lanka", "tunisia": "Tunisia", "tanzania": "Tanzania", "morocco": "Morocco", "algeria": "Algeria",
 }
 
 
@@ -75,6 +75,7 @@ def classify_geo_tier(
     allow_worldwide = prefs.get("allow_worldwide_remote", True)
     relo_policy = str(prefs.get("relocation_policy", "with_sponsorship_only"))
     reject_single_country = prefs.get("reject_unsupported_single_country", True)
+    reject_business_travel = prefs.get("reject_business_travel", True)
 
     # Очищаем ограничения локации от предложений LLM вида "Ineligible for remote from Georgia, Tbilisi"
     clean_restrictions = [
@@ -82,7 +83,8 @@ def classify_geo_tier(
         for r in enrichment.location_restrictions
     ]
     clean_restrictions = [r for r in clean_restrictions if r]
-    restrictions_joined = " | ".join(clean_restrictions).lower()
+    clean_restrictions_low = [r.lower() for r in clean_restrictions]
+    restrictions_joined = " | ".join(clean_restrictions_low)
     remote_low = (enrichment.remote_policy_detail or "").lower()
     fit_summary_low = ((enrichment.resume_fit.summary if enrichment.resume_fit else "") or "").lower()
     work_auth_summary_low = ((enrichment.work_authorization.summary if enrichment.work_authorization else "") or "").lower()
@@ -144,6 +146,28 @@ def classify_geo_tier(
     if jl_clean in ("russia", "russia (russia)") and not can_consider_relocation:
         return False, "Rejected: Russia-only", "ru_only_lock"
 
+    # 2b. Проверка обязательных регулярных командировок / выездов на заводы, к клиентам или в офис
+    if reject_business_travel:
+        reqs_low = " | ".join(r.lower() for r in (enrichment.requirements or []))
+        travel_text = f"{remote_low} | {restrictions_joined} | {reqs_low} | {desc_clean[:3000]}"
+        business_travel_patterns = [
+            r"\b(?:regular|frequent|periodic|routine|ongoing)\s+(?:(?:business|international|domestic|regional|in-person|onsite|on-site|client|customer|factory|office)\s+){0,2}(?:travel|visits?)\b",
+            r"\bregularly\s+visit(?:ing)?\b",
+            r"\b(?:visits?|travel|trips?)\s+to\s+(?:[\w-]+\s+){0,3}(?:factor(?:y|ies)|plants?|warehouses?|client\s+sites?|customer\s+sites?|manufacturing\s+sites?)\b",
+            r"\b(?:on-site|onsite|in-person)\s+(?:client|customer|factory)\s+visits?\b",
+            r"\b(?:client|customer)\s+site\s+(?:travel|visits?)\b",
+            r"\btravel\s+to\s+(?:client|customer)\s+(?:sites?|locations?|offices?)\b",
+            r"\b(?:[5-9]|\d{2,})\s*%\s*(?:[\w/-]+\s+){0,3}travel\b",
+            r"\btravel\s+(?:of\s+)?(?:up\s+to\s+|around\s+|approx\.?\s+)?(?:[5-9]|\d{2,})\s*%",
+            r"\b(?:requiring|requires|mandatory)\s+(?:periodic\s+|regular\s+|quarterly\s+|monthly\s+)?office\s+visits?\b",
+            r"\boffice\s+visits?\s+(?:once|twice|\d+\s+times)\s+a\s+(?:week|month|quarter|year)\b",
+            r"\btrips?\s+to\s+the\s+[\w\s]{1,25}office\s+\d+\s+times\b",
+            r"(?<!без\s)(?<!нет\s)\b(?:регулярн(?:ые|ых)|част(?:ые|ых)|периодическ(?:ие|их)|готовность\s+к)\s+командировк(?:и|ам|ах)\b",
+            r"\bвыезд(?:ы|ам|ов)\s+(?:к\s+клиентам|на\s+объекты|на\s+производство)\b",
+        ]
+        if any(re.search(pat, travel_text) for pat in business_travel_patterns):
+            return False, "Rejected: Business travel / on-site visits required", "business_travel_required"
+
     # 3. Проверка глобальной удалёнки (Worldwide / Anywhere / Global Remote)
     # Исключаем временные тревел-перки (work from anywhere up to 90 days/year)
     # и локализованные фразы (work from anywhere across Japan / in the UK)
@@ -152,7 +176,7 @@ def classify_geo_tier(
             r"(?:work\s+from\s+anywhere|wfa|working\s+remotely\s+from\s+anywhere)\s+(?:for\s+up\s+to\s+|for\s+|up\s+to\s+)?\d+\s+(?:days|weeks|months)|"
             r"\d+\s+(?:days|weeks)\s+(?:of\s+)?(?:work\s+from\s+anywhere|wfa|working\s+abroad)|"
             r"up\s+to\s+\d+\s+(?:days|weeks)\s+(?:per\s+year|\/year|a\s+year)\s+(?:working\s+from\s+anywhere|abroad)|"
-            r"(?:work\s+from\s+anywhere|can\s+work\s+from\s+anywhere)\s+(?:in|across|within)\s+(?:the\s+)?[a-z]+|"
+            r"(?:work\s+from\s+anywhere|can\s+work\s+from\s+anywhere)\s+(?:in|across|within)\s+(?!the\s+world\b|world\b)(?:the\s+)?[a-z]+|"
             r"anywhere\s+(?:in|across|within)\s+(?:the\s+)?(?:uk|united kingdom|japan|brazil|us|usa|united states|germany|spain|poland|canada)|"
             r"(?:contract|policy)\s+with\s+work\s+from\s+anywhere",
             full_lower,
@@ -169,27 +193,29 @@ def classify_geo_tier(
         "open to candidates worldwide",
         "no location restrictions",
     )
-    has_unambiguous_global = any(
-        kw in full_lower or kw in restrictions_joined
-        for kw in global_hiring_keywords
-    ) or any(
-        r in ("worldwide", "global", "anywhere")
-        for r in clean_restrictions
+    has_global_restriction_tag = any(
+        r in ("worldwide", "global", "anywhere", "remote worldwide", "worldwide remote", "global remote")
+        for r in clean_restrictions_low
+    )
+    has_unambiguous_global = (
+        any(kw in full_lower or kw in restrictions_joined for kw in global_hiring_keywords)
+        or has_global_restriction_tag
     )
 
     is_pure_wfa = (
         "work from anywhere" in full_lower or "work from anywhere" in restrictions_joined
     ) and not is_scoped_or_temp_wfa
 
-    is_true_global = allow_worldwide and (has_unambiguous_global or is_pure_wfa)
+    is_true_global = allow_worldwide and (has_unambiguous_global or is_pure_wfa) and not is_scoped_or_temp_wfa
 
     # Если в явных ограничениях локации указаны конкретные иностранные государства без Worldwide/Global,
     # это не глобальная удалёнка
     has_explicit_country_restriction = any(
-        var in clean_restrictions or var in eligible_regions_low
+        re.search(rf"\b{re.escape(var)}\b", item)
+        for item in (clean_restrictions_low + eligible_regions_low)
         for var in FOREIGN_COUNTRY_MAP
     )
-    if has_explicit_country_restriction and not any(r in ("worldwide", "global", "anywhere") for r in clean_restrictions):
+    if has_explicit_country_restriction and not has_global_restriction_tag:
         is_true_global = False
 
     # 4. Формируем локальные ключевые слова для домашнего региона (Грузия / Кавказ / CEE) - БЕЗ EMEA!
@@ -365,7 +391,13 @@ def classify_geo_tier(
             return False, "Rejected: Single-country / regional residency required", "single_country_lock:residency"
 
     # 9. Проверка требований физического присутствия (On-site / Hybrid) в чужой стране
-    hybrid_office_patterns = [
+    optional_remote_patterns = (
+        r"\b(?:full(?:y)?|100%)\s+remote\b[^.;\n]{0,60}\bor\s+(?:office-based,?\s+or\s+)?hybrid\b",
+        r"\bhybrid\s+or\s+(?:full(?:y)?|100%)\s+remote\b",
+        r"\bremote,?\s+office-based,?\s+or\s+hybrid\s+work\s+options?\b",
+        r"\boptional\s+(?:access\s+to\s+offices?|office|hybrid)\b",
+    )
+    hybrid_office_patterns = (
         r"\btélétravail\s+(?:partiel|à\s+hauteur\s+de|\d+%)",
         r"\b(?:locaux|bureau|office)\s+(?:à|in|en)\s+[a-z]+",
         r"\bhybrid\s+(?:work|model|role|office|policy|position|setup|schedule|environment)\b",
@@ -375,11 +407,21 @@ def classify_geo_tier(
         r"\b(?:must|required to)\s+(?:work|be|come|attend)\s+(?:in|from)\s+(?:the\s+)?office\b",
         r"гибридный\s+(?:формат|график|офис)",
         r"\bpresencial\b",
-    ]
-    is_explicit_non_remote = (is_remote is False) or (is_remote == 0) or (is_remote == "0")
-    has_hybrid_policy = any(
-        re.search(pat, f"{remote_low} | {fit_summary_low} | {desc_clean[:2000]}")
-        for pat in hybrid_office_patterns
+    )
+    work_arr = getattr(enrichment, "work_arrangement", "unknown") or "unknown"
+    policy_check_text = f"{remote_low} | {fit_summary_low} | {desc_clean[:2000]}"
+    is_optional_hybrid = work_arr in ("remote_only", "remote_or_hybrid_optional") or any(
+        re.search(pat, policy_check_text) for pat in optional_remote_patterns
+    )
+    is_explicit_non_remote = (
+        (is_remote is False) or (is_remote == 0) or (is_remote == "0")
+    ) and not is_optional_hybrid
+    has_hybrid_policy = (
+        work_arr in ("hybrid_required", "onsite_required")
+        or (
+            not is_optional_hybrid
+            and any(re.search(pat, policy_check_text) for pat in hybrid_office_patterns)
+        )
     )
 
     if (is_explicit_non_remote or has_hybrid_policy) and not is_local_match and not is_true_global:

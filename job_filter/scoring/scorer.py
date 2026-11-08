@@ -1,4 +1,5 @@
 """Скоринг вакансии (0..100 баллов) по стеку технологий, уровню, локации, зарплате и свежести."""
+from datetime import date, datetime
 import re
 import sqlite3
 
@@ -11,6 +12,23 @@ from job_filter.scoring.matrix import (
     get_skill_matrix,
     skill_matches_candidate,
 )
+
+
+def _calculate_freshness_bonus(date_posted: str | None) -> tuple[int, str]:
+    """Оценивает свежесть вакансии по дате публикации (YYYY-MM-DD)."""
+    if not date_posted:
+        return 5, "Fresh (+5)"
+    raw = str(date_posted).strip()[:10]
+    try:
+        posted_dt = datetime.strptime(raw, "%Y-%m-%d").date()
+        age_days = (date.today() - posted_dt).days
+        if age_days <= 14:
+            return 5, "Fresh (+5)"
+        if age_days <= 30:
+            return 3, f"Recent {age_days}d (+3)"
+        return 0, f"Stale {age_days}d (+0)"
+    except ValueError:
+        return 5, "Fresh (+5)"
 
 NON_PROFILE_TITLE_KEYWORDS = tuple(sorted([
     "go", "golang", "react", "angular", "vue", "nextjs", "nuxt", "svelte",
@@ -119,9 +137,16 @@ def score_vacancy_by_skill(
         if found:
             matched_skill_ids.add(sid)
 
+    cat_by_id = {c["category_id"]: c for c in categories}
     has_core_language = any(sid in matched_skill_ids for sid in ("java", "kotlin", "spring_boot"))
     has_python = "python" in matched_skill_ids
     has_agentic = any(s["category_id"] == "ai_agentic" for s in skills if s["skill_id"] in matched_skill_ids)
+    has_primary_skill = any(
+        bool(s.get("is_primary"))
+        and float(cat_by_id.get(s["category_id"], {}).get("multiplier", 1.0)) > 0
+        for s in skills
+        if s["skill_id"] in matched_skill_ids
+    )
 
     for cat in sorted(categories, key=lambda c: c.get("sort_order", 0)):
         cid = cat["category_id"]
@@ -134,8 +159,8 @@ def score_vacancy_by_skill(
         if cmult < 0 or cmax < 0:
             penalty = cmax if cmax < 0 else -abs(cmax)
             if cid == "alien" or "alien" in cid:
-                # Чужой стек применяется, только если вакансия не содержит основной стек (Java/Kotlin/Python/AI)
-                if cat_matched and not (has_core_language or has_python or has_agentic):
+                # Чужой стек применяется, только если вакансия не содержит основной/Primary стек кандидата
+                if cat_matched and not (has_primary_skill or has_core_language or has_python or has_agentic):
                     score += penalty
                     breakdown.append(f"{ctitle} ({penalty})")
             elif cid == "legacy" or "legacy" in cid:
@@ -228,9 +253,10 @@ def score_vacancy_by_skill(
         score += 5
         breakdown.append("Salary unstated (+5)")
 
-    # 5. Freshness (+5 pts)
-    score += 5
-    breakdown.append("Fresh (+5)")
+    # 5. Freshness (0 to 5 pts)
+    fresh_pts, fresh_label = _calculate_freshness_bonus(date_posted)
+    score += fresh_pts
+    breakdown.append(fresh_label)
 
     # 6. Missing Skills Penalty (-3 pts per missing required skill)
     if missing_skills:
@@ -251,9 +277,10 @@ def score_vacancy_by_skill(
     has_clean_title = len(title_penalty_tokens) == 0
     if not has_clean_title:
         score -= 20
-        breakdown.append(f"Непрофильный заголовок [{', '.join(title_penalty_tokens)}] (-20, cap ≤68)")
-        if score > 68:
-            score = 68
+        cap = config.NON_PROFILE_TITLE_SCORE_CAP
+        breakdown.append(f"Непрофильный заголовок [{', '.join(title_penalty_tokens)}] (-20, cap ≤{cap})")
+        if score > cap:
+            score = cap
 
     score = max(0, min(100, score))
 
@@ -263,6 +290,8 @@ def score_vacancy_by_skill(
         match_category = "top"
     elif score >= config.GOOD_SCORE_THRESHOLD:
         match_category = "good"
+    elif score >= config.FAIR_SCORE_THRESHOLD:
+        match_category = "fair"
     else:
         match_category = "low"
 

@@ -19,13 +19,16 @@ def run_agy(
     model: str | None = None,
     timeout_sec: int = 90,
     json_schema: dict | None = None,
+    allow_skills: bool = False,
 ) -> str:
     """Запускает `agy -p <prompt>` и возвращает stdout.
 
     Если передан json_schema — включается структурированный вывод (`--output-format json --json-schema`).
     """
     model = model or config.DEFAULT_MODEL
-    cmd = [config.AGY_BIN, "--model", model, "--disable-slash-commands"]
+    cmd = [config.AGY_BIN, "--model", model]
+    if not allow_skills:
+        cmd.append("--disable-slash-commands")
     if json_schema is not None:
         cmd += ["--output-format", "json", "--json-schema", json.dumps(json_schema)]
     cmd += ["-p", prompt]

@@ -1,9 +1,11 @@
 """Основной поисковый и оценочный пайплайн: сбор скрапингом, первичный фильтр, дозагрузка описания, обогащение через LLM и скоринг."""
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 import random
 import re
 import sqlite3
+import threading
 import time
 from typing import Any
 import pandas as pd
@@ -11,8 +13,9 @@ import requests
 
 from job_filter import config
 from job_filter.db.connection import connect
-from job_filter.llm.job_enricher import enrich_job, load_resume_text
-from job_filter.repositories import blacklist_repo, jobs_repo
+from job_filter.llm.job_enricher import enrich_job, load_candidate_context
+from job_filter.repositories import blacklist_repo, candidate_repo, jobs_repo
+from job_filter.scoring.matrix import get_skill_matrix
 from job_filter.scoring.scorer import score_vacancy_by_skill
 from job_filter.scraping.linkedin import fetch_job_details
 from job_filter.scraping.providers import scrape_site
@@ -26,6 +29,8 @@ def enrich_and_score_pending_jobs(
     model: str = config.DEFAULT_MODEL,
     limit: int = 50,
     on_progress: Callable[[str], None] | None = None,
+    cancel_event: threading.Event | None = None,
+    max_workers: int | None = None,
 ) -> int:
     """
     Находит в БД вакансии, прошедшие базовый фильтр (matched=1 и description IS NOT NULL),
@@ -43,70 +48,107 @@ def enrich_and_score_pending_jobs(
         emit("✨ Все кандидаты в базе уже обогащены через LLM.")
         return 0
 
-    emit(f"🤖 Запуск LLM-обогащения ({model}) и скоринга для {len(rows)} вакансий...")
+    workers = max(1, max_workers if max_workers is not None else config.LLM_ENRICH_WORKERS)
+    emit(f"🤖 Запуск LLM-обогащения ({model}, воркеров: {workers}) и скоринга для {len(rows)} вакансий...")
     enriched_count = 0
-    resume_text = load_resume_text()
 
-    for idx, row in enumerate(rows, start=1):
-        job_id = row["job_id"]
-        title = row["title"] or ""
-        company = row["company"] or ""
-        desc = row["description"] or ""
+    # Загружаем контекст кандидата, гео-преференции и матрицу навыков ОДИН раз перед циклом
+    resume_text, geo_context = load_candidate_context()
+    matrix = get_skill_matrix(conn)
+    geo_preferences = candidate_repo.get_settings(conn).get("geo_preferences")
 
-        emit(f"🧠 [{idx}/{len(rows)}] ИИ-разбор: {title} @ {company} ({job_id})...")
+    def _run_single_enrich(idx_and_row: tuple[int, sqlite3.Row]):
+        idx, r = idx_and_row
+        if cancel_event and cancel_event.is_set():
+            return idx, r, None, InterruptedError("Остановлено пользователем")
+        jid = r["job_id"]
+        t = r["title"] or ""
+        c = r["company"] or ""
+        d = r["description"] or ""
+        j_loc = r["location"] if ("location" in r.keys() and r["location"]) else "Remote"
+        emit(f"🧠 [{idx}/{len(rows)}] ИИ-разбор: {t} @ {c} ({jid})...")
         try:
-            job_loc = row["location"] if ("location" in row.keys() and row["location"]) else "Remote"
-            is_rem_val = row["is_remote"] if ("is_remote" in row.keys() and row["is_remote"] is not None) else None
-            enrichment = enrich_job(
-                title=title,
-                company=company,
-                location=job_loc,
-                description=desc,
+            enr = enrich_job(
+                title=t,
+                company=c,
+                location=j_loc,
+                description=d,
                 model=model,
                 resume=resume_text,
+                geo_context=geo_context,
             )
-            score_res = score_vacancy_by_skill(
-                title=title,
-                company=company,
-                date_posted=row["date_posted"],
-                seniority_level=row["seniority_level"],
-                industry=row["industry"],
-                salary_text=row["salary"],
-                description=desc,
-                enrichment=enrichment,
-                conn=conn,
-                job_location=job_loc,
-                is_remote=is_rem_val,
-            )
-            matched = 0 if (not score_res.geo_passed or score_res.score < 50) else 1
-            reject_reason = (
-                score_res.geo_reject_reason if not score_res.geo_passed else (f"low_score:{score_res.score}" if score_res.score < 50 else None)
-            )
-            jobs_repo.update_enrichment_and_score(
-                conn,
-                job_id=job_id,
-                enrichment_json=enrichment.model_dump_json(),
-                score=score_res.score,
-                tier=score_res.tier,
-                score_details_json=score_res.model_dump_json(),
-                matched=matched,
-                reject_reason=reject_reason,
-            )
-            conn.commit()
-            enriched_count += 1
-            badge = (
-                "🟢 TOP"
-                if score_res.match_category == "top"
-                else "🟡 GOOD"
-                if score_res.match_category == "good"
-                else "🔴 LOW/GEO"
-            )
-            emit(
-                f"  ↳ {badge} | Score: {score_res.score}/100 | {score_res.tier} | "
-                f"Совпало: {len(score_res.matched_skills)}, Пробелов: {len(score_res.missing_skills)}"
-            )
-        except Exception as e:
-            emit(f"  ⚠️ Ошибка LLM для {job_id}: {e}")
+            return idx, r, enr, None
+        except Exception as exc:
+            return idx, r, None, exc
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_run_single_enrich, (idx, row)) for idx, row in enumerate(rows, start=1)]
+        for fut in as_completed(futures):
+            if cancel_event and cancel_event.is_set():
+                emit("⏹️ Обогащение остановлено пользователем.")
+                break
+            idx, row, enrichment, err = fut.result()
+            job_id = row["job_id"]
+            title = row["title"] or ""
+            company = row["company"] or ""
+            desc = row["description"] or ""
+            if err is not None:
+                if not isinstance(err, InterruptedError):
+                    emit(f"  ⚠️ Ошибка LLM для {job_id}: {err}")
+                continue
+            try:
+                job_loc = row["location"] if ("location" in row.keys() and row["location"]) else "Remote"
+                is_rem_val = row["is_remote"] if ("is_remote" in row.keys() and row["is_remote"] is not None) else None
+                score_res = score_vacancy_by_skill(
+                    title=title,
+                    company=company,
+                    date_posted=row["date_posted"],
+                    seniority_level=row["seniority_level"],
+                    industry=row["industry"],
+                    salary_text=row["salary"],
+                    description=desc,
+                    enrichment=enrichment,
+                    conn=conn,
+                    matrix=matrix,
+                    geo_preferences=geo_preferences,
+                    job_location=job_loc,
+                    is_remote=is_rem_val,
+                )
+                fair_thr = config.FAIR_SCORE_THRESHOLD
+                matched = 0 if (not score_res.geo_passed or score_res.score < fair_thr) else 1
+                reject_reason = (
+                    score_res.geo_reject_reason
+                    if not score_res.geo_passed
+                    else (f"low_score:{score_res.score}" if score_res.score < fair_thr else None)
+                )
+                # Запись в SQLite выполняется строго в основном потоке пайплайна
+                jobs_repo.update_enrichment_and_score(
+                    conn,
+                    job_id=job_id,
+                    enrichment_json=enrichment.model_dump_json(),
+                    score=score_res.score,
+                    tier=score_res.tier,
+                    score_details_json=score_res.model_dump_json(),
+                    matched=matched,
+                    reject_reason=reject_reason,
+                )
+                conn.commit()
+                enriched_count += 1
+                badge = (
+                    "🟢 TOP"
+                    if score_res.match_category == "top"
+                    else "🟡 GOOD"
+                    if score_res.match_category == "good"
+                    else "🟠 FAIR"
+                    if score_res.match_category == "fair"
+                    else "🔴 LOW/GEO"
+                )
+                emit(
+                    f"  ↳ [{job_id}] {badge} | Score: {score_res.score}/100 | {score_res.tier} | "
+                    f"Совпало: {len(score_res.matched_skills)}, Пробелов: {len(score_res.missing_skills)}"
+                )
+            except Exception as e:
+                emit(f"  ⚠️ Ошибка сохранения скоринга для {job_id}: {e}")
 
     return enriched_count
 
@@ -188,6 +230,7 @@ def fetch_and_filter_jobs(
     on_progress: Callable[[str], None] | None = None,
     hirify_mode: str = "feeds",
     hirify_feed_id: int | str | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> list[dict]:
     def emit(msg: str) -> None:
         logger.info("%s", msg)
@@ -255,12 +298,21 @@ def fetch_and_filter_jobs(
             except Exception as e:
                 emit(f"  ⚠️ [hirify] Ошибка при сборе по фильтрам: {e}")
     else:
+        prev_had_rate_limit = False
+        known_ids_in_run = set(processed_ids)
         for idx, term in enumerate(terms):
+            if cancel_event and cancel_event.is_set():
+                emit("⏹️ Поиск остановлен пользователем.")
+                break
             if idx > 0:
                 if site == "linkedin":
-                    delay = random.uniform(12.0, 20.0)
-                    emit(f"⏳ [linkedin] Пауза {delay:.1f}с перед следующим запросом '{term}' для защиты от rate-limit (429)...")
-                    time.sleep(delay)
+                    delay = random.uniform(10.0, 14.0) if prev_had_rate_limit else random.uniform(3.5, 6.0)
+                    emit(f"⏳ [linkedin] Пауза {delay:.1f}с перед следующим запросом '{term}'...")
+                    if cancel_event and cancel_event.wait(delay):
+                        emit("⏹️ Поиск остановлен пользователем.")
+                        break
+                    if not cancel_event:
+                        time.sleep(delay)
                 else:
                     time.sleep(random.uniform(2.0, 4.0))
 
@@ -277,14 +329,17 @@ def fetch_and_filter_jobs(
                     linkedin_company_ids=linkedin_company_ids,
                     hirify_mode=hirify_mode,
                     hirify_feed_id=hirify_feed_id,
-                    processed_ids=processed_ids,
+                    processed_ids=known_ids_in_run,
                 )
 
+                prev_had_rate_limit = bool((df.attrs or {}).get("had_rate_limit"))
                 site_errors = (df.attrs or {}).get("errors") or {}
                 for err_site, err_msg in site_errors.items():
                     emit(f"  ⚠️ [{err_site}] Сообщение провайдера: {err_msg}")
 
                 if not df.empty:
+                    if "id" in df.columns:
+                        known_ids_in_run.update(df["id"].dropna().astype(str).tolist())
                     emit(f"  ↳ [{site}] Найдено по '{term}': {len(df)}")
                     frames.append(df)
                 else:
@@ -295,15 +350,29 @@ def fetch_and_filter_jobs(
     new_matches_count = 0
     if frames:
         jobs = pd.concat(frames, ignore_index=True)
-        emit(f"📦 Суммарно карточек со всех запросов: {len(jobs)}")
+        total_raw = len(jobs)
 
         jobs = jobs.drop_duplicates(subset=["id"]).copy()
+        after_id_dedup = len(jobs)
         jobs["_dedup_key"] = (
             jobs["title"].fillna("").str.strip().str.lower()
             + "::"
             + jobs["company"].fillna("").str.strip().str.lower()
         )
         jobs = jobs.drop_duplicates(subset=["_dedup_key"]).drop(columns=["_dedup_key"]).copy()
+        unique_total = len(jobs)
+        dup_id_count = total_raw - after_id_dedup
+        dup_title_comp_count = after_id_dedup - unique_total
+        dup_total = total_raw - unique_total
+
+        if dup_total > 0:
+            emit(
+                f"📦 Суммарно карточек со всех запросов: {total_raw} "
+                f"→ уникальных: {unique_total} (убрано дублей: {dup_total} — "
+                f"по ID между запросами: {dup_id_count}, мульти-локации Title+Company: {dup_title_comp_count})"
+            )
+        else:
+            emit(f"📦 Суммарно карточек со всех запросов: {total_raw}")
 
         new_jobs_mask = ~jobs["id"].astype(str).isin(processed_ids)
         unseen_jobs = jobs[new_jobs_mask].copy()
@@ -349,6 +418,9 @@ def fetch_and_filter_jobs(
             session = requests.Session()
 
             for idx, (_, row) in enumerate(candidates.iterrows(), start=1):
+                if cancel_event and cancel_event.is_set():
+                    emit("⏹️ Загрузка карточек остановлена пользователем.")
+                    break
                 job_id = str(row.get("id"))
                 site_val = str(row.get("site") or ("linkedin" if job_id.startswith("li-") else "other"))
                 raw_loc = row.get("location")
@@ -362,7 +434,7 @@ def fetch_and_filter_jobs(
 
                 if site_val == "linkedin" or job_id.startswith("li-"):
                     emit(f"📥 [{idx}/{len(candidates)}] [linkedin] Загрузка карточки: {title} @ {company} ({job_id})...")
-                    details = fetch_job_details(session, job_id)
+                    details = fetch_job_details(session, job_id, on_retry=emit)
                     if details is None:
                         emit(f"  ❌ Не удалось загрузить карточку {job_id}, оставляем на следующий запуск.")
                         continue
@@ -439,12 +511,20 @@ def fetch_and_filter_jobs(
         emit("Поисковая выдача пуста.")
 
     if run_llm_enrichment:
-        if new_matches_count > 0:
-            enrich_and_score_pending_jobs(conn, model=llm_model, limit=llm_limit, on_progress=on_progress)
+        if cancel_event and cancel_event.is_set():
+            emit("⏹️ Пайплайн остановлен до запуска LLM.")
+        elif new_matches_count > 0:
+            enrich_and_score_pending_jobs(
+                conn,
+                model=llm_model,
+                limit=llm_limit,
+                on_progress=on_progress,
+                cancel_event=cancel_event,
+            )
         else:
             emit("⏭️ Новых кандидатов для ИИ-оценки не появилось — запуск LLM пропущен.")
 
-    results = jobs_repo.list_final_matches(conn, min_score=config.GOOD_SCORE_THRESHOLD)
+    results = jobs_repo.list_final_matches(conn, min_score=config.FAIR_SCORE_THRESHOLD)
     conn.close()
     return results
 

@@ -9,7 +9,7 @@ from pypdf import PdfReader
 from job_filter.db.seed_data import DEFAULT_SKILL_CATEGORIES
 from job_filter.models.cv import ParsedCVResult, ParsedSkillItem
 from job_filter.repositories import candidate_repo, skills_repo
-from job_filter.scoring.matrix import invalidate_matrix_cache
+from job_filter.scoring.matrix import calculate_skill_points, invalidate_matrix_cache
 
 logger = logging.getLogger(__name__)
 
@@ -86,10 +86,7 @@ def compute_skills_diff(
         max_p = int(cat.get("max_points", 20))
 
         # Вычисляем предварительные баллы скоринга
-        if mult < 0:
-            new_points = max_p
-        else:
-            new_points = min(round(es.years_experience * mult), max_p)
+        new_points = calculate_skill_points(es.years_experience, mult, max_p)
 
         if sid in exist_map:
             existing = exist_map[sid]
@@ -201,11 +198,8 @@ def apply_cv_analysis(
                 if cat:
                     m = float(cat["multiplier"])
                     max_p = int(cat["max_points"])
-                    if m < 0:
-                        pts = max_p
-                    else:
-                        calc_pts = min(round(years * m), max_p)
-                        pts = calc_pts if pts is None else min(pts, max_p)
+                    calc_pts = calculate_skill_points(years, m, max_p)
+                    pts = calc_pts if (pts is None or m < 0) else min(pts, max_p)
                 elif pts is None:
                     pts = int(years * 2)
 
@@ -226,5 +220,6 @@ def apply_cv_analysis(
                 skills_applied += 1
         invalidate_matrix_cache()
 
+    conn.commit()
     return skills_applied, cv_updated
 

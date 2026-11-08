@@ -35,7 +35,11 @@ _DDL = (
         tier TEXT,
         score_details_json TEXT,
         user_status TEXT DEFAULT 'new',
-        user_reject_reason TEXT
+        user_reject_reason TEXT,
+        application_stage TEXT,
+        company_reject_reason TEXT,
+        application_email_url TEXT,
+        application_updated_at TEXT
     )
     """,
     """
@@ -114,6 +118,10 @@ _PROCESSED_JOBS_MIGRATIONS = {
     "apply_url": "TEXT",
     "ats_domain": "TEXT",
     "user_reject_reason": "TEXT",
+    "application_stage": "TEXT",
+    "company_reject_reason": "TEXT",
+    "application_email_url": "TEXT",
+    "application_updated_at": "TEXT",
 }
 
 
@@ -130,6 +138,20 @@ def apply_schema(conn: sqlite3.Connection) -> None:
     cand_cols = {row[1] for row in conn.execute("PRAGMA table_info(candidate_settings)").fetchall()}
     if "geo_preferences_json" not in cand_cols:
         conn.execute("ALTER TABLE candidate_settings ADD COLUMN geo_preferences_json TEXT")
+
+    # Индексы для ускорения фильтрации по вкладкам, статусам и компаниям
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_jobs_status_matched_score "
+        "ON processed_jobs (user_status, matched, score DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_jobs_processed_at "
+        "ON processed_jobs (processed_at DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_jobs_company "
+        "ON processed_jobs ( lower(trim(company)) )"
+    )
 
 
 def seed_initial_data(conn: sqlite3.Connection) -> None:

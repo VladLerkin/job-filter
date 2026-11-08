@@ -2,57 +2,68 @@
 
 ## 1. System Overview
 
-**Job Filter** is an intelligent, automated job discovery and scoring system tailored for senior backend and AI/Agentic software engineers. It bridges the gap between raw web scraping and personalized job hunting by:
+**Job Filter** is an intelligent, automated job discovery, enrichment, and deterministic scoring system tailored for senior backend and AI/Agentic software engineers. It bridges the gap between raw multi-board scraping and personalized job hunting by:
 
-1. **Scraping & Sourcing** multiple job aggregators (LinkedIn, Indeed, Glassdoor, Hirify Agent API) across target regions (e.g. Remote, EMEA, Worldwide).
-2. **Filtering & Normalizing** URLs, detecting Applicant Tracking System (ATS) platforms, and managing domain blacklists.
-3. **Enriching Vacancies with LLM** (via `agy` CLI) to extract structured insights: geographic eligibility (US-only vs. Global Remote), required tech stack, Agentic AI classification, compensation estimates, and company red flags.
-4. **Scoring Vacancies Against Candidate Profile**: Evaluating vacancies against a customizable **Skills Matrix** with category-level multipliers, caps, negative penalty deductions, and geographic tier filters.
-5. **AI-Powered CV Ingestion**: Parsing candidate PDF resumes, generating structured Markdown CVs, estimating years of experience per skill, mapping skills to weighted categories, and providing an interactive UI diff tool before committing to the database.
+1. **Scraping & Sourcing** multiple job aggregators (custom resilient LinkedIn Guest API scraper, Indeed, Glassdoor via `JobSpy`, and Hirify Agent REST API / Saved Feeds) across target regions (`EMEA`, `Remote`, `Worldwide`).
+2. **Filtering & Normalizing** URLs, extracting external ATS links (`apply_url`) from job cards, detecting Applicant Tracking System (ATS) platforms, and managing domain/company blacklists.
+3. **Parallel LLM Vacancy Enrichment** (via `agy` CLI with `ThreadPoolExecutor`) to extract structured insights: geographic eligibility (`candidate_geo_eligibility`), work arrangement (`remote_only`, `remote_or_hybrid_optional`, `hybrid_required`, `onsite_required`), location restrictions, required/nice-to-have tech stack, spoken language requirements, compensation details, and resume fit analysis.
+4. **Deterministic Multi-Factor Scoring & Geo Filtering**: Evaluating vacancies against a customizable **Skills Matrix** (category multipliers, top-2 skill aggregation, `is_primary` core stack check, negative penalty stacks, title profile cap, freshness bonus) combined with a strict **Geographic & Remote Policy Classifier** (single-country locks, multi-country closed pools, EU/US locks, foreign hybrid/on-site office filters, mandatory foreign language filters, and regular business travel rejection).
+5. **AI-Powered CV Ingestion**: Parsing candidate PDF resumes, generating structured English Markdown CVs, estimating years of experience per skill, mapping skills to weighted categories, and providing an interactive UI diff tool before committing to SQLite.
 
 ---
 
 ## 2. Architectural Principles & Layers
 
-The project follows a clean **layered modular architecture**, maintaining strict separation between presentation, business logic, data persistence, and external integrations.
+The project follows a clean **layered modular architecture**, maintaining strict separation between presentation, business workflows, deterministic domain scoring, external integrations, and SQLite persistence.
 
 ```
 ┌────────────────────────────────────────────────────────┐
 │               Frontend Dashboard (SPA)                 │
 │      (static/index.html + style.css + app.js)          │
 └───────────────────────────▲────────────────────────────┘
-                            │ REST API (JSON)
+                            │ REST API (JSON, Lazy Load)
 ┌───────────────────────────▼────────────────────────────┐
 │                  FastAPI Application                   │
 │        (app.py -> job_filter/api/routers/*.py)         │
 ├────────────────────────────────────────────────────────┤
 │                    Service Layer                       │
-│    (pipeline_service, cv_service, skills_service)      │
+│  (pipeline, pipeline_runner, jobs_service, cv_service, │
+│          skills_service, blacklist_service)            │
 ├───────────────────┬────────────────┬───────────────────┤
-│   Scraping Engine │  LLM Engine    │   Scoring Engine  │
-│  (jobspy_scraper, │ (cv_analyzer,  │  (scorer, matrix, │
-│     url_utils)    │   enricher)    │ category weights) │
+│  Scraping Engine  │   LLM Engine   │  Scoring Engine   │
+│ (linkedin, hirify,│  (agy_client,  │ (scorer, geo.py,  │
+│  providers, urls) │ job_enricher,  │    matrix.py)     │
+│                   │  cv_analyzer)  │                   │
 ├───────────────────┴────────────────┴───────────────────┤
 │                  Repository Layer                      │
 │   (jobs_repo, skills_repo, candidate_repo, blacklist)  │
 ├────────────────────────────────────────────────────────┤
 │                   Database Layer                       │
-│         (SQLite WAL Mode, schema.py, jobs.db)          │
+│    (SQLite WAL Mode, auto-commit sessions, jobs.db)    │
 └────────────────────────────────────────────────────────┘
 ```
 
 ### Layer Responsibilities
 
-- **`api/` (Presentation Layer)**: Exposes RESTful endpoints grouped by domain (`jobs`, `candidate`, `skills`, `pipeline`, `system`). Validates HTTP payloads with Pydantic schemas.
+- **`api/` (Presentation Layer)**: Exposes RESTful endpoints grouped by domain (`jobs`, `candidate`, `skills`, `pipeline`, `blacklist`, `hirify`). Uses FastAPI dependency injection (`get_db`) with automatic transaction commit/rollback per request.
 - **`services/` (Business Logic Layer)**: Orchestrates end-to-end workflows:
-  - `pipeline_service`: Controls scraping, deduplication, LLM enrichment, scoring, and status persistence.
-  - `cv_service`: Handles PDF text extraction, skills diff calculation, and atomic CV/skill database updates.
-  - `skills_service`: Coordinates skill matrix updates, category multipliers, and bulk rescoring of vacancies.
-- **`scoring/` (Scoring Core)**: Pure, deterministic domain logic. Evaluates job descriptions against the active candidate skill matrix, calculating category points, penalties, and geographic tier classification.
-- **`llm/` (AI Integration Layer)**: Interfaces with `agy` CLI to run LLM prompts (supports `gemini-3.8-flash`, `gemini-4-argon`, `claude-sonnet-5-5`, etc.). Handles JSON extraction, fallback parsing, and structured Pydantic schema validation.
-- **`scraping/` (Data Acquisition Layer)**: Integrates `python-jobspy` to extract vacancies across job boards, normalizes URLs, and detects ATS board domains.
-- **`repositories/` (Data Access Layer)**: Encapsulates all SQL queries to keep database interactions separate from business logic.
-- **`db/` (Persistence Layer)**: Manages SQLite connection lifecycle, WAL mode pragmas, schema migrations, and default seed data.
+  - `pipeline.py` & `pipeline_runner.py`: Controls scraping, 2-stage deduplication, parallel LLM enrichment (`ThreadPoolExecutor`), cooperative cancellation (`cancel_event`), scoring, and SQLite persistence.
+  - `jobs_service.py`: Tab filtering (`actionable`, `pending_llm`, `applied`, `rejected`), lazy description loading, auto-reject badge classification (`parse_auto_reject`), and ATS domain binding.
+  - `cv_service.py`: Handles PDF text extraction, skills diff calculation, and atomic CV/skill database updates.
+  - `skills_service.py`: Coordinates skill matrix updates, positive/negative category weight recalculation, dry-run rescore diffs (`preview_rescore_diff`), and bulk vacancy rescoring.
+  - `blacklist_service.py`: Manages blacklisted ATS domains, employer-to-ATS mappings, and thread-safe tracking of the last opened vacancy (`LastOpenedTracker`).
+- **`scoring/` (Scoring & Geo Core)**: Pure, deterministic domain logic:
+  - `scorer.py`: Evaluates job descriptions and LLM enrichment against the active candidate skill matrix, calculating category points, penalties, primary stack checks, title caps, and freshness bonuses.
+  - `geo.py`: Classifies geographic and remote work eligibility (`classify_geo_tier`) across 40+ foreign country definitions (`FOREIGN_COUNTRY_MAP`), contract locks, language requirements, hybrid/onsite rules, and business travel policies.
+  - `matrix.py`: Provides the single source of truth for skill weight calculation (`calculate_skill_points`) and active matrix loading.
+- **`llm/` (AI Integration Layer)**: Interfaces with `agy` CLI (`agy_client.py`) to run LLM prompts (`job_enricher.py`, `cv_analyzer.py`). Handles JSON extraction, fallback parsing, and structured Pydantic validation.
+- **`scraping/` & `utils/` (Data Acquisition & Normalization)**:
+  - `linkedin.py`: Custom resilient guest API scraper (`scrape_linkedin_search`, `fetch_job_details`, `extract_linkedin_apply_url`) with consistent browser profiles, XHR headers, fast-first delays, reactive 429/DNS backoff, and early pagination stop on already-processed job IDs.
+  - `hirify_adapter.py`: Client for Hirify Agent REST API (saved feeds and keyword search).
+  - `providers.py`: Unified dispatcher (`scrape_site`) routing LinkedIn to the custom scraper, Hirify to `hirify_adapter`, and Indeed/Glassdoor to `python-jobspy`.
+  - `utils/urls.py`: Root domain extraction, ATS domain detection (`25+` ATS platforms), and protected aggregator/CAPTCHA domain filtering.
+- **`repositories/` (Data Access Layer)**: Encapsulates all SQL queries (`jobs_repo`, `skills_repo`, `candidate_repo`, `blacklist_repo`).
+- **`db/` (Persistence Layer)**: Manages SQLite connection lifecycle (`db_session`), WAL mode pragmas, schema migrations, indexes, and default seed data.
 
 ---
 
@@ -63,86 +74,97 @@ job-filter/
 ├── app.py                      # Uvicorn entrypoint for web server
 ├── start_app.command           # macOS one-click launcher (starts server + opens browser)
 ├── requirements.txt            # Production runtime dependencies
-├── requirements-dev.txt        # Development & testing dependencies
+├── requirements-dev.txt        # Development & testing dependencies (pytest, httpx)
 ├── jobs.db                     # SQLite database file (WAL mode)
 │
 ├── job_filter/                 # Core modular Python package
-│   ├── __init__.py             # Package declaration & version
-│   ├── __main__.py             # CLI entrypoint (`python -m job_filter`)
-│   ├── config.py               # Centralized configuration & environment variables
-│   ├── logging_setup.py        # Rotating file & console logging configuration
+│   ├── __init__.py             # Package declaration
+│   ├── __main__.py             # CLI entrypoint (`serve`, `pipeline`, `rescore [--diff]`)
+│   ├── config.py               # Centralized configuration, thresholds & env variables
+│   ├── logging_config.py       # Console & rotating logging configuration
 │   │
 │   ├── api/                    # FastAPI presentation layer
 │   │   ├── __init__.py
-│   │   ├── app.py              # FastAPI app factory, CORS, static mount, router inclusion
-│   │   ├── deps.py             # Dependency injection (e.g. database connection per request)
-│   │   ├── schemas.py          # Pydantic HTTP request models
+│   │   ├── app.py              # FastAPI app factory, lifespan DB init, static mount
+│   │   ├── deps.py             # Dependency injection (`get_db` with commit/rollback)
+│   │   ├── schemas.py          # Pydantic HTTP request/response models
 │   │   └── routers/            # Endpoint routers
-│   │       ├── candidate.py    # Candidate profile, CV PDF upload & diff application
+│   │       ├── candidate.py    # Candidate profile, geo preferences, CV PDF upload & diff
 │   │       ├── hirify.py       # Hirify Saved Feeds API integration & feed selector
-│   │       ├── jobs.py         # Job listing queries, status updates, open URLs
-│   │       ├── pipeline.py     # Background pipeline trigger & polling
-│   │       ├── skills.py       # Skills & categories CRUD, rescoring, seed reset
-│   │       └── blacklist.py    # ATS domain blacklist CRUD, check & rules
+│   │       ├── jobs.py         # Job listing queries, lazy descriptions, status, rescore diff
+│   │       ├── pipeline.py     # Background pipeline start, enrich-only, stop & status
+│   │       ├── skills.py       # Skills & categories CRUD, reset to defaults
+│   │       └── blacklist.py    # ATS domain & company blacklist CRUD and URL check
 │   │
 │   ├── db/                     # Database engine & migrations
 │   │   ├── __init__.py
-│   │   ├── connection.py       # SQLite connection factory & session context managers
-│   │   ├── schema.py           # DDL schema definition & soft migrations
-│   │   └── seed_data.py        # Single source of truth for default categories, skills & ATS
+│   │   ├── connection.py       # SQLite connection factory & `db_session` context manager
+│   │   ├── schema.py           # DDL schema definition, soft migrations & indexes
+│   │   └── seed_data.py        # Default categories, skills, geo preferences & ATS bans
 │   │
 │   ├── llm/                    # Large Language Model integrations
 │   │   ├── __init__.py
-│   │   ├── agy_client.py       # Subprocess runner for `agy` CLI with robust JSON extraction
+│   │   ├── agy_client.py       # Subprocess runner for `agy` CLI with JSON extraction
 │   │   ├── cv_analyzer.py      # PDF CV analyzer prompt & extraction logic
-│   │   └── enricher.py         # Vacancy enrichment prompt & JSON parser
+│   │   ├── job_enricher.py     # Vacancy enrichment prompt, geo rules & JSON parser
+│   │   └── prompts.py          # Shared prompt helpers
 │   │
-│   ├── models/                 # Shared domain data models & schemas
+│   ├── models/                 # Shared domain data models & Pydantic schemas
 │   │   ├── __init__.py
-│   │   ├── cv.py               # Parsed CV models (ParsedSkillItem, ParsedCVResult)
-│   │   ├── enrichment.py       # Vacancy enrichment models (VacancyEnrichmentResult, GeoEligibility)
-│   │   ├── job.py              # Vacancy entity definitions
-│   │   └── skills.py           # Matrix and category schemas
+│   │   ├── cv.py               # Parsed CV models (`ParsedSkillItem`, `CVAnalysisResult`)
+│   │   ├── enrichment.py       # Vacancy enrichment (`JobEnrichment`, `WorkAuthorization`, `ResumeFit`)
+│   │   └── scoring.py          # Scoring models (`ScoreBreakdownItem`, `JobScoreResult`)
 │   │
 │   ├── repositories/           # Direct SQL database repositories
 │   │   ├── __init__.py
-│   │   ├── blacklist_repo.py   # ATS domain & company blacklist operations
-│   │   ├── candidate_repo.py   # Candidate profile & CV markdown storage
-│   │   ├── jobs_repo.py        # Job listings queries, inserts, filters
-│   │   └── skills_repo.py      # Skill categories & candidate skills queries/mutations
+│   │   ├── blacklist_repo.py   # ATS domain & company blacklist SQL operations
+│   │   ├── candidate_repo.py   # Candidate profile, CV & `geo_preferences_json` storage
+│   │   ├── jobs_repo.py        # Job listings queries, lazy description fetch, upserts
+│   │   └── skills_repo.py      # Skill categories & candidate skills CRUD
 │   │
-│   ├── scoring/                # Deterministic scoring algorithm
+│   ├── scoring/                # Deterministic scoring & geographic classification
 │   │   ├── __init__.py
-│   │   ├── matrix.py           # In-memory cached matrix provider & invalidator
-│   │   └── scorer.py           # Score calculation (multipliers, category caps, penalties, geo)
+│   │   ├── geo.py              # Multi-tier geographic, remote, hybrid & travel classifier
+│   │   ├── matrix.py           # Skill points formula (`calculate_skill_points`) & matrix loader
+│   │   └── scorer.py           # Score calculation (`score_vacancy_by_skill`, freshness bonus)
 │   │
-│   ├── scraping/               # Web scraping & URL normalization
+│   ├── scraping/               # Web scraping & provider adapters
 │   │   ├── __init__.py
-│   │   ├── jobspy_scraper.py   # JobSpy multi-platform scraper integration
-│   │   └── url_utils.py        # URL normalization, ATS domain resolution, hostname extraction
+│   │   ├── hirify_adapter.py   # Hirify Agent API client & feed/search scrapers
+│   │   ├── linkedin.py         # Resilient LinkedIn guest API search & card detail scraper
+│   │   └── providers.py        # Unified site scraper dispatcher (`scrape_site`)
 │   │
-│   └── services/               # Application business workflows
+│   ├── services/               # Application business workflows
+│   │   ├── __init__.py
+│   │   ├── blacklist_service.py# Blacklist management & `LastOpenedTracker`
+│   │   ├── cv_service.py       # PDF extraction, skills diffing, CV updates
+│   │   ├── jobs_service.py     # Vacancy listing, stats aggregation, `parse_auto_reject`
+│   │   ├── pipeline.py         # End-to-end scraping, parallel LLM enrichment & scoring
+│   │   ├── pipeline_runner.py  # Thread-safe background pipeline manager with `stop()`
+│   │   └── skills_service.py   # Skills management, rescore diff preview & bulk rescoring
+│   │
+│   └── utils/                  # Shared utilities
 │       ├── __init__.py
-│       ├── cv_service.py       # PDF extraction, skills diffing, CV updates
-│       ├── pipeline_service.py # End-to-end background pipeline execution
-│       └── skills_service.py   # Skills management & vacancy bulk rescoring
+│       ├── text.py             # Text cleaning & keyword matching helpers
+│       └── urls.py             # URL normalization, ATS domain resolution & domain guards
 │
 ├── static/                     # Single Page Application (SPA) web frontend
 │   ├── index.html              # Dashboard UI layout (Tailwind CSS, dark mode)
 │   ├── css/
-│   │   └── style.css           # Custom animations, scrollbar & utility styling
+│   │   └── styles.css          # Custom animations, badges & scrollbar styling
 │   └── js/
-│       └── app.js              # Client state, dynamic tables, CV diff modal, API calls
+│       └── app.js              # Client state, lazy descriptions, CV diff modal, API calls
 │
-├── tests/                      # Automated test suite (pytest)
-│   ├── test_api_endpoints.py   # Integration tests for FastAPI endpoints
-│   ├── test_llm_parser.py      # Tests for JSON extraction & schema parsing
-│   ├── test_repositories.py    # Unit tests for database repositories
-│   ├── test_scorer.py          # Unit tests for vacancy scoring & geo classification
-│   ├── test_skills_diff.py     # Tests for CV skills diffing & category auto-creation
+├── tests/                      # Automated test suite (pytest — 65 tests)
+│   ├── test_api_endpoints.py   # Isolated temporary-DB integration tests for FastAPI
+│   ├── test_cv_analyzer.py     # Tests for CV LLM analysis & skills diffing
+│   ├── test_hirify_adapter.py  # Tests for Hirify API client & feed parsing
+│   ├── test_llm_parsing.py     # Tests for JSON extraction & enrichment schema parsing
+│   ├── test_scorer.py          # Unit tests for vacancy scoring & geo/travel classification
 │   └── test_urls.py            # Unit tests for ATS domain extraction & normalization
 │
 └── docs/                       # Architecture & documentation
+    ├── adr.md                  # Architecture Decision Log (ADR-001 .. ADR-006)
     └── design.md               # This document
 ```
 
@@ -156,59 +178,119 @@ job-filter/
 sequenceDiagram
     autonumber
     actor User as User (UI or CLI)
+    participant PR as PipelineRunner
     participant PS as PipelineService
-    participant JS as JobSpy Scraper
+    participant SC as LinkedIn / Hirify / JobSpy
     participant DB as SQLite (jobs.db)
-    participant LLM as LLM Enricher (agy)
-    participant SC as Vacancy Scorer
+    participant Pool as ThreadPoolExecutor (LLM)
+    participant Scorer as Vacancy Scorer & Geo
 
-    User->>PS: Start Pipeline (search_terms, sites, location)
-    PS->>JS: Scrape Jobs (JobSpy)
-    JS-->>PS: Raw Job Records
-    PS->>PS: Deduplicate URLs & Filter Blacklisted ATS Domains
-    PS->>DB: Upsert Raw Vacancies (Status: new)
-    loop For each unenriched vacancy (up to llm_limit)
-        PS->>LLM: Enrich Vacancy (raw text -> JSON)
-        LLM-->>PS: GeoEligibility, TechStack, IsAgentic, RedFlags
-        PS->>SC: Score Vacancy (matrix + enrichment)
-        SC-->>PS: Score (0-100), Match Tier, Geo Tier
-        PS->>DB: Save Enrichment & Score
+    User->>PR: Start Pipeline (sites, terms, location, hours_old)
+    PR->>PS: run_pipeline(cancel_event)
+    PS->>DB: Load processed_ids & Candidate Context (once)
+    loop For each search term / feed
+        PS->>SC: Scrape Search Pages (with known_ids_in_run)
+        SC-->>PS: Job Cards (early stop if page is all known)
     end
-    PS-->>User: Pipeline Complete
+    PS->>PS: 2-Stage Deduplication (by job_id, then title::company)
+    PS->>PS: Filter out processed_ids & EXCLUDED_TITLE_WORDS
+    loop For each new candidate card
+        PS->>SC: Fetch Full Description & Metadata (1.0-1.8s delay)
+        PS->>PS: Check Seniority, Industry & Required Keywords
+        PS->>DB: Save Processed Job (matched=1 or reject_reason)
+    end
+    PS->>DB: Fetch Pending Enrichment Jobs (up to max_llm_jobs)
+    par Parallel LLM Enrichment (LLM_ENRICH_WORKERS)
+        PS->>Pool: enrich_job(title, company, location, description)
+        Pool-->>PS: JobEnrichment (Geo, WorkArrangement, Tech, Fit)
+    and Main Thread Scoring & Persistence
+        PS->>Scorer: score_vacancy_by_skill(enrichment, matrix, geo_prefs)
+        Scorer-->>PS: JobScoreResult (0-100, tier, geo_passed, breakdown)
+        PS->>DB: Update Enrichment & Score + Commit
+    end
+    PS-->>User: Pipeline Complete (or Cancelled via /api/pipeline/stop)
 ```
 
-### 4.2 Scoring Engine Mechanics
-
-The scoring algorithm calculates a vacancy match score on a **0 to 100** scale based on a dynamic **Skills Matrix**:
-
-$$\text{FinalScore} = \text{clamp}\left(\sum_{c \in \text{PositiveCategories}} \min(P_c, \text{MaxPoints}_c) - \sum_{k \in \text{PenaltyCategories}} \text{Penalty}_k - \text{GeoPenalty}, 0, 100\right)$$
-
-#### 1. Skill Categories & Points Calculation
-Each skill belongs to a category. Skills have an estimated `years_experience` and an assigned multiplier:
-$$\text{SkillPoints} = \min(\text{round}(\text{years\_experience} \times \text{multiplier}), \text{max\_points})$$
-
-Standard category definitions:
-| Category ID | Title | Multiplier | Max Cap | Purpose |
-|---|---|---|---|---|
-| `ai_agentic` | 🤖 AI & Agentic Systems | **15.0x** | **30 pts** | Multi-agent frameworks, LangGraph, LLMs, RAG, MCP |
-| `core_backend` | ☕ Core Backend & Languages | **2.0x** | **20 pts** | Primary backend languages (Java, Kotlin, Spring Boot) |
-| `secondary_backend` | 🐍 Secondary Languages / TS | **3.0x** | **18 pts** | Scripting & secondary languages (Python, TypeScript) |
-| `arch_infra` | 🏗️ Architecture & Cloud / DevOps | **2.0x** | **15 pts** | Kafka, Docker, Kubernetes, Microservices, Cloud, SQL |
-| `domains` | 💼 Business Domains | **2.0x** | **10 pts** | FinTech, Banking, Payments, Trading |
-| `alien` | 🚫 Alien Stack | **-1.0x** | **-20 pts** | Direct penalty for non-target stacks (Go, .NET, Rust, PHP) |
-| `legacy` | 🦖 Legacy Stack | **-1.0x** | **-30 pts** | Heavy penalty for legacy systems (1C, SAP, Cobol) |
-
-#### 2. Category Aggregation Rule
-To prevent point inflation when a vacancy matches many minor skills in the same category, only the **highest-scoring matched skill** in each category is considered (`max()` over matched skills), capped at `max_points`.
-
-#### 3. Geographic Tier Adjustment
-- **`GLOBAL`**: Candidate is fully eligible to work remotely from any location. No penalty.
-- **`RESTRICTED_US`**: Job strictly requires US citizenship, US residency, or US state presence. Capped at `score = min(score, 45)` and assigned `tier = 'US Only / Ineligible'`.
-- **`RESTRICTED_EU`**: EU work authorization or specific European timezone required. Flagged accordingly.
+#### Resilient LinkedIn Guest API Scraping (`job_filter/scraping/linkedin.py`)
+- **Consistent Browser Profiles**: Each `requests.Session` selects a coherent profile (`User-Agent`, `Sec-CH-UA`, `Accept: */*`, `Sec-Fetch-Mode: cors`, `Referer: https://www.linkedin.com/jobs/search`) to match real browser XHR behavior on `/jobs-guest/jobs/api/seeMoreJobPostings/search` and `/jobs-guest/jobs/api/jobPosting/{id}`.
+- **Fast-First with Reactive Backoff**: Uses short human-like intervals (`2.0–3.5s` between pagination pages, `3.5–6.0s` between search terms, `1.0–1.8s` per job card). Only when LinkedIn returns `HTTP 429` or `5xx` does the scraper close the session, rotate the browser profile, and back off (`Retry-After` or `8s * attempt`).
+- **Smart Pagination & Cross-Query Deduplication**: Advances `start` by `max(len(job_cards), jobs_per_page)`, tracks `known_ids_in_run` across queries in the same run, and stops pagination immediately when a page contains zero unseen vacancies.
 
 ---
 
-### 4.3 CV PDF Ingestion & Skills Diffing Subsystem
+### 4.2 Scoring Engine Mechanics (`job_filter/scoring/scorer.py`)
+
+The scoring algorithm calculates a deterministic vacancy match score on a **0 to 100** scale:
+
+$$\text{FinalScore} = \text{clamp}\left(\text{TitleCap}\left(\text{PrimaryScale}\left(\sum_{c \in \text{Pos}} P_c\right) + \text{AgenticBonus} + \sum_{k \in \text{Pen}} P_k + \text{GeoBonus} + \text{SeniorityBonus} + \text{SalaryBonus} + \text{FreshnessBonus}\right), 0, 100\right)$$
+
+#### 1. Skill Categories & Points Formula (`calculate_skill_points`)
+Each skill belongs to a category with a `multiplier` and `max_points`:
+- **Positive Categories (`multiplier >= 0`)**:
+  $$\text{SkillPoints} = \min(\text{round}(\text{years\_experience} \times \text{multiplier}), \text{max\_points})$$
+- **Penalty Categories (`multiplier < 0`, e.g. `alien`, `legacy`)**:
+  $$\text{SkillPoints} = \max(\text{round}(\text{years\_experience} \times \text{multiplier}), \text{max\_points}) \quad (\text{or } \text{max\_points} \text{ when } \text{years\_experience} \le 0)$$
+
+| Category ID | Title | Multiplier | Max Cap | Purpose |
+|---|---|---:|---:|---|
+| `ai_agentic` | 🤖 AI & Agentic Systems | **15.0x** | **30 pts** | Multi-agent frameworks, LangGraph, LLMs, RAG, MCP |
+| `core_backend` | ☕ Core Backend & Languages | **2.0x** | **20 pts** | Primary backend languages (Java, Kotlin, Spring Boot, Ktor) |
+| `secondary_backend` | 🐍 Secondary Languages / TS | **3.0x** | **18 pts** | Scripting & secondary languages (Python, TypeScript) |
+| `arch_infra` | 🏗️ Architecture & Cloud / DevOps | **2.0x** | **15 pts** | Kafka, Docker, Kubernetes, Microservices, Cloud, SQL |
+| `domains` | 💼 Business Domains | **2.0x** | **10 pts** | FinTech, Banking, Payments, Trading |
+| `alien` | 🚫 Alien Stack | **-1.0x** | **-20 pts** | Penalty for non-target core stacks (Go, .NET, C++, Rust, PHP, Ruby, Scala) |
+| `legacy` | 🦖 Legacy Stack | **-1.0x** | **-30 pts** | Penalty for legacy systems (1C, SAP/ABAP, Cobol, Salesforce) |
+
+#### 2. Category Aggregation & Bonuses/Caps
+- **Top-2 Skill Aggregation**: Within each positive category, the highest matched skill contributes `100%` of its weight and the second matched skill contributes `35%`, capped at the category's `max_points`.
+- **Agentic Synergy Bonus**: `+5 pts` if $\ge 2$ skills match in `ai_agentic` (capped at `35 pts` total for the category).
+- **Primary Stack Check (`is_primary`)**: If a vacancy matches zero `is_primary=1` skills and has no `ai_agentic` match, positive skill points are scaled by `0.70x`.
+- **Bonus Modifiers**:
+  - **Geo Bonus**: `+15 pts` (`Tier 1A` Local / `Tier 1B` Worldwide) or `+10 pts` (`Tier 2A` Broad EMEA / `Tier 2B` Relocation with sponsorship).
+  - **Seniority Bonus**: `+10 pts` for `Senior`, `Staff`, `Principal`, `Lead`, `Architect`, `Founding`, `Head`.
+  - **Salary Disclosed Bonus**: `+5 pts` when compensation is explicitly stated.
+  - **Freshness Bonus (`_calculate_freshness_bonus`)**: `+5 pts` ($\le 1$ day old), `+3 pts` ($\le 3$ days old), `+1 pt` ($\le 7$ days old).
+- **Non-Profile Title Cap (`NON_PROFILE_TITLE_SCORE_CAP = 68`)**: Vacancies whose title does not contain core backend/AI/software engineering role keywords are capped at `68` so they cannot enter `TOP Match`.
+- **Unified Match Categories**:
+  - `top`: `geo_passed == True` and `score >= 70` (`TOP_SCORE_THRESHOLD`)
+  - `good`: `geo_passed == True` and `60 <= score < 70` (`GOOD_SCORE_THRESHOLD`)
+  - `fair`: `geo_passed == True` and `50 <= score < 60` (`FAIR_SCORE_THRESHOLD`)
+  - `low`: `geo_passed == False` or `score < 50`
+
+---
+
+### 4.3 Multi-Layer Geographic, Remote & Travel Classifier (`job_filter/scoring/geo.py`)
+
+`classify_geo_tier` evaluates vacancy eligibility against `candidate_settings.geo_preferences_json` and structured LLM fields (`location_restrictions`, `remote_policy_detail`, `work_arrangement`, `candidate_geo_eligibility`, `required_languages`, `requirements`):
+
+#### Hard Rejection Filters (`geo_passed = False`)
+1. **Contract Locks (`contract_lock:...`)**: Rejects `W2-only`, `No C2C/B2B`, `UK Inside IR35`, `UK PAYE-only`.
+2. **Russia-Only Lock (`ru_only_lock`)**: Rejects roles requiring RF tax residency or TK RF employment.
+3. **Regular Business Travel / On-Site Visits (`business_travel_required`)**:
+   - Enabled by default (`reject_business_travel: True` in `DEFAULT_GEO_PREFERENCES`).
+   - Rejects roles requiring regular/frequent/periodic travel or visits, visits to factories/plants/client sites (`"regular visits to factories in the UK and US"`, `"client site visits"`), mandatory periodic office visits (`"office visit once a quarter"`), or travel requirements $\ge 5\%$ (`"up to 25% travel"`).
+4. **Mandatory Foreign Languages (`required_language:<Lang>`)**: Rejects roles requiring fluent/C1/native proficiency in non-profile foreign languages (`German`, `French`, `Spanish`, `Polish`, `Italian`, `Dutch`, `Portuguese`, `Japanese`, etc.).
+5. **US-Only & EU/EEA-Only Locks (`us_only_lock`, `single_country_lock:EU-only`)**: Rejects roles restricted to US or EU/EEA residents/work permit holders when no relocation sponsorship is offered.
+6. **Single Foreign Country & Multi-Country Closed Pool Locks (`single_country_lock:<Country>-only`, `country_pool_lock:<Countries>`)**:
+   - Detects 40+ foreign countries via `FOREIGN_COUNTRY_MAP`.
+   - Distinguishes true open `EMEA` / `Worldwide` roles from closed multi-country pools (e.g. `"Europe (Czech Republic, Hungary, Slovakia)"` or `"Remote in UK, Germany, or France"`).
+   - Filters out temporary travel perks (`"work from anywhere up to 90 days/year"`) and country-scoped WFA (`"work from anywhere in the UK"`) so they are not misclassified as `Tier 1B` Global Remote.
+7. **Foreign On-Site / Hybrid Office Filter (`onsite_abroad_lock:<Country>`)**:
+   - Rejects roles requiring physical office attendance or mandatory hybrid schedules (`work_arrangement in ("hybrid_required", "onsite_required")`, `50% telework`, `2-3 days in office`) in a foreign country without visa/relocation support.
+   - Explicitly permits optional hybrid roles (`work_arrangement == "remote_or_hybrid_optional"`, `"fully remote, office-based, or hybrid work options"`).
+8. **LLM Geo Eligibility Safety Net (`geo_ineligible:<Reason>`)**: Rejects roles marked `candidate_geo_eligibility == "no"` by the LLM when no local or global override applies.
+
+#### Eligible Geographic Tiers (`geo_passed = True`)
+| Tier | Criteria | Points Bonus |
+|---|---|:---:|
+| **Tier 1A: Home / Local Region** | Direct match with candidate's base country (`Georgia`, `Tbilisi`, `Batumi`) or local macro-region (`Caucasus`, `Eastern Europe`, `CEE`). | **+15 pts** |
+| **Tier 1B: Global / Worldwide Remote** | True global remote (`Worldwide`, `Anywhere in the world`, `Global Remote`) without single-country or temporary WFA restrictions. | **+15 pts** |
+| **Tier 2A: Broad Macro-Region (EMEA)** | Open remote across `EMEA` or overlapping European timezones (`UTC±3h`, `CET`). | **+10 pts** |
+| **Tier 2B: Relocation Opportunity** | Foreign country or hybrid/on-site role where the employer explicitly provides **Visa Sponsorship / Relocation Assistance**. | **+10 pts** |
+
+---
+
+### 4.4 CV PDF Ingestion & Skills Diffing Subsystem
 
 ```mermaid
 sequenceDiagram
@@ -234,180 +316,101 @@ sequenceDiagram
     User->>API: Confirm Apply (skills_to_apply, update_cv, rescore)
     API->>CVS: Apply CV Analysis
     CVS->>DB: Auto-create missing categories with official defaults
-    CVS->>DB: Upsert Skills & Update Candidate Profile
+    CVS->>DB: Upsert Skills & Update Candidate Profile + Commit
     CVS->>DB: Rescore all vacancies (optional)
     API-->>User: Apply Result (skills applied, jobs rescored)
 ```
-
-1. **PDF Text Extraction**: Uses `pypdf` to extract text streams and cleans broken hyphenations (`word-\nwrap` $\to$ `wordwrap`).
-2. **LLM Extraction**: `cv_analyzer.py` prompts the configured LLM via `agy` CLI to output valid JSON with:
-   - Clean, normalized global English Markdown CV.
-   - Concise candidate summary (in Russian).
-   - List of all distinct technical skills with calculated years of experience and category mapping.
-3. **Interactive Diff Tool**: The frontend displays a diff modal showing newly discovered skills (`new`), modified skills (`updated`), and unchanged skills (`unchanged`).
-   - Each row provides a `<select>` dropdown populated with all system categories (`available_categories`).
-   - Changing a skill's category or experience dynamically recalculates projected points on the client.
-4. **Auto-Creation of Categories**: When applying changes, if a skill references a category not yet stored in SQLite, `cv_service.py` automatically initializes it using the official parameters from `DEFAULT_SKILL_CATEGORIES`.
-
-### 4.4 Graduated Geographic & Remote Scoring (Geo Tiers)
-
-Job Filter dynamically evaluates geographic eligibility using user-defined preferences stored in `candidate_settings.geo_preferences_json`:
-
-| Tier | Criteria | Relocation Policy | Points Impact |
-|---|---|---|:---:|
-| **Tier 1A: Local & Macro** | Candidate's home location (Georgia) or macro-region (Caucasus, Eastern Europe, CEE). | Not required | **+20 pts** |
-| **Tier 1B: True Global Remote** | Worldwide, Anywhere, Global Remote, Work from anywhere (WFA) via B2B/Contractor. | Not required | **+18 pts** |
-| **Tier 2A: Broad EMEA** | EMEA, European timezone overlap (UTC±3h) with contractor/B2B availability. | Not required | **+12 pts** |
-| **Tier 2B: Relocation Opportunity** | Foreign country lock (US, UK, Germany, Spain, etc.) **with** active Visa Sponsorship or Relocation package. | Relocation allowed | **+10 pts** |
-| **Tier 3: Ineligible Single-Country Lock** | Foreign country lock (US-only, UK-only, EU-only, Germany-only, etc.) **without** relocation assistance. | No relocation | **Rejected (`geo_passed = False`)** |
 
 ---
 
 ## 5. Database Schema & Persistence
 
-SQLite in **WAL (Write-Ahead Logging)** mode is used for fast concurrent reads and ACID-compliant writes.
+SQLite in **WAL (Write-Ahead Logging)** mode (`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;`) is used for concurrent reads and ACID-compliant writes. Both FastAPI's `get_db` dependency and the `db_session()` context manager automatically commit on success and roll back on exceptions.
 
 ### Database Tables Overview
 
 | Table | Primary Key | Description |
 |---|---|---|
-| **`processed_jobs`** | `job_id` | Core vacancy registry: scraped job data, LLM enrichment JSON, scoring points, match tier, ATS links, and review status (`new`, `applied`, `hidden`). |
-| **`candidate_skills`** | `skill_id` | Personalized candidate skills matrix: years of experience, calculated score points, primary flag, and synonym aliases JSON. |
-| **`skill_categories`** | `category_id` | Scoring categories: point multipliers per year, maximum category score caps, and display sort order. |
-| **`candidate_settings`** | `id` (singleton) | Candidate preferences, work authorization notes, and complete structured Markdown CV. |
-| **`blacklisted_boards`** | `domain` | Blocked job board and ATS domains (inaccessible forms, complex logins) with block reasons. |
-| **`company_ats_map`** | `company_key` | Association between specific employer names and their detected ATS domains (e.g. Workday, Greenhouse, Lever). |
-| **`app_metadata`** | `key` | Internal application state, schema version, and seed tracking. |
+| **`processed_jobs`** | `job_id` | Core vacancy registry: scraped job data, `is_remote`, LLM `enrichment_json`, `score`, `tier`, `score_details_json`, `matched`, `reject_reason`, `user_status` (`new`, `saved`, `applied`, `rejected`, `hidden`), `user_reject_reason`, `apply_url`, and `ats_domain`. |
+| **`candidate_skills`** | `skill_id` | Personalized candidate skills matrix: `category_id`, `name`, `years_experience`, `weight_points`, `is_primary`, and `aliases_json`. |
+| **`skill_categories`** | `category_id` | Scoring categories: `title`, `multiplier`, `max_points`, and `sort_order`. |
+| **`candidate_settings`** | `id` (singleton `1`) | Candidate `profile_text`, structured `cv_text`, and `geo_preferences_json` (including `reject_business_travel`, `reject_unsupported_single_country`, `allow_worldwide_remote`, `relocation_policy`). |
+| **`blacklisted_boards`** | `domain` | Blocked job board and ATS domains with block reasons. |
+| **`company_ats_map`** | `company_key` | Association between normalized employer names and their detected ATS domains. |
+| **`app_metadata`** | `key` | Internal application state and seed tracking. |
 
-### Entity-Relationship Diagram
-
-```
-                    ┌──────────────────────────┐
-                    │     skill_categories     │
-                    ├──────────────────────────┤
-                    │ PK  category_id          │
-                    │     title                │
-                    │     multiplier           │
-                    │     max_points           │
-                    │     sort_order           │
-                    └────────────┬─────────────┘
-                                 │ 1:N
-                    ┌────────────▼─────────────┐
-                    │     candidate_skills     │
-                    ├──────────────────────────┤
-                    │ PK  skill_id             │
-                    │ FK  category_id          │
-                    │     name                 │
-                    │     years_experience     │
-                    │     weight_points        │
-                    │     is_primary           │
-                    │     aliases_json         │
-                    └──────────────────────────┘
-
-┌──────────────────────────┐         ┌──────────────────────────┐
-│    candidate_settings    │         │    blacklisted_boards    │
-├──────────────────────────┤         ├──────────────────────────┤
-│ PK  id (always 1)        │         │ PK  domain               │
-│     profile_text         │         │     reason               │
-│     cv_text              │         │     created_at           │
-│     geo_preferences_json │         └──────────────────────────┘
-│     updated_at           │
-└──────────────────────────┘
-
-┌──────────────────────────┐         ┌──────────────────────────┐
-│     company_ats_map      │         │       app_metadata       │
-├──────────────────────────┤         ├──────────────────────────┤
-│ PK  company_key          │         │ PK  key                  │
-│     company_name         │         │     value                │
-│     ats_domain           │         └──────────────────────────┘
-│     sample_url           │
-│     updated_at           │
-└──────────────────────────┘
-
-┌────────────────────────────────────────────────────────┐
-│                     processed_jobs                     │
-├────────────────────────────────────────────────────────┤
-│ PK  job_id                                             │
-│     site, url, title, company, location, is_remote     │
-│     date_posted, processed_at                          │
-│     seniority_level, employment_type, job_function     │
-│     industry, salary, description, reject_reason       │
-│     enrichment_json (LLM structured analysis)          │
-│     score, tier, score_details_json, matched           │
-│     user_status ('new', 'applied', 'hidden')           │
-│     apply_url, ats_domain                              │
-└────────────────────────────────────────────────────────┘
-```
+### Performance Indexes on `processed_jobs`
+- `idx_jobs_status_score (user_status, matched, score DESC)`
+- `idx_jobs_site (site)`
+- `idx_jobs_company (company)`
+- `idx_jobs_ats_domain (ats_domain)`
+- `idx_jobs_date_posted (date_posted DESC)`
 
 ---
 
-## 6. API Design & REST Endpoints
-
-The API is served by FastAPI at `/api/...`:
+## 6. API Design, REST Endpoints & CLI
 
 ### Vacancies (`/api/jobs`)
-- `GET /api/jobs`: Query vacancies with filtering (`user_status`, `min_score`, `search`, `geo_tier`, pagination).
-- `GET /api/jobs/{id}`: Detailed vacancy info with raw description and LLM enrichment.
-- `POST /api/jobs/{id}/status`: Update candidate review status (`new`, `applied`, `saved`, `hidden`).
-- `POST /api/jobs/{id}/open-url`: Open the vacancy application link in the local desktop browser.
+- `GET /api/jobs?tab=actionable`: Returns lightweight vacancy list (`description` omitted for fast payload transfer; includes `has_description` flag) and global counters (`stats`).
+- `GET /api/jobs/{job_id}/description`: Lazy-loads the full Markdown job description on demand when the user expands a vacancy card.
+- `GET /api/jobs/rescore-diff`: Dry-run preview returning how many vacancies would change `score`, `tier`, or `matched` status under the current matrix/geo settings without mutating the database.
+- `PATCH /api/jobs/{job_id}/status`: Updates `user_status` (`new`, `saved`, `applied`, `rejected`, `hidden`) and optional `user_reject_reason`.
+- `POST /api/jobs/{job_id}/open`: Records the vacancy in `LastOpenedTracker` (with `apply_url` and `ats_domain`) for one-click ATS blacklisting.
+- `POST /api/jobs/rescore`: Bulk re-runs deterministic scoring and geo classification across all enriched vacancies in `jobs.db`.
 
 ### Candidate & CV (`/api/candidate`)
-- `GET /api/candidate`: Get profile summary and current CV markdown.
-- `PUT /api/candidate`: Update profile text and CV markdown.
-- `POST /api/candidate/upload-cv-pdf`: Upload PDF resume, extract text, run LLM analysis, return skills diff and available categories.
-- `POST /api/candidate/apply-cv-analysis`: Commit confirmed CV text and selected skills to the database, with optional job rescoring.
+- `GET /api/candidate`: Retrieves `profile_text`, `cv_text`, `geo_preferences`, and `updated_at`.
+- `PUT /api/candidate`: Saves `profile_text`, `cv_text`, and `geo_preferences`.
+- `POST /api/candidate/upload-cv-pdf`: Uploads PDF resume, runs LLM analysis, and returns skills diff.
+- `POST /api/candidate/apply-cv-analysis`: Applies selected skill diffs and CV updates, with optional rescoring.
 
 ### Skills & Categories (`/api/skills`)
-- `GET /api/skills`: Retrieve complete skills matrix (categories + candidate skills).
-- `POST /api/skills/categories`: Create or update a category (multiplier, max_points, title, sort_order) and automatically recompute skill weights.
-- `DELETE /api/skills/categories/{category_id}`: Delete a category and its associated skills.
-- `POST /api/skills/skills`: Create or update an individual skill.
-- `DELETE /api/skills/skills/{skill_id}`: Delete a skill.
-- `POST /api/skills/rescore-all`: Bulk re-run scoring across all vacancies in the database.
-- `POST /api/skills/reset-default`: Reset categories and skills to standard seed data.
+- `GET /api/skills/matrix`: Retrieves full skills matrix (`categories` + `skills`).
+- `PUT /api/skills/categories/{category_id}`: Updates category `multiplier` and `max_points` and recalculates skill weights (supporting both positive and negative penalty categories).
+- `POST /api/skills/item` / `PUT /api/skills/item/{skill_id}` / `DELETE /api/skills/item/{skill_id}`: CRUD operations for individual skills.
+- `POST /api/skills/reset`: Resets categories and skills to `seed_data.py` defaults and triggers rescoring.
 
 ### Pipeline (`/api/pipeline`)
-- `POST /api/pipeline/run`: Trigger asynchronous job search and enrichment pipeline in a background thread.
-- `GET /api/pipeline/status`: Poll current pipeline progress (`idle`, `scraping`, `enriching`, `completed`, `error`).
+- `POST /api/pipeline/start`: Starts asynchronous scraping + LLM enrichment + scoring pipeline.
+- `POST /api/pipeline/enrich-only`: Runs parallel LLM enrichment and scoring on already-scraped pending vacancies in `jobs.db`.
+- `POST /api/pipeline/stop`: Signals `cancel_event` to gracefully stop an active scraping or enrichment run.
+- `GET /api/pipeline/status`: Polls `is_running`, `last_run`, `last_result`, and real-time console `logs`.
 
-### System & Blacklist (`/api/system`)
-- `GET /api/system/blacklist`: List all blocked ATS domains and company rules.
-- `POST /api/system/blacklist`: Add a domain or company to the blacklist.
-- `DELETE /api/system/blacklist/{domain_pattern}`: Remove domain from the blacklist.
-- `GET /api/system/logs`: Fetch recent rotating system log entries.
+### Blacklist & Hirify (`/api/blacklist`, `/api/hirify`)
+- `GET /api/blacklist` / `POST /api/blacklist` / `DELETE /api/blacklist/domain/{domain}` / `DELETE /api/blacklist/company/{company_key}`: Manages ATS domain and company blacklists.
+- `GET /api/blacklist/check?url=...&auto_link=false`: Checks whether a URL belongs to a blacklisted ATS domain (side-effect-free by default unless `auto_link=true`).
+- `GET /api/hirify/feeds`: Returns saved search feeds from the Hirify Agent API.
+
+### CLI Commands (`python -m job_filter`)
+- `python -m job_filter serve`: Starts the FastAPI web server (default).
+- `python -m job_filter pipeline`: Runs the scraping & enrichment pipeline from the terminal.
+- `python -m job_filter rescore [--diff]`: Previews (`--diff`) or applies bulk vacancy rescoring from the terminal.
 
 ---
 
 ## 7. Frontend SPA Architecture
 
-The frontend is implemented as a lightweight, reactive Single Page Application using vanilla JavaScript (ES6+), Tailwind CSS via CDN, and Lucide-style SVG icons.
+The frontend (`static/index.html`, `static/js/app.js`, `static/css/styles.css`) is a reactive Single Page Application built with vanilla JavaScript (ES6+) and Tailwind CSS:
 
-Key components in `static/js/app.js`:
-- **State Management**: Reactive state object storing active vacancies, filter parameters, current skills matrix, and active CV diff payload.
-- **Internationalization (i18n)**: Native bilingual interface (English and Russian) with instant header switcher (`EN` | `RU`), data-attribute DOM localization (`data-i18n`), and persistent preferences in `localStorage`.
-- **Interactive CV Diff Modal**: Renders candidate skills side-by-side with database records, providing inline `<select>` category pickers and numerical years inputs. Dynamic DOM updates ensure real-time score calculation before submission.
-- **Matrix Manager Modal**: Allows adding, editing, and deleting categories and individual skills with instantaneous updates to category multipliers.
-- **Toast Notification Engine**: User feedback mechanism for background job notifications and error alerts.
+- **Lazy Description Loading**: Vacancy descriptions are fetched on-demand via `GET /api/jobs/{job_id}/description` when `<details>` is toggled open, keeping the main `/api/jobs` payload compact and fast.
+- **Geo & Remote Preferences Panel**: Interactive controls for base location, macro-regions, relocation policy, global remote toggle, single-country lock rejection, and regular business travel rejection (`#geoRejectBusinessTravel`, enabled by default).
+- **Bilingual i18n (`RU` / `EN`)**: Instant language toggle persisted in `localStorage`.
+- **Interactive CV Diff & Skills Matrix Modals**: Real-time category/experience editors with instant point previews.
 
 ---
 
-## 8. Configuration & Environment Variables
+## 8. Configuration & Operational Parameters (`job_filter/config.py`)
 
-Job Filter works out-of-the-box with sensible defaults defined in [`job_filter/config.py`](file:///Users/vlad/IdeaProjects/job-filter/job_filter/config.py), but allows customization via environment variables:
-
-| Variable | Default Value | Description |
+| Parameter / Env Var | Default Value | Description |
 |---|---|---|
-| `JOB_FILTER_DB` | `jobs.db` | Absolute or relative path to the SQLite database file |
-| `JOB_FILTER_MODEL` | `gemini-3.8-flash-low` | Active LLM model used by `agy` CLI (run `agy models` to view options) |
-| `AGY_BIN` | Auto-detected | Path to the `agy` CLI executable (e.g. `~/.local/bin/agy`) |
-| `JOB_FILTER_PORT` | `8000` | HTTP port for the web dashboard server |
-| `JOB_FILTER_HOST` | `0.0.0.0` | Bind host for the web server |
-| `HIRIFY_API_KEY` | `""` | Personal Bearer API token for Hirify Agent REST API |
-
-### Operational Parameters
-- **`TOP_SCORE_THRESHOLD`**: `70` — Vacancies with score $\ge 70$ are highlighted as **TOP Match**.
-- **`GOOD_SCORE_THRESHOLD`**: `50` — Vacancies with score $\ge 50$ qualify as **Good Match**.
-- **`JOB_ENRICH_TIMEOUT_SEC`**: `90s` — Maximum duration allowed per vacancy enrichment LLM call.
-- **`CV_ANALYZE_TIMEOUT_SEC`**: `120s` — Maximum duration allowed for parsing full PDF resumes.
-- **`LAST_OPENED_TTL_SEC`**: `1800s` (30 min) — Time window to bind a recently opened vacancy to ATS blacklist rules.
-
+| `JOB_FILTER_DB` | `jobs.db` | Path to the SQLite database file |
+| `JOB_FILTER_MODEL` | `gemini-3.8-flash` | Default LLM model used by `agy` CLI |
+| `LLM_ENRICH_WORKERS` | `2` | Parallel worker threads for `enrich_job` in `pipeline.py` |
+| `TOP_SCORE_THRESHOLD` | `70` | Minimum score for **TOP Match (`🟢 TOP`)** |
+| `GOOD_SCORE_THRESHOLD` | `60` | Minimum score for **Good Match (`🟡 GOOD`)** |
+| `FAIR_SCORE_THRESHOLD` | `50` | Minimum score for **Fair Match (`🟠 FAIR`)**; below `50` is auto-rejected |
+| `NON_PROFILE_TITLE_SCORE_CAP` | `68` | Maximum score cap for non-profile job titles |
+| `JOB_ENRICH_TIMEOUT_SEC` | `90s` | Timeout per vacancy LLM enrichment call |
+| `CV_ANALYZE_TIMEOUT_SEC` | `120s` | Timeout for full PDF CV analysis |
+| `LAST_OPENED_TTL_SEC` | `1800s` (30m) | Time window to bind a recently opened vacancy to ATS blacklist rules |
+| `HIRIFY_API_KEY` | `""` | Bearer API token for Hirify Agent REST API |

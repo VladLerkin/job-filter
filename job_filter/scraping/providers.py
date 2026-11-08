@@ -79,20 +79,16 @@ def scrape_site(
         )
 
     if site == "linkedin":
-        try:
-            from jobspy.linkedin import LinkedIn
-            LinkedIn.delay = (5, 9)
-        except Exception:
-            pass
-        return scrape_jobs(
-            site_name=["linkedin"],
-            search_term=term,
+        from job_filter.scraping.linkedin import scrape_linkedin_search
+
+        return scrape_linkedin_search(
+            term=term,
             location=location,
             results_wanted=results_wanted,
             hours_old=hours_old,
             easy_apply=easy_apply,
             linkedin_company_ids=linkedin_company_ids,
-            fetch_description=False,
+            processed_ids=processed_ids,
         )
 
     if site == "indeed":

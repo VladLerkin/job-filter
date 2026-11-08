@@ -30,17 +30,29 @@ class LastOpenedTracker:
             "title": None,
             "company": None,
             "url": None,
+            "apply_url": None,
+            "ats_domain": None,
             "opened_ts": None,
             "opened_at": None,
         }
 
-    def record(self, job_id: str, title: str | None, company: str | None, url: str | None) -> dict:
+    def record(
+        self,
+        job_id: str,
+        title: str | None,
+        company: str | None,
+        url: str | None,
+        apply_url: str | None = None,
+        ats_domain: str | None = None,
+    ) -> dict:
         with self._lock:
             self._state = {
                 "job_id": job_id,
                 "title": title,
                 "company": company,
                 "url": url,
+                "apply_url": apply_url,
+                "ats_domain": ats_domain,
                 "opened_ts": time.time(),
                 "opened_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             }
