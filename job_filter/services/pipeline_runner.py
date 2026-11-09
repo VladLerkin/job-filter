@@ -5,7 +5,11 @@ import time
 from typing import Any
 
 from job_filter.db.connection import connect
-from job_filter.services.pipeline import enrich_and_score_pending_jobs, fetch_and_filter_jobs
+from job_filter.services.pipeline import (
+    enrich_and_score_pending_jobs,
+    fetch_and_filter_jobs,
+    run_macro_pipeline,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +66,15 @@ class PipelineRunner:
 
     def _worker(self, req: dict[str, Any]) -> None:
         try:
-            if req.get("enrich_only"):
+            if req.get("macro_mode"):
+                run_macro_pipeline(
+                    settings_override=req.get("macro_settings"),
+                    search_terms=req.get("search_terms"),
+                    llm_model=req.get("llm_model"),
+                    on_progress=self.append_log,
+                    cancel_event=self._cancel_event,
+                )
+            elif req.get("enrich_only"):
                 conn = connect()
                 try:
                     enrich_and_score_pending_jobs(

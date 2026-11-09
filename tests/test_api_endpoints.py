@@ -469,3 +469,120 @@ def test_applied_tracker_sync_and_stages(client, monkeypatch):
     assert stage_res.json()["application_stage"] == "confirmed"
 
 
+def test_macro_settings_and_provider_checks_and_cross_board_dedup(client, monkeypatch):
+    from job_filter.db.connection import connect
+    from job_filter.repositories import jobs_repo
+    from job_filter.services import pipeline
+
+    # 1. Check initial macro settings & provider check statuses
+    res_get = client.get("/api/pipeline/macro-settings")
+    assert res_get.status_code == 200
+    data_get = res_get.json()
+    assert "macro_settings" in data_get
+    assert "provider_checks" in data_get
+    assert data_get["macro_settings"]["execution_mode"] == "per_provider"
+    assert data_get["macro_settings"]["hours_mode"] == "auto_from_last_run"
+    assert set(data_get["provider_checks"].keys()) == {"linkedin", "indeed", "glassdoor", "hirify"}
+
+    # 2. Save updated macro settings
+    new_settings = {
+        "execution_mode": "batch_all_then_llm",
+        "hours_mode": "fixed",
+        "default_hours_old": 12,
+        "max_auto_hours_old": 48,
+        "results_wanted": 30,
+        "llm_limit": 25,
+        "steps": [
+            {
+                "site": "hirify",
+                "enabled": True,
+                "hirify_mode": "feeds",
+                "hirify_feed_id": "all_active",
+                "locations": ["Worldwide"],
+                "countries": [],
+            },
+            {
+                "site": "linkedin",
+                "enabled": True,
+                "locations": ["EMEA"],
+                "countries": [],
+                "easy_apply": False,
+            },
+            {
+                "site": "indeed",
+                "enabled": True,
+                "locations": [],
+                "countries": ["uk", "unitedarabemirates", "czechrepublic"],
+                "easy_apply": False,
+            },
+        ],
+    }
+    res_put = client.put("/api/pipeline/macro-settings", json=new_settings)
+    assert res_put.status_code == 200
+    saved = res_put.json()["macro_settings"]
+    assert saved["execution_mode"] == "batch_all_then_llm"
+    assert saved["hours_mode"] == "fixed"
+    assert saved["default_hours_old"] == 12
+    assert len(saved["steps"]) == 4
+    assert len([s for s in saved["steps"] if s["enabled"]]) == 3
+
+    # 3. Record provider check and verify status endpoint reflects it
+    conn = connect()
+    try:
+        pipeline.record_provider_check(
+            conn,
+            "linkedin",
+            hours_old_used=6,
+            fetched_count=42,
+            matched_count=7,
+            location="EMEA",
+        )
+        jobs_repo.replace_job(conn, {
+            "job_id": "existing-li-1",
+            "title": "Senior Agentic AI Engineer",
+            "company": "Acme Robotics",
+            "site": "linkedin",
+            "url": "https://linkedin.com/jobs/view/1",
+            "matched": 1,
+            "score": 85,
+        })
+        conn.commit()
+        keys = jobs_repo.get_processed_title_company_keys(conn)
+        assert "senior agentic ai engineer::acme robotics" in keys
+    finally:
+        conn.close()
+
+    res_status = client.get("/api/pipeline/providers-status")
+    assert res_status.status_code == 200
+    li_check = res_status.json()["provider_checks"]["linkedin"]
+    assert li_check["last_checked_at"] is not None
+    assert li_check["fetched_count"] == 42
+    assert li_check["matched_count"] == 7
+    assert li_check["recommended_hours_old"] >= 2
+
+    # 4. Verify run_macro_pipeline executes steps in both modes
+    calls = []
+
+    def fake_fetch_and_filter_jobs(**kwargs):
+        calls.append(("fetch", kwargs["site_names"][0], kwargs.get("location"), kwargs.get("run_llm_enrichment")))
+        return []
+
+    def fake_enrich(conn, **kwargs):
+        calls.append(("enrich", kwargs.get("limit")))
+        return 3
+
+    monkeypatch.setattr(pipeline, "fetch_and_filter_jobs", fake_fetch_and_filter_jobs)
+    monkeypatch.setattr(pipeline, "enrich_and_score_pending_jobs", fake_enrich)
+
+    summary_batch = pipeline.run_macro_pipeline()
+    assert summary_batch["execution_mode"] == "batch_all_then_llm"
+    assert summary_batch["steps_executed"] == 3
+    assert ("fetch", "hirify", "Worldwide", False) in calls
+    assert ("fetch", "linkedin", "EMEA", False) in calls
+    assert ("fetch", "indeed", "uk", False) in calls
+    assert ("fetch", "indeed", "united arab emirates", False) in calls
+    assert ("fetch", "indeed", "czech republic", False) in calls
+    assert ("enrich", 25) in calls
+
+
+

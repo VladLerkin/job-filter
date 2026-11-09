@@ -83,3 +83,34 @@ class AddBlacklistRequest(BaseModel):
     hide_job: bool = True
     use_last_opened: bool = False
 
+
+class MacroStepConfig(BaseModel):
+    site: Literal["hirify", "linkedin", "indeed", "glassdoor"]
+    enabled: bool = True
+    locations: list[str] = Field(default_factory=list)
+    countries: list[str] = Field(default_factory=list)
+    hirify_mode: Literal["feeds", "custom"] = "feeds"
+    hirify_feed_id: int | str | None = None
+    easy_apply: bool = False
+
+
+class MacroSettingsRequest(BaseModel):
+    execution_mode: Literal["per_provider", "batch_all_then_llm"] = "per_provider"
+    hours_mode: Literal["auto_from_last_run", "fixed"] = "auto_from_last_run"
+    default_hours_old: int = 8
+    max_auto_hours_old: int = 72
+    results_wanted: int = 50
+    llm_limit: int = 50
+    steps: list[MacroStepConfig] = Field(default_factory=list)
+
+
+class RunMacroRequest(BaseModel):
+    search_terms: list[str] = [
+        "Agentic Engineer Remote",
+        "AI Agent Engineer Remote",
+        "Software Engineer Remote",
+    ]
+    llm_model: str = config.DEFAULT_MODEL
+    macro_settings: dict | None = None
+
+

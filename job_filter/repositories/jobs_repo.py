@@ -1,4 +1,5 @@
 """SQL-доступ к вакансиям (таблица processed_jobs)."""
+import json
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
@@ -15,6 +16,47 @@ _JOB_COLUMNS = (
 
 def get_processed_ids(conn: sqlite3.Connection) -> set[str]:
     return {row[0] for row in conn.execute("SELECT job_id FROM processed_jobs")}
+
+
+def get_processed_title_company_keys(conn: sqlite3.Connection) -> set[str]:
+    """Возвращает множество нормализованных ключей 'title::company' всех уже сохранённых вакансий для кросс-борд дедупликации."""
+    rows = conn.execute(
+        "SELECT lower(trim(COALESCE(title, ''))) || '::' || lower(trim(COALESCE(company, ''))) "
+        "FROM processed_jobs WHERE title IS NOT NULL AND company IS NOT NULL"
+    ).fetchall()
+    return {r[0] for r in rows if r[0] and r[0] != "::"}
+
+
+def get_app_metadata_json(conn: sqlite3.Connection, key: str) -> dict | None:
+    row = conn.execute("SELECT value FROM app_metadata WHERE key = ?", (key,)).fetchone()
+    if not row or not row[0]:
+        return None
+    try:
+        data = json.loads(row[0])
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def set_app_metadata_json(conn: sqlite3.Connection, key: str, data: dict) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO app_metadata (key, value) VALUES (?, ?)",
+        (key, json.dumps(data, ensure_ascii=False)),
+    )
+    conn.commit()
+
+
+def get_last_processed_at_by_site(conn: sqlite3.Connection) -> dict[str, str]:
+    """Возвращает максимальный processed_at по каждому источнику из processed_jobs (для первичной инициализации)."""
+    rows = conn.execute(
+        """
+        SELECT lower(trim(COALESCE(site, 'linkedin'))) AS s, MAX(processed_at) AS max_ts
+        FROM processed_jobs
+        WHERE processed_at IS NOT NULL AND processed_at != ''
+        GROUP BY s
+        """
+    ).fetchall()
+    return {r["s"]: r["max_ts"] for r in rows if r["s"] and r["max_ts"]}
 
 
 def get_job(conn: sqlite3.Connection, job_id: str) -> dict | None:

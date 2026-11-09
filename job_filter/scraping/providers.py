@@ -22,6 +22,31 @@ GLASSDOOR_COUNTRY_NAMES = {
     "canada": "Canada",
 }
 
+INDEED_COUNTRY_ALIASES = {
+    "czechrepublic": "czech republic",
+    "czechia": "czech republic",
+    "unitedarabemirates": "united arab emirates",
+    "uae": "united arab emirates",
+    "united kingdom": "uk",
+    "great britain": "uk",
+    "gb": "uk",
+    "united states": "usa",
+    "us": "usa",
+    "remote": "uk",
+    "emea": "uk",
+    "worldwide": "uk",
+}
+
+
+def normalize_indeed_country(country_indeed: str | None, location: str | None) -> str:
+    raw = (country_indeed or "").strip().lower()
+    if not raw or raw == "remote" or (raw == "uk" and location and location.strip().lower() not in ("", "remote", "emea", "worldwide")):
+        loc_cand = (location or "").strip().lower()
+        if loc_cand and loc_cand not in ("remote", "emea", "worldwide"):
+            raw = loc_cand
+    raw = raw or "uk"
+    return INDEED_COUNTRY_ALIASES.get(raw, raw)
+
 
 SUPPORTED_SITES = ("linkedin", "indeed", "glassdoor", "hirify")
 
@@ -92,7 +117,7 @@ def scrape_site(
         )
 
     if site == "indeed":
-        target_country = (location or country_indeed or "uk").strip().lower()
+        target_country = normalize_indeed_country(country_indeed, location)
         return scrape_jobs(
             site_name=["indeed"],
             search_term=clean_term,
@@ -106,7 +131,7 @@ def scrape_site(
         )
 
     if site == "glassdoor":
-        target_country = (location or country_indeed or "uk").strip().lower()
+        target_country = normalize_indeed_country(country_indeed, location)
         gd_loc = GLASSDOOR_COUNTRY_NAMES.get(target_country, location)
         return scrape_jobs(
             site_name=["glassdoor"],

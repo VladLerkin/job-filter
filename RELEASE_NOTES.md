@@ -1,5 +1,28 @@
 # Release Notes
 
+## v1.4.0
+**Release Date:** November 9, 2026
+
+### Features & Architecture
+- **Configurable Multi-System Macro Pipeline (`⚡ Авто-обход`):**
+  - Added `run_macro_pipeline` (`job_filter/services/pipeline.py`) and endpoints `POST /api/pipeline/start-macro`, `GET /api/pipeline/providers-status`, and `GET / PUT /api/pipeline/macro-settings` to iterate automatically through enabled job sources (`Hirify`, `LinkedIn`, `Indeed`, `Glassdoor`) in a single run.
+  - Added two selectable execution strategies in macro settings:
+    - `per_provider` *(default)*: `Scrape → LLM Enrich & Score → Next System`, surfacing top matches immediately after each board finishes.
+    - `batch_all_then_llm`: Scrapes candidate cards from all enabled systems into `Pending AI` first, then executes a combined LLM enrichment and scoring pass at the end.
+  - Added cross-board `title::company` deduplication (`get_processed_title_company_keys` in `job_filter/repositories/jobs_repo.py`) before LLM enrichment so duplicate postings across different job boards do not consume redundant AI calls.
+- **Per-Provider Last Check Timestamp & Auto `Hours Old`:**
+  - Automatically records `last_checked_at`, location, `hours_old`, fetched count, and matched count per job board in `app_metadata` (`record_provider_check` / `get_provider_check_status`), falling back to `MAX(processed_at)` from `processed_jobs` on first run.
+  - Dynamically computes recommended `hours_old` (`ceil(hours_since_last_check) + 1` with configurable cap `max_auto_hours_old`) for both the macro pipeline (`auto_from_last_run` mode) and manual provider selection.
+
+### UI & Usability
+- **Macro Settings Modal & Live Provider Badges:**
+  - Added `🕒` relative last-check badges (`🕒 2ч назад`, `🕒 только что`) with detailed tooltips on each source radio button (`LinkedIn`, `Indeed`, `Glassdoor`, `Hirify`), plus `⚡ Авто-обход`, `⚙️`, and `⏹️ Стоп` controls in the header bar.
+  - Clarified regional server showcase labels for `Indeed` and `Glassdoor` versus global macro-region search (`Worldwide`, `EMEA`, `Feeds`) for `LinkedIn` and `Hirify`.
+
+### Bug Fixes & Maintenance
+- **JobSpy Country Normalization (`normalize_indeed_country`):** Fixed an issue where `Indeed` / `Glassdoor` macro steps passed `"Remote"` or unspaced country names (`unitedarabemirates`, `czechrepublic`) to `country_indeed`, normalizing them to valid JobSpy country identifiers (`'united arab emirates'`, `'czech republic'`, `'uk'`, etc.).
+- **Expanded Test Suite:** Added automated API and pipeline tests for provider check timestamps, macro settings persistence, cross-board deduplication, and multi-system macro execution (67 tests passing).
+
 ## v1.3.0
 **Release Date:** November 8, 2026
 

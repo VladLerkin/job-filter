@@ -1,7 +1,9 @@
 """Основной поисковый и оценочный пайплайн: сбор скрапингом, первичный фильтр, дозагрузка описания, обогащение через LLM и скоринг."""
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 import logging
+import math
 import random
 import re
 import sqlite3
@@ -18,7 +20,7 @@ from job_filter.repositories import blacklist_repo, candidate_repo, jobs_repo
 from job_filter.scoring.matrix import get_skill_matrix
 from job_filter.scoring.scorer import score_vacancy_by_skill
 from job_filter.scraping.linkedin import fetch_job_details
-from job_filter.scraping.providers import scrape_site
+from job_filter.scraping.providers import normalize_indeed_country, scrape_site
 from job_filter.utils.urls import extract_root_domain
 
 logger = logging.getLogger(__name__)
@@ -317,7 +319,13 @@ def fetch_and_filter_jobs(
                     time.sleep(random.uniform(2.0, 4.0))
 
             try:
-                emit(f"🔍 Поиск [{site}] '{term}' в '{location}' (за последние {hours_old}ч){easy_label}...")
+                if site in ("indeed", "glassdoor"):
+                    eff_country = normalize_indeed_country(country_indeed, location)
+                    emit(
+                        f"🔍 Поиск [{site}] '{term}' на сервере-витрине '{eff_country}' [100% Remote] (за последние {hours_old}ч){easy_label}..."
+                    )
+                else:
+                    emit(f"🔍 Поиск [{site}] '{term}' в '{location}' (за последние {hours_old}ч){easy_label}...")
                 df = scrape_site(
                     site=site,
                     term=term,
@@ -378,7 +386,22 @@ def fetch_and_filter_jobs(
         unseen_jobs = jobs[new_jobs_mask].copy()
         skipped_seen = len(jobs) - len(unseen_jobs)
         if skipped_seen:
-            emit(f"⏭️ Пропущено уже обработанных ранее вакансий (из БД): {skipped_seen}")
+            emit(f"⏭️ Пропущено уже обработанных ранее вакансий (из БД по ID): {skipped_seen}")
+
+        # Кросс-системная дедупликация по Title+Company против уже сохранённых в БД вакансий
+        if not unseen_jobs.empty:
+            db_tc_keys = jobs_repo.get_processed_title_company_keys(conn)
+            if db_tc_keys:
+                tc_series = (
+                    unseen_jobs["title"].fillna("").str.strip().str.lower()
+                    + "::"
+                    + unseen_jobs["company"].fillna("").str.strip().str.lower()
+                )
+                cross_dup_mask = tc_series.isin(db_tc_keys)
+                cross_dups = int(cross_dup_mask.sum())
+                if cross_dups > 0:
+                    emit(f"⏭️ Пропущено кросс-борд дублей (Title+Company уже есть в БД): {cross_dups}")
+                    unseen_jobs = unseen_jobs[~cross_dup_mask].copy()
 
         if not unseen_jobs.empty:
             exclude_pattern = "|".join(re.escape(w) for w in config.EXCLUDED_TITLE_WORDS)
@@ -510,6 +533,19 @@ def fetch_and_filter_jobs(
     else:
         emit("Поисковая выдача пуста.")
 
+    # Фиксируем время успешной проверки источника, если пайплайн не был прерван
+    if not (cancel_event and cancel_event.is_set()):
+        total_fetched_cards = sum(len(f) for f in frames) if frames else 0
+        loc_display = "feeds" if (site == "hirify" and hirify_mode == "feeds") else (location if site in ("linkedin", "hirify") else country_indeed)
+        record_provider_check(
+            conn,
+            site=site,
+            location=loc_display,
+            hours_old=hours_old,
+            fetched_count=total_fetched_cards,
+            matched_count=new_matches_count,
+        )
+
     if run_llm_enrichment:
         if cancel_event and cancel_event.is_set():
             emit("⏹️ Пайплайн остановлен до запуска LLM.")
@@ -527,4 +563,295 @@ def fetch_and_filter_jobs(
     results = jobs_repo.list_final_matches(conn, min_score=config.FAIR_SCORE_THRESHOLD)
     conn.close()
     return results
+
+
+PROVIDER_CHECKS_META_KEY = "provider_check_timestamps_v1"
+MACRO_SETTINGS_META_KEY = "macro_pipeline_settings_v1"
+ALL_PROVIDERS = ("linkedin", "hirify", "indeed", "glassdoor")
+
+DEFAULT_MACRO_SETTINGS: dict[str, Any] = {
+    "execution_mode": "per_provider",  # "per_provider" | "batch_all_then_llm"
+    "hours_mode": "auto_from_last_run",  # "auto_from_last_run" | "fixed"
+    "default_hours_old": 12,
+    "max_auto_hours_old": 48,
+    "results_wanted": 50,
+    "llm_limit": 50,
+    "steps": [
+        {
+            "site": "hirify",
+            "enabled": True,
+            "hirify_mode": "feeds",
+            "hirify_feed_id": "all_active",
+            "locations": ["Worldwide"],
+            "easy_apply": False,
+        },
+        {
+            "site": "linkedin",
+            "enabled": True,
+            "locations": ["EMEA", "Worldwide"],
+            "easy_apply": False,
+        },
+        {
+            "site": "indeed",
+            "enabled": True,
+            "locations": ["uk", "germany", "netherlands"],
+            "easy_apply": False,
+        },
+        {
+            "site": "glassdoor",
+            "enabled": False,
+            "locations": ["uk", "germany"],
+            "easy_apply": False,
+        },
+    ],
+}
+
+
+def record_provider_check(
+    conn: sqlite3.Connection,
+    site: str,
+    location: str | None = None,
+    hours_old: int = 4,
+    hours_old_used: int | None = None,
+    fetched_count: int = 0,
+    matched_count: int = 0,
+) -> None:
+    site_key = (site or "linkedin").strip().lower()
+    eff_hours = hours_old_used if hours_old_used is not None else hours_old
+    current = jobs_repo.get_app_metadata_json(conn, PROVIDER_CHECKS_META_KEY) or {}
+    current[site_key] = {
+        "last_checked_at": datetime.now(timezone.utc).isoformat(),
+        "last_location": location,
+        "last_hours_old": eff_hours,
+        "last_fetched_count": fetched_count,
+        "last_matched_count": matched_count,
+    }
+    jobs_repo.set_app_metadata_json(conn, PROVIDER_CHECKS_META_KEY, current)
+
+
+def get_provider_check_status(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+    stored = jobs_repo.get_app_metadata_json(conn, PROVIDER_CHECKS_META_KEY) or {}
+    fallback_by_site = jobs_repo.get_last_processed_at_by_site(conn)
+    macro_cfg = get_macro_settings(conn)
+    default_hours = int(macro_cfg.get("default_hours_old") or 12)
+    max_auto_hours = int(macro_cfg.get("max_auto_hours_old") or 48)
+
+    now_utc = datetime.now(timezone.utc)
+    result: dict[str, dict[str, Any]] = {}
+
+    for site in ALL_PROVIDERS:
+        info = dict(stored.get(site) or {})
+        last_ts = info.get("last_checked_at") or fallback_by_site.get(site)
+        hours_since: float | None = None
+        recommended_hours = default_hours
+
+        if last_ts:
+            try:
+                dt = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                delta_sec = max(0.0, (now_utc - dt).total_seconds())
+                hours_since = round(delta_sec / 3600.0, 1)
+                recommended_hours = min(max(1, math.ceil(delta_sec / 3600.0) + 1), max_auto_hours)
+            except Exception:
+                last_ts = None
+
+        result[site] = {
+            "site": site,
+            "last_checked_at": last_ts,
+            "hours_since": hours_since,
+            "hours_since_last_check": hours_since,
+            "recommended_hours_old": recommended_hours,
+            "last_location": info.get("last_location"),
+            "last_hours_old": info.get("last_hours_old"),
+            "fetched_count": info.get("last_fetched_count"),
+            "matched_count": info.get("last_matched_count"),
+            "last_fetched_count": info.get("last_fetched_count"),
+            "last_matched_count": info.get("last_matched_count"),
+        }
+    return result
+
+
+def get_macro_settings(conn: sqlite3.Connection) -> dict[str, Any]:
+    stored = jobs_repo.get_app_metadata_json(conn, MACRO_SETTINGS_META_KEY)
+    if not stored:
+        return json_clone_macro_defaults()
+
+    merged = json_clone_macro_defaults()
+    for k in ("execution_mode", "hours_mode", "default_hours_old", "max_auto_hours_old", "results_wanted", "llm_limit"):
+        if k in stored and stored[k] is not None:
+            merged[k] = stored[k]
+
+    if isinstance(stored.get("steps"), list) and stored["steps"]:
+        steps_by_site = {s.get("site"): s for s in stored["steps"] if isinstance(s, dict) and s.get("site")}
+        new_steps = []
+        for def_step in merged["steps"]:
+            s_name = def_step["site"]
+            if s_name in steps_by_site:
+                upd = {**def_step, **steps_by_site[s_name]}
+                if s_name in ("indeed", "glassdoor"):
+                    raw_countries = upd.get("countries") or upd.get("locations") or def_step["locations"]
+                    countries = [normalize_indeed_country(c, c) for c in raw_countries if c]
+                    upd["countries"] = countries
+                    upd["locations"] = countries
+                else:
+                    locs = upd.get("locations") or def_step["locations"]
+                    upd["locations"] = locs
+                new_steps.append(upd)
+            else:
+                disabled_step = {**def_step, "enabled": False}
+                new_steps.append(disabled_step)
+        merged["steps"] = new_steps
+    return merged
+
+
+def json_clone_macro_defaults() -> dict[str, Any]:
+    import copy
+    return copy.deepcopy(DEFAULT_MACRO_SETTINGS)
+
+
+def save_macro_settings(conn: sqlite3.Connection, settings: dict[str, Any]) -> dict[str, Any]:
+    current = get_macro_settings(conn)
+    for k in ("execution_mode", "hours_mode", "default_hours_old", "max_auto_hours_old", "results_wanted", "llm_limit"):
+        if k in settings and settings[k] is not None:
+            current[k] = settings[k]
+    if isinstance(settings.get("steps"), list) and settings["steps"]:
+        current["steps"] = settings["steps"]
+    jobs_repo.set_app_metadata_json(conn, MACRO_SETTINGS_META_KEY, current)
+    return get_macro_settings(conn)
+
+
+def run_macro_pipeline(
+    settings_override: dict[str, Any] | None = None,
+    search_terms: str | list[str] = config.DEFAULT_SEARCH_TERMS,
+    llm_model: str = config.DEFAULT_MODEL,
+    on_progress: Callable[[str], None] | None = None,
+    cancel_event: threading.Event | None = None,
+) -> dict[str, Any]:
+    """
+    Макро-обход всех включённых в настройках систем (Hirify, LinkedIn, Indeed, Glassdoor)
+    с автоматическим расчётом окна времени hours_old от последней проверки каждого источника.
+    """
+    def emit(msg: str) -> None:
+        logger.info("%s", msg)
+        if on_progress:
+            on_progress(msg)
+
+    conn = connect()
+    try:
+        macro_cfg = save_macro_settings(conn, settings_override) if settings_override else get_macro_settings(conn)
+        check_status = get_provider_check_status(conn)
+    finally:
+        conn.close()
+
+    exec_mode = macro_cfg.get("execution_mode", "per_provider")
+    hours_mode = macro_cfg.get("hours_mode", "auto_from_last_run")
+    default_hours = int(macro_cfg.get("default_hours_old") or 12)
+    max_auto_hours = int(macro_cfg.get("max_auto_hours_old") or 48)
+    results_wanted = int(macro_cfg.get("results_wanted") or 50)
+    llm_limit = int(macro_cfg.get("llm_limit") or 50)
+    steps = [s for s in (macro_cfg.get("steps") or []) if s.get("enabled")]
+
+    mode_label = (
+        "По очереди по системам (Сбор → ИИ → Скоринг)"
+        if exec_mode == "per_provider"
+        else "Сначала сбор всех карточек со всех систем → Единый ИИ-разбор в конце"
+    )
+    emit(f"⚡ Старт МАКРО-ОБХОДА ({len(steps)} систем) | Режим: {mode_label}")
+
+    run_llm_each = exec_mode == "per_provider"
+    completed_steps = 0
+
+    for step_idx, step in enumerate(steps, start=1):
+        if cancel_event and cancel_event.is_set():
+            emit("⏹️ Макро-обход остановлен пользователем.")
+            break
+
+        site = (step.get("site") or "linkedin").strip().lower()
+        p_info = check_status.get(site) or {}
+        hours_since = p_info.get("hours_since_last_check")
+
+        if hours_mode == "auto_from_last_run" and hours_since is not None:
+            effective_hours = min(max(1, math.ceil(hours_since) + 1), max_auto_hours)
+            emit(
+                f"🚀 === Шаг [{step_idx}/{len(steps)}]: {site.upper()} "
+                f"(последняя проверка {hours_since}ч назад → авто-окно {effective_hours}ч) ==="
+            )
+        else:
+            effective_hours = default_hours
+            reason_str = "первый запуск" if hours_since is None else "фиксированный режим"
+            emit(
+                f"🚀 === Шаг [{step_idx}/{len(steps)}]: {site.upper()} "
+                f"({reason_str} → окно {effective_hours}ч) ==="
+            )
+
+        easy_apply = True if step.get("easy_apply") else None
+        hirify_mode = step.get("hirify_mode") or "feeds"
+        hirify_feed_id = step.get("hirify_feed_id")
+        if site in ("indeed", "glassdoor"):
+            locations = step.get("countries") or step.get("locations") or ["uk"]
+        else:
+            locations = step.get("locations") or ["EMEA"]
+
+        if site == "hirify" and hirify_mode == "feeds":
+            fetch_and_filter_jobs(
+                search_terms=search_terms,
+                site_names=["hirify"],
+                location="Worldwide",
+                results_wanted=results_wanted,
+                hours_old=effective_hours,
+                run_llm_enrichment=run_llm_each,
+                llm_model=llm_model,
+                llm_limit=llm_limit,
+                on_progress=on_progress,
+                hirify_mode="feeds",
+                hirify_feed_id=hirify_feed_id,
+                cancel_event=cancel_event,
+            )
+        else:
+            for loc_idx, loc in enumerate(locations, start=1):
+                if cancel_event and cancel_event.is_set():
+                    break
+                eff_loc = normalize_indeed_country(loc, loc) if site in ("indeed", "glassdoor") else loc
+                if loc_idx > 1:
+                    emit(f"⏳ [{site}] Переход к следующей локации '{eff_loc}' ({loc_idx}/{len(locations)})...")
+                fetch_and_filter_jobs(
+                    search_terms=search_terms,
+                    site_names=[site],
+                    location=eff_loc,
+                    country_indeed=eff_loc if site in ("indeed", "glassdoor") else "uk",
+                    results_wanted=results_wanted,
+                    hours_old=effective_hours,
+                    easy_apply=easy_apply,
+                    run_llm_enrichment=run_llm_each,
+                    llm_model=llm_model,
+                    llm_limit=llm_limit,
+                    on_progress=on_progress,
+                    hirify_mode=hirify_mode,
+                    hirify_feed_id=hirify_feed_id,
+                    cancel_event=cancel_event,
+                )
+        completed_steps += 1
+
+    if exec_mode == "batch_all_then_llm" and not (cancel_event and cancel_event.is_set()):
+        emit("🧠 === Финальный этап макроса: единый ИИ-разбор и скоринг всех собранных карточек ===")
+        conn = connect()
+        try:
+            enrich_and_score_pending_jobs(
+                conn,
+                model=llm_model,
+                limit=llm_limit,
+                on_progress=on_progress,
+                cancel_event=cancel_event,
+            )
+        finally:
+            conn.close()
+
+    emit(f"🏁 Макро-обход завершён (выполнено систем: {completed_steps}/{len(steps)})!")
+    return {
+        "completed_steps": completed_steps,
+        "steps_executed": completed_steps,
+        "total_steps": len(steps),
+        "execution_mode": exec_mode,
+    }
 

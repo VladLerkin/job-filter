@@ -184,7 +184,31 @@
         btn_parse_and_mark: "Parse with AI & Mark Vacancies",
         modal_company_stage_title: "📬 Company Response Status",
         modal_company_stage_select_label: "Application Stage:",
-        modal_company_reason_label: "Company rejection reason or interview details:"
+        modal_company_reason_label: "Company rejection reason or interview details:",
+        btn_run_macro: "⚡ Auto-All",
+        btn_run_macro_title: "Automatically iterate through all enabled job systems using last check time",
+        btn_macro_settings_title: "Configure Multi-System Macro Pipeline",
+        btn_stop_pipeline: "⏹️ Stop",
+        modal_macro_title: "Multi-System Auto-Run (Macro Pipeline)",
+        modal_macro_desc: "Iterates through enabled job boards in order, calculates Hours Old from each system's last check time, and deduplicates vacancies by Title + Company across boards.",
+        macro_exec_mode_label: "1️⃣ Execution & AI Enrichment Strategy:",
+        macro_mode_per_provider_title: "🔄 Per System Immediately (Recommended)",
+        macro_mode_per_provider_desc: "System → Scrape → AI Enrich & Score → Next System. Top matches appear immediately after each board.",
+        macro_mode_batch_title: "📦 Scrape All Cards First → AI Batch at End",
+        macro_mode_batch_desc: "Quickly scrapes candidate cards from all enabled systems into Pending AI, then runs one combined AI enrichment pass.",
+        macro_hours_mode_label: "2️⃣ Search Depth (Hours Old) & Limits:",
+        macro_hours_auto_title: "🕒 Auto from Last Check (+1h buffer)",
+        macro_hours_auto_desc: "Uses elapsed time since each system's previous check + 1 hour so nothing is missed or re-scraped.",
+        macro_hours_fixed_title: "📌 Fixed Hours for All Systems",
+        macro_hours_fixed_desc: "Always use the Default Hours Old value for every system regardless of last check timestamp.",
+        macro_default_hours_label: "Default Hours (1st run):",
+        macro_max_auto_hours_label: "Max Auto Hours (cap):",
+        macro_results_wanted_label: "Cards Limit / Step:",
+        macro_llm_limit_label: "AI Enrich Limit:",
+        macro_steps_label: "3️⃣ Systems & Locations Queue:",
+        macro_steps_hint: "Toggle job boards and select one or more locations/countries per system",
+        btn_macro_save: "Save Settings",
+        btn_macro_save_and_run: "Save & Run Macro"
       },
       ru: {
         app_subtitle: "Кандидат: Владислав Ярыгин • AI Agentic & Senior Backend (Java, Kotlin, Python) • Удалёнка из Грузии (B2B)",
@@ -366,7 +390,31 @@
         btn_parse_and_mark: "Разобрать через ИИ и отметить вакансии",
         modal_company_stage_title: "📬 Статус ответа компании",
         modal_company_stage_select_label: "Этап отклика:",
-        modal_company_reason_label: "Причина отказа компании или детали приглашения на интервью:"
+        modal_company_reason_label: "Причина отказа компании или детали приглашения на интервью:",
+        btn_run_macro: "⚡ Авто-обход",
+        btn_run_macro_title: "Автоматически обойти все включенные системы по очереди с учётом времени последней проверки",
+        btn_macro_settings_title: "Настройки макроса авто-обхода систем",
+        btn_stop_pipeline: "⏹️ Стоп",
+        modal_macro_title: "Авто-обход всех систем (Макрос)",
+        modal_macro_desc: "Автоматически обходит выбранные площадки по очереди, рассчитывает глубину поиска (Hours Old) с момента последней проверки каждой системы и дедуплицирует вакансии по паре «Название + Компания» между бордами.",
+        macro_exec_mode_label: "1️⃣ Стратегия обхода и ИИ-распознавания:",
+        macro_mode_per_provider_title: "🔄 По каждой системе сразу (Рекомендуется)",
+        macro_mode_per_provider_desc: "Система → Сбор карточек → ИИ-разбор и скоринг → Следующая система. Новые Топ-вакансии появляются в списке сразу после каждого борда.",
+        macro_mode_batch_title: "📦 Сначала собрать все карточки → затем ИИ",
+        macro_mode_batch_desc: "Быстро собирает карточки со всех включенных систем в «Ждут ИИ», а в конце запускает единый общий проход ИИ-обогащения и скоринга.",
+        macro_hours_mode_label: "2️⃣ Глубина поиска (Hours Old) и лимиты:",
+        macro_hours_auto_title: "🕒 Автоматически от последней проверки (+1ч запас)",
+        macro_hours_auto_desc: "Для каждой системы берет время с её прошлого запуска + 1 час, чтобы ничего не пропустить и не парсить лишнее.",
+        macro_hours_fixed_title: "📌 Фиксированное число часов для всех",
+        macro_hours_fixed_desc: "Использовать одинаковое значение «Часов по умолчанию» для всех систем независимо от времени прошлой проверки.",
+        macro_default_hours_label: "Часов по умолч. (1-й запуск):",
+        macro_max_auto_hours_label: "Макс. авто-часов (потолок):",
+        macro_results_wanted_label: "Лимит карточек / шаг:",
+        macro_llm_limit_label: "Лимит ИИ-разбора:",
+        macro_steps_label: "3️⃣ Системы и локации для поочередного обхода:",
+        macro_steps_hint: "Отметьте площадки и одну или несколько стран/регионов",
+        btn_macro_save: "Сохранить настройки",
+        btn_macro_save_and_run: "Сохранить и запустить обход"
       }
     };
 
@@ -426,6 +474,9 @@
       if (typeof updateLogButtonState === 'function') {
         updateLogButtonState();
       }
+      if (typeof renderProviderCheckBadges === 'function') {
+        renderProviderCheckBadges();
+      }
 
       if (currentTab === 'skills' && typeof renderSkillsMatrix === 'function' && cachedSkillsMatrix && cachedSkillsMatrix.categories) {
         renderSkillsMatrix(cachedSkillsMatrix);
@@ -450,14 +501,14 @@
 
     const PROVIDER_CONFIG = {
       linkedin: {
-        label: "Локация (LinkedIn)",
-        remoteMechanism: "🔍 Ключевые слова в заголовке/локации: «Remote», «Work from Home», «WFH» (в гостевом API нет параметра f_WT=2)",
-        hint: "LinkedIn: поддерживает макрорегионы (EMEA, EU, Worldwide) и страны; удалёнка ищется через слово Remote в запросе",
+        label: "Охват поиска (LinkedIn)",
+        remoteMechanism: "🌍 Единая мировая база • Макрорегионы Worldwide и EMEA ищут глобальную удалёнку одним запросом",
+        hint: "LinkedIn: выберите Worldwide или EMEA для поиска глобальной удалёнки по всему миру или региону EMEA",
         supportsEasyApply: true,
         options: [
           { value: "EMEA", label: "🌍 EMEA (Европа, Ближний Восток, Африка)" },
+          { value: "Worldwide", label: "🌐 Worldwide (Весь мир — глобальная удалёнка)" },
           { value: "European Union", label: "🇪🇺 European Union" },
-          { value: "Worldwide", label: "🌐 Worldwide (Весь мир)" },
           { value: "United Kingdom", label: "🇬🇧 United Kingdom" },
           { value: "Germany", label: "🇩🇪 Germany" },
           { value: "Netherlands", label: "🇳🇱 Netherlands" },
@@ -470,44 +521,44 @@
         ]
       },
       indeed: {
-        label: "Страна сервера (Indeed)",
-        remoteMechanism: "🏷️ Системный атрибут GraphQL: Remote (DSQF7) + строгое исключение Hybrid (NOT PAXZC)",
-        hint: "Indeed: аппаратный фильтр Remote по всей выбранной стране (слово Remote из запроса убирается автоматически)",
+        label: "Региональный сервер-витрина (Indeed)",
+        remoteMechanism: "🌐 У Indeed нет единого мирового сайта — запрос идёт с фильтром 100% Remote по выбранному домену, а ИИ отбирает вакансии с удалёнкой из Грузии / EMEA / Worldwide",
+        hint: "Indeed разбит на отдельные домены стран (uk.indeed.com, de.indeed.com). Выбирайте крупные англоязычные IT-хабы Европы, куда компании постят EMEA/Global Remote вакансии",
         supportsEasyApply: true,
         options: [
-          { value: "uk", label: "🇬🇧 UK (uk.indeed.com)" },
-          { value: "germany", label: "🇩🇪 Germany (de.indeed.com)" },
-          { value: "netherlands", label: "🇳🇱 Netherlands (nl.indeed.com)" },
-          { value: "poland", label: "🇵🇱 Poland (pl.indeed.com)" },
-          { value: "spain", label: "🇪🇸 Spain (es.indeed.com)" },
-          { value: "france", label: "🇫🇷 France (fr.indeed.com)" },
-          { value: "ireland", label: "🇮🇪 Ireland (ie.indeed.com)" },
-          { value: "switzerland", label: "🇨🇭 Switzerland (ch.indeed.com)" },
-          { value: "portugal", label: "🇵🇹 Portugal (pt.indeed.com)" },
-          { value: "czechrepublic", label: "🇨🇿 Czechia (cz.indeed.com)" },
-          { value: "unitedarabemirates", label: "🇦🇪 UAE (ae.indeed.com)" },
-          { value: "usa", label: "🇺🇸 USA (www.indeed.com)" },
-          { value: "canada", label: "🇨🇦 Canada (ca.indeed.com)" }
+          { value: "uk", label: "🇬🇧 Витрина UK (uk.indeed.com • хаб EMEA)" },
+          { value: "germany", label: "🇩🇪 Витрина Germany (de.indeed.com • хаб EU)" },
+          { value: "netherlands", label: "🇳🇱 Витрина Netherlands (nl.indeed.com • хаб EU)" },
+          { value: "poland", label: "🇵🇱 Витрина Poland (pl.indeed.com • хаб CEE)" },
+          { value: "spain", label: "🇪🇸 Витрина Spain (es.indeed.com)" },
+          { value: "france", label: "🇫🇷 Витрина France (fr.indeed.com)" },
+          { value: "ireland", label: "🇮🇪 Витрина Ireland (ie.indeed.com • EU English)" },
+          { value: "switzerland", label: "🇨🇭 Витрина Switzerland (ch.indeed.com)" },
+          { value: "portugal", label: "🇵🇹 Витрина Portugal (pt.indeed.com)" },
+          { value: "czech republic", label: "🇨🇿 Витрина Czechia (cz.indeed.com)" },
+          { value: "united arab emirates", label: "🇦🇪 Витрина UAE (ae.indeed.com • MENA)" },
+          { value: "usa", label: "🇺🇸 Витрина USA (www.indeed.com • US/Global)" },
+          { value: "canada", label: "🇨🇦 Витрина Canada (ca.indeed.com)" }
         ]
       },
       glassdoor: {
-        label: "Страна домена (Glassdoor)",
-        remoteMechanism: "🏷️ Системный фильтр: remoteWorkType=1 (WORK_FROM_HOME) или локация «Remote»",
-        hint: "Glassdoor: поддерживает только перечисленные страны с собственным доменом + фильтр Work From Home",
+        label: "Региональный сервер-витрина (Glassdoor)",
+        remoteMechanism: "🌐 У Glassdoor отдельные домены по странам — включается фильтр Work From Home (100% Remote), а ИИ проверяет доступность из Грузии / EMEA / Worldwide",
+        hint: "Glassdoor: выберите домен-витрину (например UK или Germany), внутри которого ищутся Remote-вакансии",
         supportsEasyApply: true,
         options: [
-          { value: "uk", label: "🇬🇧 United Kingdom (glassdoor.co.uk)" },
-          { value: "germany", label: "🇩🇪 Germany (glassdoor.de)" },
-          { value: "netherlands", label: "🇳🇱 Netherlands (glassdoor.nl)" },
-          { value: "france", label: "🇫🇷 France (glassdoor.fr)" },
-          { value: "spain", label: "🇪🇸 Spain (glassdoor.es)" },
-          { value: "ireland", label: "🇮🇪 Ireland (glassdoor.ie)" },
-          { value: "switzerland", label: "🇨🇭 Switzerland (glassdoor.ch)" },
-          { value: "austria", label: "🇦🇹 Austria (glassdoor.at)" },
-          { value: "belgium", label: "🇧🇪 Belgium (glassdoor.be)" },
-          { value: "italy", label: "🇮🇹 Italy (glassdoor.it)" },
-          { value: "usa", label: "🇺🇸 United States (glassdoor.com)" },
-          { value: "canada", label: "🇨🇦 Canada (glassdoor.ca)" }
+          { value: "uk", label: "🇬🇧 Витрина UK (glassdoor.co.uk)" },
+          { value: "germany", label: "🇩🇪 Витрина Germany (glassdoor.de)" },
+          { value: "netherlands", label: "🇳🇱 Витрина Netherlands (glassdoor.nl)" },
+          { value: "france", label: "🇫🇷 Витрина France (glassdoor.fr)" },
+          { value: "spain", label: "🇪🇸 Витрина Spain (glassdoor.es)" },
+          { value: "ireland", label: "🇮🇪 Витрина Ireland (glassdoor.ie)" },
+          { value: "switzerland", label: "🇨🇭 Витрина Switzerland (glassdoor.ch)" },
+          { value: "austria", label: "🇦🇹 Витрина Austria (glassdoor.at)" },
+          { value: "belgium", label: "🇧🇪 Витрина Belgium (glassdoor.be)" },
+          { value: "italy", label: "🇮🇹 Витрина Italy (glassdoor.it)" },
+          { value: "usa", label: "🇺🇸 Витрина USA (glassdoor.com)" },
+          { value: "canada", label: "🇨🇦 Витрина Canada (glassdoor.ca)" }
         ]
       },
       hirify: {
@@ -662,6 +713,14 @@
         if (feedsWrap) feedsWrap.classList.add('hidden');
         if (searchTermsWrap) searchTermsWrap.classList.remove('hidden');
         if (locationWrap) locationWrap.classList.remove('hidden');
+      }
+
+      if (typeof cachedProviderChecks !== 'undefined' && cachedProviderChecks && cachedProviderChecks[provider]) {
+        const pInfo = cachedProviderChecks[provider];
+        const hoursEl = document.getElementById('hoursOld');
+        if (hoursEl && pInfo.recommended_hours_old) {
+          hoursEl.value = pInfo.recommended_hours_old;
+        }
       }
     }
 
@@ -1299,6 +1358,18 @@
       try {
         const res = await fetch(`/api/pipeline/status?since=${logCursor}`);
         const data = await res.json();
+        if (data.provider_checks && typeof renderProviderCheckBadges === 'function') {
+          cachedProviderChecks = data.provider_checks;
+          renderProviderCheckBadges();
+        }
+        const stopBtn = document.getElementById('btnStopPipeline');
+        if (stopBtn) {
+          if (data.running) {
+            stopBtn.classList.remove('hidden');
+          } else {
+            stopBtn.classList.add('hidden');
+          }
+        }
         const pre = document.getElementById('logOutput');
         if (data.logs && data.logs.length > 0) {
           pre.textContent += data.logs.join('\n') + '\n';
@@ -1330,6 +1401,16 @@
         }
       } catch (err) {
         console.error('Ошибка проверки статуса пайплайна:', err);
+      }
+    }
+
+    async function stopPipeline() {
+      try {
+        await fetch('/api/pipeline/stop', { method: 'POST' });
+        showToast(currentLang === 'ru' ? '⏹️ Остановка пайплайна запрошена...' : '⏹️ Stopping pipeline...');
+        pollPipelineStatus();
+      } catch (err) {
+        showToast('Ошибка остановки: ' + err.message);
       }
     }
 
@@ -2980,8 +3061,354 @@
       await executeTrackerSync(reportText);
     }
 
+    // --- Авто-обход всех систем (Макрос) и статусы времени последней проверки ---
+    let cachedProviderChecks = {};
+    let cachedMacroSettings = null;
+    let draftMacroSteps = [];
+
+    function formatHoursAgoBadge(info) {
+      if (!info || !info.last_checked_at || info.hours_since === null || info.hours_since === undefined) {
+        return {
+          shortText: currentLang === 'ru' ? '🕒 не пров.' : '🕒 never',
+          cls: 'text-[10px] px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-500 border border-slate-700/60 font-mono',
+          tooltip: currentLang === 'ru' ? 'Ещё не проверялся' : 'Never checked yet'
+        };
+      }
+      const hrs = Number(info.hours_since);
+      let rel = '';
+      if (hrs < 0.15) {
+        rel = currentLang === 'ru' ? 'только что' : 'just now';
+      } else if (hrs < 1) {
+        const mins = Math.max(1, Math.round(hrs * 60));
+        rel = currentLang === 'ru' ? `${mins}м назад` : `${mins}m ago`;
+      } else if (hrs < 48) {
+        rel = currentLang === 'ru' ? `${Math.round(hrs)}ч назад` : `${Math.round(hrs)}h ago`;
+      } else {
+        const days = Math.round(hrs / 24);
+        rel = currentLang === 'ru' ? `${days}д назад` : `${days}d ago`;
+      }
+
+      let cls = 'text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/70 font-mono';
+      if (hrs > 24) {
+        cls = 'text-[10px] px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/70 font-mono';
+      } else if (hrs > 8) {
+        cls = 'text-[10px] px-1.5 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/70 font-mono';
+      }
+
+      const tsClean = String(info.last_checked_at).replace('T', ' ').slice(0, 16) + ' UTC';
+      const recH = info.recommended_hours_old || 8;
+      const fetchedInfo = (info.fetched_count !== undefined && info.fetched_count !== null)
+        ? (currentLang === 'ru' ? ` • Собрано: ${info.fetched_count}, прошло фильтр: ${info.matched_count || 0}` : ` • Fetched: ${info.fetched_count}, matched: ${info.matched_count || 0}`)
+        : '';
+      const tooltip = currentLang === 'ru'
+        ? `Последняя проверка: ${tsClean} (${hrs}ч назад)${fetchedInfo} • Рекомендуемый Hours Old: ${recH}ч`
+        : `Last checked: ${tsClean} (${hrs}h ago)${fetchedInfo} • Recommended Hours Old: ${recH}h`;
+
+      return {
+        shortText: `🕒 ${rel}`,
+        cls,
+        tooltip
+      };
+    }
+
+    function renderProviderCheckBadges() {
+      ['linkedin', 'indeed', 'glassdoor', 'hirify'].forEach(site => {
+        const el = document.getElementById('lastCheck_' + site);
+        if (!el) return;
+        const info = cachedProviderChecks ? cachedProviderChecks[site] : null;
+        const fmt = formatHoursAgoBadge(info);
+        el.textContent = fmt.shortText;
+        el.className = fmt.cls;
+        el.title = fmt.tooltip;
+      });
+    }
+
+    async function loadMacroAndProvidersStatus() {
+      try {
+        const res = await fetch('/api/pipeline/providers-status');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.provider_checks) {
+          cachedProviderChecks = data.provider_checks;
+          renderProviderCheckBadges();
+          const curProvider = getSelectedProvider();
+          const pInfo = cachedProviderChecks[curProvider];
+          const hoursEl = document.getElementById('hoursOld');
+          if (hoursEl && pInfo && pInfo.recommended_hours_old) {
+            hoursEl.value = pInfo.recommended_hours_old;
+          }
+        }
+        if (data.macro_settings) {
+          cachedMacroSettings = data.macro_settings;
+        }
+      } catch (err) {
+        console.error('Failed to load providers status:', err);
+      }
+    }
+
+    async function startMacroPipeline(customSettings = null) {
+      const termsRaw = document.getElementById('searchTerms').value;
+      const searchTerms = termsRaw.split(',').map(s => s.trim()).filter(Boolean);
+
+      const logContainer = document.getElementById('logContainer');
+      if (logContainer) logContainer.classList.remove('hidden');
+      const logOutput = document.getElementById('logOutput');
+      if (logOutput) logOutput.textContent = '';
+      logCursor = 0;
+      updateLogButtonState(true);
+
+      await fetch('/api/pipeline/start-macro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          search_terms: searchTerms,
+          macro_settings: customSettings
+        })
+      });
+
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(pollPipelineStatus, 1500);
+      pollPipelineStatus();
+    }
+
+    const MACRO_SITE_LABELS = {
+      hirify: { title: 'Hirify (IT & Digital Agent API)', icon: '🌐', badge: 'Единая база • Worldwide Remote' },
+      linkedin: { title: 'LinkedIn', icon: '💼', badge: 'Единая база • Макрорегионы EMEA + Worldwide' },
+      indeed: { title: 'Indeed', icon: '🔍', badge: 'По региональным серверам-витринам • 100% Remote' },
+      glassdoor: { title: 'Glassdoor', icon: '🏢', badge: 'По региональным серверам-витринам • Work From Home' }
+    };
+
+    async function openMacroSettingsModal() {
+      const modal = document.getElementById('macroSettingsModal');
+      if (!modal) return;
+
+      try {
+        const res = await fetch('/api/pipeline/macro-settings');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.provider_checks) {
+            cachedProviderChecks = data.provider_checks;
+            renderProviderCheckBadges();
+          }
+          if (data.macro_settings) {
+            cachedMacroSettings = data.macro_settings;
+          }
+        }
+      } catch (_) {}
+
+      const ms = cachedMacroSettings || {
+        execution_mode: 'per_provider',
+        hours_mode: 'auto_from_last_run',
+        default_hours_old: 8,
+        max_auto_hours_old: 72,
+        results_wanted: 50,
+        llm_limit: 50,
+        steps: [
+          { site: 'hirify', enabled: true, hirify_mode: 'feeds', hirify_feed_id: 'all_active', locations: ['Worldwide'], countries: [] },
+          { site: 'linkedin', enabled: true, locations: ['EMEA', 'Worldwide'], countries: [], easy_apply: false },
+          { site: 'indeed', enabled: true, countries: ['uk', 'germany', 'netherlands'], locations: [], easy_apply: false },
+          { site: 'glassdoor', enabled: false, countries: ['uk', 'germany'], locations: [], easy_apply: false }
+        ]
+      };
+
+      const execRadio = document.querySelector(`input[name="macroExecMode"][value="${ms.execution_mode || 'per_provider'}"]`);
+      if (execRadio) execRadio.checked = true;
+
+      const hoursRadio = document.querySelector(`input[name="macroHoursMode"][value="${ms.hours_mode || 'auto_from_last_run'}"]`);
+      if (hoursRadio) hoursRadio.checked = true;
+
+      const defH = document.getElementById('macroDefaultHoursOld');
+      if (defH) defH.value = ms.default_hours_old || 8;
+      const maxH = document.getElementById('macroMaxAutoHoursOld');
+      if (maxH) maxH.value = ms.max_auto_hours_old || 72;
+      const rw = document.getElementById('macroResultsWanted');
+      if (rw) rw.value = ms.results_wanted || 50;
+      const ll = document.getElementById('macroLlmLimit');
+      if (ll) ll.value = ms.llm_limit || 50;
+
+      draftMacroSteps = JSON.parse(JSON.stringify(ms.steps || []));
+      renderMacroStepsInModal();
+
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeMacroSettingsModal() {
+      const modal = document.getElementById('macroSettingsModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+    }
+
+    function toggleMacroStepEnabled(idx) {
+      if (!draftMacroSteps[idx]) return;
+      draftMacroSteps[idx].enabled = !draftMacroSteps[idx].enabled;
+      renderMacroStepsInModal();
+    }
+
+    function setMacroHirifyMode(idx, mode) {
+      if (!draftMacroSteps[idx]) return;
+      draftMacroSteps[idx].hirify_mode = mode;
+      renderMacroStepsInModal();
+    }
+
+    function toggleMacroStepEasyApply(idx) {
+      if (!draftMacroSteps[idx]) return;
+      draftMacroSteps[idx].easy_apply = !draftMacroSteps[idx].easy_apply;
+      renderMacroStepsInModal();
+    }
+
+    function toggleMacroStepLocation(idx, val, isCountry) {
+      const step = draftMacroSteps[idx];
+      if (!step) return;
+      const field = isCountry ? 'countries' : 'locations';
+      const arr = Array.isArray(step[field]) ? step[field] : [];
+      const pos = arr.indexOf(val);
+      if (pos >= 0) {
+        if (arr.length > 1) {
+          arr.splice(pos, 1);
+        } else {
+          showToast(currentLang === 'ru' ? 'Оставьте хотя бы одну локацию для системы' : 'Keep at least one location selected');
+          return;
+        }
+      } else {
+        arr.push(val);
+      }
+      step[field] = arr;
+      renderMacroStepsInModal();
+    }
+
+    function renderMacroStepsInModal() {
+      const container = document.getElementById('macroStepsContainer');
+      if (!container) return;
+
+      container.innerHTML = draftMacroSteps.map((step, idx) => {
+        const site = step.site;
+        const meta = MACRO_SITE_LABELS[site] || { title: site, icon: '🌐', badge: '' };
+        const pCfg = PROVIDER_CONFIG[site] || PROVIDER_CONFIG.linkedin;
+        const checkInfo = cachedProviderChecks ? cachedProviderChecks[site] : null;
+        const fmt = formatHoursAgoBadge(checkInfo);
+        const recHours = (checkInfo && checkInfo.recommended_hours_old) ? checkInfo.recommended_hours_old : (document.getElementById('macroDefaultHoursOld')?.value || 8);
+
+        const isCountrySite = (site === 'indeed' || site === 'glassdoor');
+        const selectedValues = isCountrySite
+          ? (Array.isArray(step.countries) && step.countries.length ? step.countries : ['uk'])
+          : (Array.isArray(step.locations) && step.locations.length ? step.locations : ['EMEA']);
+
+        const showLocations = !(site === 'hirify' && (step.hirify_mode || 'feeds') === 'feeds');
+
+        const chipsHtml = (pCfg.options || []).map(opt => {
+          const isSel = selectedValues.includes(opt.value);
+          const chipCls = isSel
+            ? 'px-2.5 py-1 rounded-md text-xs font-semibold bg-violet-600 text-white border border-violet-400 shadow cursor-pointer transition'
+            : 'px-2.5 py-1 rounded-md text-xs font-medium bg-slate-900 text-slate-400 border border-slate-700 hover:border-slate-500 hover:text-slate-200 cursor-pointer transition';
+          return `<button type="button" onclick="toggleMacroStepLocation(${idx}, '${escapeJsArg(opt.value)}', ${isCountrySite})" class="${chipCls}">${escapeHtml(opt.label)}</button>`;
+        }).join('');
+
+        return `
+          <div class="p-3.5 rounded-xl border transition ${step.enabled ? 'bg-slate-900/95 border-violet-700/60' : 'bg-slate-950/60 border-slate-800 opacity-60'} space-y-2.5">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex flex-wrap items-center gap-2.5">
+                <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" ${step.enabled ? 'checked' : ''} onchange="toggleMacroStepEnabled(${idx})"
+                    class="rounded bg-slate-950 border-slate-600 text-violet-600 focus:ring-0 w-4 h-4 cursor-pointer" />
+                  <span class="text-sm font-bold text-white">${meta.icon} ${escapeHtml(meta.title)}</span>
+                </label>
+                <span class="text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">${escapeHtml(meta.badge)}</span>
+                <span class="${fmt.cls}" title="${escapeHtml(fmt.tooltip)}">${escapeHtml(fmt.shortText)}</span>
+                <span class="text-[11px] text-violet-300 font-mono">→ авто: <strong>${recHours}ч</strong></span>
+              </div>
+
+              <div class="flex items-center gap-2">
+                ${pCfg.supportsEasyApply ? `
+                  <label class="inline-flex items-center gap-1.5 text-xs text-slate-300 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-700 cursor-pointer select-none">
+                    <input type="checkbox" ${step.easy_apply ? 'checked' : ''} onchange="toggleMacroStepEasyApply(${idx})" class="rounded bg-slate-900 border-slate-600 text-indigo-600" />
+                    <span>⚡ Easy Apply</span>
+                  </label>
+                ` : ''}
+              </div>
+            </div>
+
+            ${site === 'hirify' ? `
+              <div class="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                <span class="text-slate-400">Режим Hirify:</span>
+                <button type="button" onclick="setMacroHirifyMode(${idx}, 'feeds')"
+                  class="px-2.5 py-1 rounded-md text-xs font-medium border transition ${(step.hirify_mode || 'feeds') === 'feeds' ? 'bg-indigo-600 text-white border-indigo-400' : 'bg-slate-950 text-slate-400 border-slate-700'}">
+                  🎯 Все активные фильтры (Feeds)
+                </button>
+                <button type="button" onclick="setMacroHirifyMode(${idx}, 'custom')"
+                  class="px-2.5 py-1 rounded-md text-xs font-medium border transition ${step.hirify_mode === 'custom' ? 'bg-indigo-600 text-white border-indigo-400' : 'bg-slate-950 text-slate-400 border-slate-700'}">
+                  🔍 По строке поиска и локациям
+                </button>
+              </div>
+            ` : ''}
+
+            ${showLocations ? `
+              <div class="space-y-1.5 pt-1">
+                <div class="text-[11px] text-slate-300">
+                  ${isCountrySite
+                    ? '🌐 <strong>Региональные серверы-витрины</strong> <span class="text-slate-400">(у этой площадки нет единого мирового сайта — скрипт собирает 100% Remote вакансии с выбранных доменов-хабов, а наш фильтр и ИИ оставляют только подходящие для удалёнки из Грузии / EMEA / Worldwide):</span>'
+                    : '🌍 <strong>Охват поиска</strong> <span class="text-slate-400">(достаточно отметить <code>Worldwide</code> и <code>EMEA</code>, чтобы захватить всю глобальную удалёнку):</span>'}
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  ${chipsHtml}
+                </div>
+              </div>
+            ` : `
+              <div class="text-[11px] text-emerald-300/90 pt-0.5">
+                🌍 В режиме <strong>Feeds</strong> Hirify сразу ищет глобальную удалёнку по всем вашим сохранённым фильтрам (дополнительные локации выбирать не нужно).
+              </div>
+            `}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function collectMacroSettingsFromModal() {
+      const execRadio = document.querySelector('input[name="macroExecMode"]:checked');
+      const hoursRadio = document.querySelector('input[name="macroHoursMode"]:checked');
+      return {
+        execution_mode: execRadio ? execRadio.value : 'per_provider',
+        hours_mode: hoursRadio ? hoursRadio.value : 'auto_from_last_run',
+        default_hours_old: parseInt(document.getElementById('macroDefaultHoursOld')?.value || '8', 10),
+        max_auto_hours_old: parseInt(document.getElementById('macroMaxAutoHoursOld')?.value || '72', 10),
+        results_wanted: parseInt(document.getElementById('macroResultsWanted')?.value || '50', 10),
+        llm_limit: parseInt(document.getElementById('macroLlmLimit')?.value || '50', 10),
+        steps: draftMacroSteps
+      };
+    }
+
+    async function saveMacroSettingsFromModal(andRun = false) {
+      const payload = collectMacroSettingsFromModal();
+      try {
+        const res = await fetch('/api/pipeline/macro-settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        if (data.macro_settings) cachedMacroSettings = data.macro_settings;
+        if (data.provider_checks) {
+          cachedProviderChecks = data.provider_checks;
+          renderProviderCheckBadges();
+        }
+        closeMacroSettingsModal();
+        if (andRun) {
+          showToast(currentLang === 'ru' ? '⚡ Настройки сохранены, запускаем авто-обход систем...' : '⚡ Settings saved, starting macro pipeline...');
+          await startMacroPipeline(cachedMacroSettings);
+        } else {
+          showToast(currentLang === 'ru' ? '💾 Настройки авто-обхода сохранены!' : '💾 Macro settings saved!');
+        }
+      } catch (err) {
+        showToast('Ошибка сохранения настроек макроса: ' + err.message);
+      }
+    }
+
     applyLanguage();
     onProviderChange();
+    loadMacroAndProvidersStatus();
     loadJobs();
     loadSkillsMatrix();
     pollPipelineStatus();
