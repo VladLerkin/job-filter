@@ -48,7 +48,7 @@ def normalize_indeed_country(country_indeed: str | None, location: str | None) -
     return INDEED_COUNTRY_ALIASES.get(raw, raw)
 
 
-SUPPORTED_SITES = ("linkedin", "indeed", "glassdoor", "hirify")
+SUPPORTED_SITES = ("linkedin", "indeed", "glassdoor", "hirify", "upwork")
 
 
 def scrape_site(
@@ -64,12 +64,23 @@ def scrape_site(
     hirify_feed_id: int | str | None = None,
     processed_ids: set[str] | None = None,
 ) -> pd.DataFrame:
-    """Вызывает JobSpy или специализированный адаптер для проверенных провайдеров (LinkedIn, Indeed, Glassdoor, Hirify)."""
+    """Вызывает JobSpy или специализированный адаптер для проверенных провайдеров (LinkedIn, Indeed, Glassdoor, Hirify, Upwork)."""
     site = (site or "linkedin").strip().lower()
     if site not in SUPPORTED_SITES:
         raise ValueError(f"Неподдерживаемый или заблокированный провайдер '{site}'. Доступны только: {', '.join(SUPPORTED_SITES)}")
 
     clean_term = re.sub(r"\bremote\b", "", term, flags=re.IGNORECASE).strip() or term
+
+    if site == "upwork":
+        from job_filter.scraping.upwork_adapter import scrape_upwork
+
+        return scrape_upwork(
+            term=term,
+            location=location,
+            results_wanted=results_wanted,
+            hours_old=hours_old,
+            processed_ids=processed_ids,
+        )
 
     if site == "hirify":
         from job_filter.scraping.hirify_adapter import (

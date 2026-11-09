@@ -85,7 +85,7 @@ class AddBlacklistRequest(BaseModel):
 
 
 class MacroStepConfig(BaseModel):
-    site: Literal["hirify", "linkedin", "indeed", "glassdoor"]
+    site: Literal["hirify", "linkedin", "indeed", "glassdoor", "upwork"]
     enabled: bool = True
     locations: list[str] = Field(default_factory=list)
     countries: list[str] = Field(default_factory=list)

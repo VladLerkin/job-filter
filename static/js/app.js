@@ -574,6 +574,19 @@
           { value: "Germany", label: "🇩🇪 Germany" },
           { value: "Poland", label: "🇵🇱 Poland" }
         ]
+      },
+      upwork: {
+        label: "Охват / Рынок заказчика (Upwork • Apify)",
+        remoteMechanism: "🟢 Apify Actor API • Глобальный рынок фриланс-контрактов (Worldwide Remote)",
+        hint: "Upwork через Apify: собирает B2B/фриланс-заказы со ставкой, бюджетом, историей трат и страной клиента (требуется APIFY_API_KEY в .env)",
+        supportsEasyApply: false,
+        options: [
+          { value: "Worldwide", label: "🌐 Worldwide (Весь мир — глобальный пул Upwork)" },
+          { value: "EMEA", label: "🌍 EMEA (Заказчики и контракты в Европе / MENA)" },
+          { value: "Europe", label: "🇪🇺 Europe (Европейские заказчики)" },
+          { value: "United States", label: "🇺🇸 United States (Заказчики из США на Worldwide)" },
+          { value: "United Kingdom", label: "🇬🇧 United Kingdom (Заказчики из UK)" }
+        ]
       }
     };
 
@@ -581,7 +594,8 @@
       linkedin: "🏠 Remote / WFH",
       indeed: "🏠 Remote (DSQF7 • No Hybrid)",
       glassdoor: "🏠 Work From Home",
-      hirify: "🌐 Agent API • Remote"
+      hirify: "🌐 Agent API • Remote",
+      upwork: "🟢 Upwork • Worldwide Contract"
     };
 
     function getSelectedProvider() {
@@ -880,14 +894,14 @@
 
         // Защищенные поисковые агрегаторы и капчи (никогда не считаются ATS)
         const IGNORED_DOMAINS = [
-          'linkedin.com', 'hirify.me', 'indeed.com', 'glassdoor.com',
+          'linkedin.com', 'hirify.me', 'indeed.com', 'glassdoor.com', 'upwork.com',
           'hcaptcha.com', 'recaptcha.net', 'google.com', 'gstatic.com', 'cloudflare.com',
           'challenges.cloudflare.com', 'arkoselabs.com', 'geetest.com', 'doubleclick.net', 'googletagmanager.com'
         ];
         if (IGNORED_DOMAINS.some(d => host === d || host.endsWith('.' + d))) {
           return '';
         }
-        if (/(^|\.)(linkedin|hirify|indeed|glassdoor)\.[a-z.]+$/.test(host)) {
+        if (/(^|\.)(linkedin|hirify|indeed|glassdoor|upwork)\.[a-z.]+$/.test(host)) {
           return '';
         }
 
@@ -950,8 +964,8 @@
     async function confirmBadBoardModal() {
       const domain_or_url = document.getElementById('modalBadDomainInput').value.trim();
       const rawDom = (domain_or_url || '').toLowerCase();
-      if (domain_or_url && (/(^|\.)(linkedin|hirify|indeed|glassdoor)\.[a-z.]+$/.test(rawDom) || /hcaptcha\.com|recaptcha\.net/.test(rawDom))) {
-        showToast('Поисковые агрегаторы (LinkedIn, Hirify, Indeed, Glassdoor) нельзя блокировать. Заблокируйте только компанию!');
+      if (domain_or_url && (/(^|\.)(linkedin|hirify|indeed|glassdoor|upwork)\.[a-z.]+$/.test(rawDom) || /hcaptcha\.com|recaptcha\.net/.test(rawDom))) {
+        showToast('Поисковые агрегаторы (LinkedIn, Hirify, Upwork, Indeed, Glassdoor) нельзя блокировать. Заблокируйте только компанию!');
         return;
       }
       const reason = document.getElementById('modalBadReasonInput').value.trim() || 'Невозможно заполнить форму (в чёрном списке)';
@@ -1025,8 +1039,8 @@
         return;
       }
       const rawDom = domain_or_url.toLowerCase();
-      if (/(^|\.)(linkedin|hirify|indeed|glassdoor)\.[a-z.]+$/.test(rawDom) || /hcaptcha\.com|recaptcha\.net/.test(rawDom)) {
-        showToast('Поисковые агрегаторы (LinkedIn, Hirify, Indeed, Glassdoor) нельзя заносить в чёрный список!');
+      if (/(^|\.)(linkedin|hirify|indeed|glassdoor|upwork)\.[a-z.]+$/.test(rawDom) || /hcaptcha\.com|recaptcha\.net/.test(rawDom)) {
+        showToast('Поисковые агрегаторы (LinkedIn, Hirify, Upwork, Indeed, Glassdoor) нельзя заносить в чёрный список!');
         return;
       }
       await fetch('/api/blacklist', {
@@ -3112,7 +3126,7 @@
     }
 
     function renderProviderCheckBadges() {
-      ['linkedin', 'indeed', 'glassdoor', 'hirify'].forEach(site => {
+      ['linkedin', 'indeed', 'glassdoor', 'hirify', 'upwork'].forEach(site => {
         const el = document.getElementById('lastCheck_' + site);
         if (!el) return;
         const info = cachedProviderChecks ? cachedProviderChecks[site] : null;
@@ -3173,6 +3187,7 @@
 
     const MACRO_SITE_LABELS = {
       hirify: { title: 'Hirify (IT & Digital Agent API)', icon: '🌐', badge: 'Единая база • Worldwide Remote' },
+      upwork: { title: 'Upwork (Apify Actor API)', icon: '🟢', badge: 'Глобальный фриланс и контракты • Worldwide' },
       linkedin: { title: 'LinkedIn', icon: '💼', badge: 'Единая база • Макрорегионы EMEA + Worldwide' },
       indeed: { title: 'Indeed', icon: '🔍', badge: 'По региональным серверам-витринам • 100% Remote' },
       glassdoor: { title: 'Glassdoor', icon: '🏢', badge: 'По региональным серверам-витринам • Work From Home' }
@@ -3205,6 +3220,7 @@
         llm_limit: 50,
         steps: [
           { site: 'hirify', enabled: true, hirify_mode: 'feeds', hirify_feed_id: 'all_active', locations: ['Worldwide'], countries: [] },
+          { site: 'upwork', enabled: true, locations: ['Worldwide'], countries: [], easy_apply: false },
           { site: 'linkedin', enabled: true, locations: ['EMEA', 'Worldwide'], countries: [], easy_apply: false },
           { site: 'indeed', enabled: true, countries: ['uk', 'germany', 'netherlands'], locations: [], easy_apply: false },
           { site: 'glassdoor', enabled: false, countries: ['uk', 'germany'], locations: [], easy_apply: false }

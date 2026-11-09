@@ -30,7 +30,7 @@ def _load_env_file(path: Path) -> None:
 
 _load_env_file(PROJECT_ROOT / ".env")
 
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.5.0"
 DB_PATH = Path(os.getenv("JOB_FILTER_DB", PROJECT_ROOT / "jobs.db"))
 STATIC_DIR = PROJECT_ROOT / "static"
 
@@ -44,6 +44,12 @@ LLM_ENRICH_WORKERS = max(1, int(os.getenv("JOB_FILTER_LLM_WORKERS", "2")))
 # --- Hirify Agent API ---
 HIRIFY_API_KEY = os.getenv("HIRIFY_API_KEY", "")
 HIRIFY_API_URL = os.getenv("HIRIFY_API_URL", "https://api.hirify.me/api/agent")
+
+# --- Apify (Upwork Job Scraper Actors) ---
+APIFY_API_KEY = os.getenv("APIFY_API_KEY") or os.getenv("APIFY_TOKEN") or ""
+APIFY_API_URL = os.getenv("APIFY_API_URL", "https://api.apify.com/v2")
+APIFY_UPWORK_ACTOR_ID = os.getenv("APIFY_UPWORK_ACTOR_ID", "blackfalcondata~upwork-scraper")
+UPWORK_PAYMENT_VERIFIED_ONLY = os.getenv("UPWORK_PAYMENT_VERIFIED_ONLY", "false").strip().lower() in ("1", "true", "yes")
 
 # --- Пороги скоринга ---
 TOP_SCORE_THRESHOLD = 70

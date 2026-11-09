@@ -1,5 +1,26 @@
 # Release Notes
 
+## v1.5.0
+**Release Date:** November 9, 2026
+
+### Features & Integrations
+- **Upwork Scraping Integration via Apify Actors API (`upwork_adapter.py`):**
+  - Added native support for Upwork freelance and B2B contracts as a first-class job source in `SUPPORTED_SITES`.
+  - Implemented `ApifyUpworkClient` calling `/v2/acts/{actorId}/run-sync-get-dataset-items` with configured default actor `blackfalcondata~upwork-scraper` and automated fallback across top pay-per-event/free-tier actors (`hyperbach~upwork-scraper-ai`, `flash_mage~upwork`, `deltaspider~upwork-job-scraper`, `devcake~upwork-jobs-scraper`).
+  - Extracted rich contract metadata into card bodies and LLM context: hourly/fixed budget brackets (`hourlyBudgetMin/Max`, `budgetAmount`), client country, verification status, total spend (`$45k+ spent`), required skill tags, contract workload, and proposal counts.
+  - Added targeted regional and global filtering (`Worldwide`, `EMEA`, `Europe`, `United States`, `United Kingdom`).
+  - Added `upwork.com` to protected search aggregator domains in `job_filter/utils/urls.py` to prevent accidental ATS blacklisting.
+
+### UI & Macro Automation
+- **Upwork Dashboard Radio & Last-Check Tracker:**
+  - Added Upwork source toggle with live last-check timestamp badge (`🕒`) and remote contract indicators.
+  - Included Upwork as a default enabled step (`Worldwide`) in the multi-system Macro Pipeline (`⚡ Авто-обход`).
+
+### Testing & Maintenance
+- **Comprehensive Upwork Adapter & Pipeline Tests:**
+  - Added unit and mock tests in `tests/test_upwork_adapter.py` covering actor input builders, relative/ISO date parsing, salary formatting, live Apify dispatch, and error handling.
+  - Updated API schema validations and aggregator domain checks (75 tests passing).
+
 ## v1.4.0
 **Release Date:** November 9, 2026
 

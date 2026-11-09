@@ -490,7 +490,8 @@ def fetch_and_filter_jobs(
                     if pd.notna(min_amt) and pd.notna(max_amt) and (min_amt or max_amt):
                         salary = f"{curr}{min_amt:,.0f} - {curr}{max_amt:,.0f}/{interval}"
                     else:
-                        salary = None
+                        raw_sal = row.get("salary")
+                        salary = str(raw_sal) if pd.notna(raw_sal) and raw_sal else None
 
                 reject_reason = None
                 if seniority and seniority.strip().lower() in config.EXCLUDED_SENIORITIES:
@@ -536,7 +537,7 @@ def fetch_and_filter_jobs(
     # Фиксируем время успешной проверки источника, если пайплайн не был прерван
     if not (cancel_event and cancel_event.is_set()):
         total_fetched_cards = sum(len(f) for f in frames) if frames else 0
-        loc_display = "feeds" if (site == "hirify" and hirify_mode == "feeds") else (location if site in ("linkedin", "hirify") else country_indeed)
+        loc_display = "feeds" if (site == "hirify" and hirify_mode == "feeds") else (location if site in ("linkedin", "hirify", "upwork") else country_indeed)
         record_provider_check(
             conn,
             site=site,
@@ -567,7 +568,7 @@ def fetch_and_filter_jobs(
 
 PROVIDER_CHECKS_META_KEY = "provider_check_timestamps_v1"
 MACRO_SETTINGS_META_KEY = "macro_pipeline_settings_v1"
-ALL_PROVIDERS = ("linkedin", "hirify", "indeed", "glassdoor")
+ALL_PROVIDERS = ("linkedin", "hirify", "upwork", "indeed", "glassdoor")
 
 DEFAULT_MACRO_SETTINGS: dict[str, Any] = {
     "execution_mode": "per_provider",  # "per_provider" | "batch_all_then_llm"
@@ -582,6 +583,12 @@ DEFAULT_MACRO_SETTINGS: dict[str, Any] = {
             "enabled": True,
             "hirify_mode": "feeds",
             "hirify_feed_id": "all_active",
+            "locations": ["Worldwide"],
+            "easy_apply": False,
+        },
+        {
+            "site": "upwork",
+            "enabled": True,
             "locations": ["Worldwide"],
             "easy_apply": False,
         },

@@ -482,7 +482,7 @@ def test_macro_settings_and_provider_checks_and_cross_board_dedup(client, monkey
     assert "provider_checks" in data_get
     assert data_get["macro_settings"]["execution_mode"] == "per_provider"
     assert data_get["macro_settings"]["hours_mode"] == "auto_from_last_run"
-    assert set(data_get["provider_checks"].keys()) == {"linkedin", "indeed", "glassdoor", "hirify"}
+    assert set(data_get["provider_checks"].keys()) == {"linkedin", "indeed", "glassdoor", "hirify", "upwork"}
 
     # 2. Save updated macro settings
     new_settings = {
@@ -523,7 +523,7 @@ def test_macro_settings_and_provider_checks_and_cross_board_dedup(client, monkey
     assert saved["execution_mode"] == "batch_all_then_llm"
     assert saved["hours_mode"] == "fixed"
     assert saved["default_hours_old"] == 12
-    assert len(saved["steps"]) == 4
+    assert len(saved["steps"]) == 5
     assert len([s for s in saved["steps"] if s["enabled"]]) == 3
 
     # 3. Record provider check and verify status endpoint reflects it

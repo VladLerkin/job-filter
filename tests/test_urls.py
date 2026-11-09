@@ -63,6 +63,8 @@ def test_is_search_aggregator_domain():
     assert is_search_aggregator_domain("https://www.glassdoor.com/job-listing/123") is True
     assert is_search_aggregator_domain("glassdoor.com") is True
     assert is_search_aggregator_domain("glassdoor.co.uk") is True
+    assert is_search_aggregator_domain("https://www.upwork.com/jobs/~01a2b3c4") is True
+    assert is_search_aggregator_domain("upwork.com") is True
     assert is_search_aggregator_domain("jobs.lever.co") is False
     assert is_search_aggregator_domain("boards.greenhouse.io") is False
     assert is_search_aggregator_domain("cims.com") is False
