@@ -41,6 +41,8 @@ def get_settings(conn: sqlite3.Connection) -> dict[str, Any]:
         geo_prefs = dict(DEFAULT_GEO_PREFERENCES)
     else:
         geo_prefs.setdefault("reject_business_travel", True)
+        geo_prefs.setdefault("citizenships", ["Russia"])
+        geo_prefs.setdefault("allow_ru_remote", True)
 
     return {
         "profile_text": p_text,

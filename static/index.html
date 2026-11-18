@@ -18,7 +18,7 @@
             agy CLI + Hirify Skill Scorer
           </span>
           <span id="appVersionBadge" class="text-xs font-mono font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-            v1.5.2
+            v1.6.0
           </span>
         </h1>
         <p class="text-xs text-slate-400 mt-0.5" data-i18n="app_subtitle">
@@ -347,6 +347,16 @@
 
             <div>
               <label class="block text-xs font-semibold text-slate-300 mb-1">
+                🛂 Гражданство (Citizenship):
+              </label>
+              <input id="geoCitizenships" type="text"
+                class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
+                placeholder="Russia" />
+              <p class="text-[11px] text-slate-400 mt-1">Через запятую: ваше гражданство (позволяет отбирать вакансии с оформлением по ТК / ИП РФ)</p>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">
                 ✈️ Отношение к релокации (Relocation Policy):
               </label>
               <select id="geoRelocationPolicy"
@@ -358,10 +368,14 @@
               <p class="text-[11px] text-slate-400 mt-1">Определяет: отсекать ли вакансии в других странах или помечать как Tier 2B Relocation</p>
             </div>
 
-            <div class="space-y-2 pt-2">
+            <div class="space-y-2 pt-2 md:col-span-2">
               <label class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-slate-200">
                 <input id="geoAllowWorldwide" type="checkbox" checked class="rounded bg-slate-800 border-slate-600 text-indigo-600 focus:ring-indigo-500" />
                 <span class="font-medium">Скорить высоко глобальную удалёнку (Worldwide / Anywhere / B2B)</span>
+              </label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-slate-200">
+                <input id="geoAllowRuRemote" type="checkbox" checked class="rounded bg-slate-800 border-slate-600 text-indigo-600 focus:ring-indigo-500" />
+                <span class="font-medium">Разрешать удалённую работу на РФ из Грузии (по ТК РФ или ИП РФ, если разрешена удалёнка вне РФ)</span>
               </label>
               <label class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-slate-200">
                 <input id="geoRejectSingleCountry" type="checkbox" checked class="rounded bg-slate-800 border-slate-600 text-indigo-600 focus:ring-indigo-500" />

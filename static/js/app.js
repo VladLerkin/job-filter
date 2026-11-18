@@ -1089,6 +1089,12 @@
         const curLocEl = document.getElementById('geoCurrentLocation');
         if (curLocEl) curLocEl.value = gp.current_location || '';
 
+        const citEl = document.getElementById('geoCitizenships');
+        if (citEl) {
+          const cits = Array.isArray(gp.citizenships) ? gp.citizenships.join(', ') : (gp.citizenships || 'Russia');
+          citEl.value = cits;
+        }
+
         const macroEl = document.getElementById('geoMacroRegions');
         if (macroEl) {
           const macros = Array.isArray(gp.allowed_macro_regions) ? gp.allowed_macro_regions.join(', ') : (gp.allowed_macro_regions || '');
@@ -1100,6 +1106,9 @@
 
         const wwEl = document.getElementById('geoAllowWorldwide');
         if (wwEl) wwEl.checked = gp.allow_worldwide_remote !== false;
+
+        const ruRemEl = document.getElementById('geoAllowRuRemote');
+        if (ruRemEl) ruRemEl.checked = gp.allow_ru_remote !== false;
 
         const rejEl = document.getElementById('geoRejectSingleCountry');
         if (rejEl) rejEl.checked = gp.reject_unsupported_single_country !== false;
@@ -1119,8 +1128,13 @@
       const rawMacros = document.getElementById('geoMacroRegions')?.value || '';
       const allowed_macro_regions = rawMacros.split(',').map(s => s.trim()).filter(Boolean);
 
+      const rawCits = document.getElementById('geoCitizenships')?.value || '';
+      const citizenships = rawCits.split(',').map(s => s.trim()).filter(Boolean);
+
       const geo_preferences = {
         current_location: document.getElementById('geoCurrentLocation')?.value?.trim() || 'Georgia, Tbilisi (UTC+4)',
+        citizenships: citizenships.length > 0 ? citizenships : ['Russia'],
+        allow_ru_remote: document.getElementById('geoAllowRuRemote')?.checked !== false,
         allowed_macro_regions: allowed_macro_regions.length > 0 ? allowed_macro_regions : ['Georgia', 'Caucasus', 'Eastern Europe', 'CEE', 'EMEA'],
         relocation_policy: document.getElementById('geoRelocationPolicy')?.value || 'with_sponsorship_only',
         allow_worldwide_remote: document.getElementById('geoAllowWorldwide')?.checked !== false,
@@ -1144,11 +1158,16 @@
       const rawMacros = document.getElementById('geoMacroRegions')?.value || '';
       const allowed_macro_regions = rawMacros.split(',').map(s => s.trim()).filter(Boolean);
 
+      const rawCits = document.getElementById('geoCitizenships')?.value || '';
+      const citizenships = rawCits.split(',').map(s => s.trim()).filter(Boolean);
+
       const payload = {
         profile: document.getElementById('profileTextInput').value,
         cv: document.getElementById('cvTextInput').value,
         geo_preferences: {
           current_location: document.getElementById('geoCurrentLocation')?.value?.trim() || '',
+          citizenships: citizenships.length > 0 ? citizenships : ['Russia'],
+          allow_ru_remote: document.getElementById('geoAllowRuRemote')?.checked !== false,
           allowed_macro_regions: allowed_macro_regions,
           relocation_policy: document.getElementById('geoRelocationPolicy')?.value || 'with_sponsorship_only',
           allow_worldwide_remote: document.getElementById('geoAllowWorldwide')?.checked !== false,

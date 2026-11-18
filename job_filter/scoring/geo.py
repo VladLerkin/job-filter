@@ -71,6 +71,9 @@ def classify_geo_tier(
     """
     prefs = geo_preferences or DEFAULT_GEO_PREFERENCES
     current_loc = str(prefs.get("current_location", "Georgia")).lower()
+    citizenships = [str(c).strip().lower() for c in (prefs.get("citizenships") or []) if str(c).strip()]
+    has_ru_citizenship = any(c in ("russia", "ru", "россия", "рф") for c in citizenships)
+    allow_ru_remote = prefs.get("allow_ru_remote", True) if has_ru_citizenship else False
     macro_regions = [str(r).strip().lower() for r in (prefs.get("allowed_macro_regions") or []) if str(r).strip()]
     allow_worldwide = prefs.get("allow_worldwide_remote", True)
     relo_policy = str(prefs.get("relocation_policy", "with_sponsorship_only"))
@@ -133,18 +136,39 @@ def classify_geo_tier(
         if re.search(pat, full_lower):
             return False, f"Rejected: {label}", f"contract_lock:{label}"
 
-    # 2. Проверка требования обязательного гражданства РФ или оформления по ТК РФ
-    ru_lock_patterns = [
-        r"оформление по тк рф",
-        r"только рф",
-        r"гражданство рф",
-        r"на территории рф",
+    # 2. Проверка требования обязательного гражданства РФ или оформления по ТК РФ / ИП РФ
+    # Если у кандидата есть гражданство РФ и разрешена удалёнка на РФ:
+    # - Требования "гражданство рф" и "тк рф / ип" разрешены, ЕСЛИ нет строгого лока "нахождение только в РФ"
+    ru_physical_residency_patterns = [
+        r"только\s+(?:находясь\s+)?на\s+территории\s+рф",
+        r"строго\s+на\s+территории\s+рф",
+        r"проживание\s+(?:строго\s+)?в\s+рф",
+        r"удаленка\s+только\s+(?:по|в|из)\s+рф",
+        r"только\s+из\s+рф",
+        r"находиться\s+в\s+рф",
     ]
-    for pat in ru_lock_patterns:
-        if re.search(pat, full_lower):
+    is_ru_physically_locked = any(re.search(pat, full_lower) for pat in ru_physical_residency_patterns)
+
+    if allow_ru_remote:
+        # Кандидат гражданин РФ и может работать удалённо из Грузии на компании РФ
+        if is_ru_physically_locked:
+            return False, "Rejected: Physical residency in Russia required", "ru_physical_residency_lock"
+        # Если вакансия требует физического офиса/гибрида в РФ без релокации:
+        if jl_clean in ("russia", "russia (russia)", "moscow", "saint petersburg", "санкт-петербург", "москва") and not can_consider_relocation:
+            if is_remote in (False, 0, "0"):
+                return False, "Rejected: On-site in Russia required", "onsite_abroad_lock:Russia"
+    else:
+        ru_lock_patterns = [
+            r"оформление по тк рф",
+            r"только рф",
+            r"гражданство рф",
+            r"на территории рф",
+        ]
+        for pat in ru_lock_patterns:
+            if re.search(pat, full_lower):
+                return False, "Rejected: Russia-only", "ru_only_lock"
+        if jl_clean in ("russia", "russia (russia)") and not can_consider_relocation:
             return False, "Rejected: Russia-only", "ru_only_lock"
-    if jl_clean in ("russia", "russia (russia)") and not can_consider_relocation:
-        return False, "Rejected: Russia-only", "ru_only_lock"
 
     # 2b. Проверка обязательных регулярных командировок / выездов на заводы, к клиентам или в офис
     if reject_business_travel:
@@ -357,6 +381,13 @@ def classify_geo_tier(
             detected_foreign_countries[canon] = canon
 
     if detected_foreign_countries and not is_local_match and not is_true_global:
+        # Если обнаружена только Россия, и у кандидата есть гражданство РФ и разрешена удалёнка на РФ
+        if allow_ru_remote and set(detected_foreign_countries.values()) == {"Russia"}:
+            if is_ru_physically_locked:
+                return False, "Rejected: Physical residency in Russia required", "ru_physical_residency_lock"
+            # Разрешаем как удалёнку со страной гражданства
+            return True, "Tier 2A: Remote Russia (Citizenship / TK / IP)", None
+
         unique_countries = sorted(set(detected_foreign_countries.values()))
         if len(unique_countries) == 1:
             c_name = unique_countries[0]
@@ -373,6 +404,7 @@ def classify_geo_tier(
                 return False, f"Rejected: Restricted countries ({c_names})", f"country_pool_lock:{c_names}"
 
     # 8. Проверка прямых вердиктов LLM о жестком страновом или региональном ограничении
+    # Если вердикт LLM касается недоступности удалёнки из Грузии, но для РФ сделано исключение по гражданству
     llm_rejection_patterns = [
         r"(?:строго\s+)?ограничена\s+(?:ремоутом|удаленкой|проживанием|базированием|локацией)\s+(?:из|в)\s+",
         r"недоступна\s+для\s+удаленки\s+из\s+грузии",
@@ -385,6 +417,11 @@ def classify_geo_tier(
         for pat in llm_rejection_patterns
     )
     if (has_llm_lock or getattr(enrichment, "candidate_geo_eligibility", "unclear") == "no") and not is_local_match and not is_true_global:
+        # Если LLM отклонила роль из-за РФ/ТК РФ, но у кандидата есть гражданство РФ и разрешена удалёнка на РФ
+        is_ru_context = any(w in full_lower for w in ("росси", "russia", "тк рф", "москв", "moscow", "рф"))
+        if allow_ru_remote and is_ru_context and not is_ru_physically_locked:
+            return True, "Tier 2A: Remote Russia (Citizenship / TK / IP)", None
+
         if can_consider_relocation:
             return True, "Tier 2B: Relocation Opportunity (Residency)", None
         if reject_single_country:

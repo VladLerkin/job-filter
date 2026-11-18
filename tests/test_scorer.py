@@ -297,6 +297,8 @@ def test_classify_geo_tier_worldwide_with_optional_hybrid_passes():
     assert reason is None
 
 
+
+
 def test_classify_geo_tier_emea_full_remote_or_hybrid_optional_passes():
     enr = JobEnrichment(
         location_restrictions=["EMEA"],
@@ -356,6 +358,61 @@ def test_classify_geo_tier_business_travel_allowed_when_disabled():
     assert passed is True
     assert "Tier 1B" in tier
     assert reason is None
+
+
+def test_classify_geo_tier_russia_remote_with_citizenship_allowed():
+    # Вакансия с оформлением по ТК РФ / ИП РФ, но удалёнка из любой точки мира / Грузии
+    enr = JobEnrichment(
+        location_restrictions=["Russia", "Worldwide"],
+        remote_policy_detail="Удаленная работа из любой локации (Грузия/СНГ/РФ), оформление по ТК РФ или ИП",
+        work_authorization=WorkAuthorization(summary="Оформление по ТК РФ или ИП, гражданство РФ"),
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Senior Java Engineer",
+        "Требуется гражданство РФ, оформление по ТК РФ. Удаленная работа возможна из любой точки мира.",
+        enr,
+        geo_preferences={
+            "current_location": "Georgia, Tbilisi",
+            "citizenships": ["Russia"],
+            "allow_ru_remote": True,
+            "allowed_macro_regions": ["Georgia", "EMEA"],
+            "allow_worldwide_remote": True,
+            "reject_unsupported_single_country": True,
+        },
+        job_location="Russia",
+        is_remote=1,
+    )
+    assert passed is True
+    assert "Remote Russia" in tier or "Tier 2A" in tier or "Tier 1B" in tier
+    assert reason is None
+
+
+def test_classify_geo_tier_russia_strict_physical_residency_rejected():
+    # Вакансия строго требует нахождения только на территории РФ
+    enr = JobEnrichment(
+        location_restrictions=["Russia only"],
+        remote_policy_detail="Удаленка строго на территории РФ, выезды за пределы РФ не допускаются",
+    )
+    passed, tier, reason = classify_geo_tier(
+        "Senior Kotlin Developer",
+        "Оформление по ТК РФ, нахождение строго на территории РФ",
+        enr,
+        geo_preferences={
+            "current_location": "Georgia, Tbilisi",
+            "citizenships": ["Russia"],
+            "allow_ru_remote": True,
+            "allowed_macro_regions": ["Georgia", "EMEA"],
+            "allow_worldwide_remote": True,
+            "reject_unsupported_single_country": True,
+        },
+        job_location="Russia",
+        is_remote=1,
+    )
+    assert passed is False
+    assert reason == "ru_physical_residency_lock"
+
+
+
 
 
 

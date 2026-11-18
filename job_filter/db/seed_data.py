@@ -53,6 +53,8 @@ DEFAULT_BLACKLISTED_BOARDS: list[tuple[str, str]] = [
 
 DEFAULT_GEO_PREFERENCES: dict = {
     "current_location": "Georgia, Tbilisi (UTC+4)",
+    "citizenships": ["Russia"],
+    "allow_ru_remote": True,
     "allowed_macro_regions": [
         "Georgia",
         "Tbilisi",
@@ -67,7 +69,7 @@ DEFAULT_GEO_PREFERENCES: dict = {
     "relocation_policy": "with_sponsorship_only",
     "reject_unsupported_single_country": True,
     "reject_business_travel": True,
-    "custom_notes": "Candidate resides in Georgia and is available for global remote roles via B2B/contractor agreements without visa sponsorship. Open to relocation only if visa sponsorship and relocation assistance are provided.",
+    "custom_notes": "Candidate resides in Georgia and is available for global remote roles via B2B/contractor agreements without visa sponsorship. Candidate holds Russian citizenship and can work remotely from Georgia for Russian companies under employment contract (TK RF) or as Russian Individual Entrepreneur (IP), provided remote work outside Russia / worldwide remote is permitted. Open to relocation only if visa sponsorship and relocation assistance are provided.",
 }
 
 

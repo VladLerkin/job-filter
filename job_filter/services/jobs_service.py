@@ -36,6 +36,8 @@ def parse_auto_reject(reject_reason: str | None, score: int | None) -> tuple[str
         return "location", "Только США (US only)"
     elif rr == "ru_only_lock":
         return "location", "Только РФ / RU"
+    elif rr == "ru_physical_residency_lock":
+        return "location", "Требуется нахождение строго на территории РФ"
     elif "low_score" in rr or (score is not None and score < config.FAIR_SCORE_THRESHOLD):
         sc = score if score is not None else (rr.split(":", 1)[1] if ":" in rr else "?")
         return "low_score", f"Низкий скор ИИ: {sc}/100"

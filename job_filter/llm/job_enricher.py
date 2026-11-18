@@ -99,8 +99,10 @@ def format_geo_preferences_prompt(geo_prefs: dict | None, profile_text: str = ""
     lines = [
         "=== CANDIDATE LOCATION & REMOTE WORK PREFERENCES ===",
         f"- Current Base Location: {loc}",
+        f"- Citizenships: {', '.join(prefs.get('citizenships') or ['Russia'])}",
         f"- Target Local & Macro-Regions: {macro}",
         f"- Global Remote (Worldwide / Anywhere): {ww}",
+        f"- Russian Companies & TK RF / IP Remote Policy: {'Allowed from Georgia if remote outside Russia / worldwide remote is permitted' if prefs.get('allow_ru_remote', True) else 'Not allowed'}",
         f"- Relocation Policy: {relo_desc}",
     ]
     if prefs.get("reject_unsupported_single_country", True):

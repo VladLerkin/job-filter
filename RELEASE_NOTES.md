@@ -1,5 +1,25 @@
 # Release Notes
 
+## v1.6.0
+**Release Date:** November 18, 2026
+
+### Features & Architecture
+- **Candidate Citizenship & Remote Work for Russian Companies:**
+  - Added support for candidate citizenship (`citizenships` in `DEFAULT_GEO_PREFERENCES`) and a dedicated toggle `allow_ru_remote` in candidate settings.
+  - Refactored `classify_geo_tier` (`job_filter/scoring/geo.py`): positions requiring Russian citizenship, employment under Russian Labor Code (TK RF), or Russian Individual Entrepreneur (IP) engagement are no longer rejected if the candidate holds Russian citizenship and the company allows remote work from outside Russia (classified as `Tier 2A: Remote Russia (Citizenship / TK / IP)`).
+  - Added strict detection of mandatory physical residency inside Russia (`ru_physical_residency_lock`: *«только находясь на территории РФ»*, *«строго на территории РФ»*).
+  - Enhanced LLM prompt context in `job_filter/llm/job_enricher.py` with candidate citizenship and Russian company remote work authorization guidelines.
+
+### UI & Usability
+- **Candidate Settings Modal Enhancements:**
+  - Added `🛂 Гражданство (Citizenship)` input field in the Candidate Profile settings dialog.
+  - Added checkbox: *«Разрешать удалённую работу на РФ из Грузии (по ТК РФ или ИП РФ, если разрешена удалёнка вне РФ)»*.
+  - Added human-readable rejection reason mapping in `job_filter/services/jobs_service.py` (`Требуется нахождение строго на территории РФ`).
+
+### Testing
+- **New Geo-Tier Tests:**
+  - Added tests in `tests/test_scorer.py` verifying both allowed remote roles for Russian companies from Georgia and proper rejection for strict physical residency requirements (77 tests passing).
+
 ## v1.5.2
 **Release Date:** November 18, 2026
 
