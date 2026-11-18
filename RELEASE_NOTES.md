@@ -1,5 +1,16 @@
 # Release Notes
 
+## v1.5.2
+**Release Date:** November 18, 2026
+
+### Features & Maintenance
+- **Adapted `check-updates` Skill & Automation:**
+  - Ported and adapted the dependency check skill from `hirify-analytics` to `job-filter` (`.agents/skills/check-updates/`).
+  - Added PyPI API check script `check_updates.py` to inspect installed vs. latest stable versions for direct and development requirements.
+- **Pinned Dependencies & Deterministic Builds:**
+  - Pinned exact tested versions in `requirements.txt` and `requirements-dev.txt` (`pandas==3.1.1`, `fastapi==0.164.0`, `pydantic==2.14.3`, `pypdf==7.1.1`, `python-multipart==0.0.34`, `pytest==9.2.0`, `httpx==0.28.1`, `uvicorn==0.54.0`, `python-jobspy==1.4.1`, `requests==2.34.2`, `beautifulsoup4==4.15.0`, `markdownify==1.2.3`).
+  - Verified full test suite passes (75 tests passing).
+
 ## v1.5.1
 **Release Date:** November 18, 2026
 
