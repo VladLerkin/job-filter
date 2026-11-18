@@ -46,14 +46,12 @@ CAPTCHA_AND_UTILITY_DOMAINS = (
 SEARCH_AGGREGATOR_DOMAINS = (
     "linkedin.com",
     "hirify.me",
-    "indeed.com",
-    "glassdoor.com",
     "upwork.com",
 )
 
 
 def is_search_aggregator_domain(domain_or_url: str | None) -> bool:
-    """Проверяет, является ли домен поисковым агрегатором (LinkedIn, Hirify, Indeed, Glassdoor, Upwork).
+    """Проверяет, является ли домен поисковым агрегатором (LinkedIn, Hirify, Upwork).
     Такие домены защищены от добавления в чёрный список, так как по ним ведётся поиск вакансий.
     """
     if not domain_or_url:
@@ -63,7 +61,7 @@ def is_search_aggregator_domain(domain_or_url: str | None) -> bool:
         return False
     if any(host == d or host.endswith("." + d) for d in SEARCH_AGGREGATOR_DOMAINS):
         return True
-    if re.search(r"(^|\.)(linkedin|hirify|indeed|glassdoor|upwork)\.[a-z.]+$", host):
+    if re.search(r"(^|\.)(linkedin|hirify|upwork)\.[a-z.]+$", host):
         return True
     return False
 

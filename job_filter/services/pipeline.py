@@ -20,7 +20,7 @@ from job_filter.repositories import blacklist_repo, candidate_repo, jobs_repo
 from job_filter.scoring.matrix import get_skill_matrix
 from job_filter.scoring.scorer import score_vacancy_by_skill
 from job_filter.scraping.linkedin import fetch_job_details
-from job_filter.scraping.providers import normalize_indeed_country, scrape_site
+from job_filter.scraping.providers import scrape_site
 from job_filter.utils.urls import extract_root_domain
 
 logger = logging.getLogger(__name__)
@@ -319,13 +319,7 @@ def fetch_and_filter_jobs(
                     time.sleep(random.uniform(2.0, 4.0))
 
             try:
-                if site in ("indeed", "glassdoor"):
-                    eff_country = normalize_indeed_country(country_indeed, location)
-                    emit(
-                        f"🔍 Поиск [{site}] '{term}' на сервере-витрине '{eff_country}' [100% Remote] (за последние {hours_old}ч){easy_label}..."
-                    )
-                else:
-                    emit(f"🔍 Поиск [{site}] '{term}' в '{location}' (за последние {hours_old}ч){easy_label}...")
+                emit(f"🔍 Поиск [{site}] '{term}' в '{location}' (за последние {hours_old}ч){easy_label}...")
                 df = scrape_site(
                     site=site,
                     term=term,
@@ -537,7 +531,7 @@ def fetch_and_filter_jobs(
     # Фиксируем время успешной проверки источника, если пайплайн не был прерван
     if not (cancel_event and cancel_event.is_set()):
         total_fetched_cards = sum(len(f) for f in frames) if frames else 0
-        loc_display = "feeds" if (site == "hirify" and hirify_mode == "feeds") else (location if site in ("linkedin", "hirify", "upwork") else country_indeed)
+        loc_display = "feeds" if (site == "hirify" and hirify_mode == "feeds") else location
         record_provider_check(
             conn,
             site=site,
@@ -568,7 +562,7 @@ def fetch_and_filter_jobs(
 
 PROVIDER_CHECKS_META_KEY = "provider_check_timestamps_v1"
 MACRO_SETTINGS_META_KEY = "macro_pipeline_settings_v1"
-ALL_PROVIDERS = ("linkedin", "hirify", "upwork", "indeed", "glassdoor")
+ALL_PROVIDERS = ("linkedin", "hirify", "upwork")
 
 DEFAULT_MACRO_SETTINGS: dict[str, Any] = {
     "execution_mode": "per_provider",  # "per_provider" | "batch_all_then_llm"
@@ -596,18 +590,6 @@ DEFAULT_MACRO_SETTINGS: dict[str, Any] = {
             "site": "linkedin",
             "enabled": True,
             "locations": ["EMEA", "Worldwide"],
-            "easy_apply": False,
-        },
-        {
-            "site": "indeed",
-            "enabled": True,
-            "locations": ["uk", "germany", "netherlands"],
-            "easy_apply": False,
-        },
-        {
-            "site": "glassdoor",
-            "enabled": False,
-            "locations": ["uk", "germany"],
             "easy_apply": False,
         },
     ],
@@ -696,14 +678,8 @@ def get_macro_settings(conn: sqlite3.Connection) -> dict[str, Any]:
             s_name = def_step["site"]
             if s_name in steps_by_site:
                 upd = {**def_step, **steps_by_site[s_name]}
-                if s_name in ("indeed", "glassdoor"):
-                    raw_countries = upd.get("countries") or upd.get("locations") or def_step["locations"]
-                    countries = [normalize_indeed_country(c, c) for c in raw_countries if c]
-                    upd["countries"] = countries
-                    upd["locations"] = countries
-                else:
-                    locs = upd.get("locations") or def_step["locations"]
-                    upd["locations"] = locs
+                locs = upd.get("locations") or def_step["locations"]
+                upd["locations"] = locs
                 new_steps.append(upd)
             else:
                 disabled_step = {**def_step, "enabled": False}
@@ -736,7 +712,7 @@ def run_macro_pipeline(
     cancel_event: threading.Event | None = None,
 ) -> dict[str, Any]:
     """
-    Макро-обход всех включённых в настройках систем (Hirify, LinkedIn, Indeed, Glassdoor)
+    Макро-обход всех включённых в настройках систем (Hirify, Upwork, LinkedIn)
     с автоматическим расчётом окна времени hours_old от последней проверки каждого источника.
     """
     def emit(msg: str) -> None:
@@ -795,10 +771,7 @@ def run_macro_pipeline(
         easy_apply = True if step.get("easy_apply") else None
         hirify_mode = step.get("hirify_mode") or "feeds"
         hirify_feed_id = step.get("hirify_feed_id")
-        if site in ("indeed", "glassdoor"):
-            locations = step.get("countries") or step.get("locations") or ["uk"]
-        else:
-            locations = step.get("locations") or ["EMEA"]
+        locations = step.get("locations") or ["EMEA"]
 
         if site == "hirify" and hirify_mode == "feeds":
             fetch_and_filter_jobs(
@@ -819,14 +792,14 @@ def run_macro_pipeline(
             for loc_idx, loc in enumerate(locations, start=1):
                 if cancel_event and cancel_event.is_set():
                     break
-                eff_loc = normalize_indeed_country(loc, loc) if site in ("indeed", "glassdoor") else loc
+                eff_loc = loc
                 if loc_idx > 1:
                     emit(f"⏳ [{site}] Переход к следующей локации '{eff_loc}' ({loc_idx}/{len(locations)})...")
                 fetch_and_filter_jobs(
                     search_terms=search_terms,
                     site_names=[site],
                     location=eff_loc,
-                    country_indeed=eff_loc if site in ("indeed", "glassdoor") else "uk",
+                    country_indeed="uk",
                     results_wanted=results_wanted,
                     hours_old=effective_hours,
                     easy_apply=easy_apply,

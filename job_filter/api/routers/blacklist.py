@@ -35,7 +35,7 @@ def create_blacklist_entry(
     if body.domain_or_url and is_search_aggregator_domain(body.domain_or_url):
         raise HTTPException(
             status_code=400,
-            detail="Нельзя заблокировать поисковый агрегатор (LinkedIn, Hirify, Indeed, Glassdoor). Добавьте компанию в чёрный список или укажите сайт ATS.",
+            detail="Нельзя заблокировать поисковый агрегатор (LinkedIn, Hirify, Upwork). Добавьте компанию в чёрный список или укажите сайт ATS.",
         )
     if body.domain_or_url and is_utility_or_captcha_domain(body.domain_or_url):
         raise HTTPException(

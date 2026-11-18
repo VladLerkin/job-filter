@@ -520,47 +520,6 @@
           { value: "United States", label: "🇺🇸 United States" }
         ]
       },
-      indeed: {
-        label: "Региональный сервер-витрина (Indeed)",
-        remoteMechanism: "🌐 У Indeed нет единого мирового сайта — запрос идёт с фильтром 100% Remote по выбранному домену, а ИИ отбирает вакансии с удалёнкой из Грузии / EMEA / Worldwide",
-        hint: "Indeed разбит на отдельные домены стран (uk.indeed.com, de.indeed.com). Выбирайте крупные англоязычные IT-хабы Европы, куда компании постят EMEA/Global Remote вакансии",
-        supportsEasyApply: true,
-        options: [
-          { value: "uk", label: "🇬🇧 Витрина UK (uk.indeed.com • хаб EMEA)" },
-          { value: "germany", label: "🇩🇪 Витрина Germany (de.indeed.com • хаб EU)" },
-          { value: "netherlands", label: "🇳🇱 Витрина Netherlands (nl.indeed.com • хаб EU)" },
-          { value: "poland", label: "🇵🇱 Витрина Poland (pl.indeed.com • хаб CEE)" },
-          { value: "spain", label: "🇪🇸 Витрина Spain (es.indeed.com)" },
-          { value: "france", label: "🇫🇷 Витрина France (fr.indeed.com)" },
-          { value: "ireland", label: "🇮🇪 Витрина Ireland (ie.indeed.com • EU English)" },
-          { value: "switzerland", label: "🇨🇭 Витрина Switzerland (ch.indeed.com)" },
-          { value: "portugal", label: "🇵🇹 Витрина Portugal (pt.indeed.com)" },
-          { value: "czech republic", label: "🇨🇿 Витрина Czechia (cz.indeed.com)" },
-          { value: "united arab emirates", label: "🇦🇪 Витрина UAE (ae.indeed.com • MENA)" },
-          { value: "usa", label: "🇺🇸 Витрина USA (www.indeed.com • US/Global)" },
-          { value: "canada", label: "🇨🇦 Витрина Canada (ca.indeed.com)" }
-        ]
-      },
-      glassdoor: {
-        label: "Региональный сервер-витрина (Glassdoor)",
-        remoteMechanism: "🌐 У Glassdoor отдельные домены по странам — включается фильтр Work From Home (100% Remote), а ИИ проверяет доступность из Грузии / EMEA / Worldwide",
-        hint: "Glassdoor: выберите домен-витрину (например UK или Germany), внутри которого ищутся Remote-вакансии",
-        supportsEasyApply: true,
-        options: [
-          { value: "uk", label: "🇬🇧 Витрина UK (glassdoor.co.uk)" },
-          { value: "germany", label: "🇩🇪 Витрина Germany (glassdoor.de)" },
-          { value: "netherlands", label: "🇳🇱 Витрина Netherlands (glassdoor.nl)" },
-          { value: "france", label: "🇫🇷 Витрина France (glassdoor.fr)" },
-          { value: "spain", label: "🇪🇸 Витрина Spain (glassdoor.es)" },
-          { value: "ireland", label: "🇮🇪 Витрина Ireland (glassdoor.ie)" },
-          { value: "switzerland", label: "🇨🇭 Витрина Switzerland (glassdoor.ch)" },
-          { value: "austria", label: "🇦🇹 Витрина Austria (glassdoor.at)" },
-          { value: "belgium", label: "🇧🇪 Витрина Belgium (glassdoor.be)" },
-          { value: "italy", label: "🇮🇹 Витрина Italy (glassdoor.it)" },
-          { value: "usa", label: "🇺🇸 Витрина USA (glassdoor.com)" },
-          { value: "canada", label: "🇨🇦 Витрина Canada (glassdoor.ca)" }
-        ]
-      },
       hirify: {
         label: "Локация / Рынок (Hirify)",
         remoteMechanism: "🌐 REST API • фильтр work_format=remote + worldwide_remote=true",
@@ -592,8 +551,6 @@
 
     const SITE_REMOTE_BADGE_LABELS = {
       linkedin: "🏠 Remote / WFH",
-      indeed: "🏠 Remote (DSQF7 • No Hybrid)",
-      glassdoor: "🏠 Work From Home",
       hirify: "🌐 Agent API • Remote",
       upwork: "🟢 Upwork • Worldwide Contract"
     };
@@ -894,14 +851,14 @@
 
         // Защищенные поисковые агрегаторы и капчи (никогда не считаются ATS)
         const IGNORED_DOMAINS = [
-          'linkedin.com', 'hirify.me', 'indeed.com', 'glassdoor.com', 'upwork.com',
+          'linkedin.com', 'hirify.me', 'upwork.com',
           'hcaptcha.com', 'recaptcha.net', 'google.com', 'gstatic.com', 'cloudflare.com',
           'challenges.cloudflare.com', 'arkoselabs.com', 'geetest.com', 'doubleclick.net', 'googletagmanager.com'
         ];
         if (IGNORED_DOMAINS.some(d => host === d || host.endsWith('.' + d))) {
           return '';
         }
-        if (/(^|\.)(linkedin|hirify|indeed|glassdoor|upwork)\.[a-z.]+$/.test(host)) {
+        if (/(^|\.)(linkedin|hirify|upwork)\.[a-z.]+$/.test(host)) {
           return '';
         }
 
@@ -964,8 +921,8 @@
     async function confirmBadBoardModal() {
       const domain_or_url = document.getElementById('modalBadDomainInput').value.trim();
       const rawDom = (domain_or_url || '').toLowerCase();
-      if (domain_or_url && (/(^|\.)(linkedin|hirify|indeed|glassdoor|upwork)\.[a-z.]+$/.test(rawDom) || /hcaptcha\.com|recaptcha\.net/.test(rawDom))) {
-        showToast('Поисковые агрегаторы (LinkedIn, Hirify, Upwork, Indeed, Glassdoor) нельзя блокировать. Заблокируйте только компанию!');
+      if (domain_or_url && (/(^|\.)(linkedin|hirify|upwork)\.[a-z.]+$/.test(rawDom) || /hcaptcha\.com|recaptcha\.net/.test(rawDom))) {
+        showToast('Поисковые агрегаторы (LinkedIn, Hirify, Upwork) нельзя блокировать. Заблокируйте только компанию!');
         return;
       }
       const reason = document.getElementById('modalBadReasonInput').value.trim() || 'Невозможно заполнить форму (в чёрном списке)';
@@ -1039,8 +996,8 @@
         return;
       }
       const rawDom = domain_or_url.toLowerCase();
-      if (/(^|\.)(linkedin|hirify|indeed|glassdoor|upwork)\.[a-z.]+$/.test(rawDom) || /hcaptcha\.com|recaptcha\.net/.test(rawDom)) {
-        showToast('Поисковые агрегаторы (LinkedIn, Hirify, Upwork, Indeed, Glassdoor) нельзя заносить в чёрный список!');
+      if (/(^|\.)(linkedin|hirify|upwork)\.[a-z.]+$/.test(rawDom) || /hcaptcha\.com|recaptcha\.net/.test(rawDom)) {
+        showToast('Поисковые агрегаторы (LinkedIn, Hirify, Upwork) нельзя заносить в чёрный список!');
         return;
       }
       await fetch('/api/blacklist', {
@@ -1271,7 +1228,6 @@
       const hoursOld = parseInt(document.getElementById('hoursOld').value || '4', 10);
       const llmLimit = parseInt(document.getElementById('llmLimit').value || '50', 10);
       const easyApply = document.getElementById('easyApply').checked;
-      const countryIndeed = (provider === 'indeed' || provider === 'glassdoor') ? location : 'uk';
       const siteNames = [provider];
 
       let hirifyMode = 'feeds';
@@ -1297,7 +1253,6 @@
           search_terms: searchTerms,
           site_names: siteNames,
           location: location,
-          country_indeed: countryIndeed,
           results_wanted: 50,
           hours_old: hoursOld,
           easy_apply: easyApply,
@@ -3126,7 +3081,7 @@
     }
 
     function renderProviderCheckBadges() {
-      ['linkedin', 'indeed', 'glassdoor', 'hirify', 'upwork'].forEach(site => {
+      ['linkedin', 'hirify', 'upwork'].forEach(site => {
         const el = document.getElementById('lastCheck_' + site);
         if (!el) return;
         const info = cachedProviderChecks ? cachedProviderChecks[site] : null;
@@ -3188,9 +3143,7 @@
     const MACRO_SITE_LABELS = {
       hirify: { title: 'Hirify (IT & Digital Agent API)', icon: '🌐', badge: 'Единая база • Worldwide Remote' },
       upwork: { title: 'Upwork (Apify Actor API)', icon: '🟢', badge: 'Глобальный фриланс и контракты • Worldwide' },
-      linkedin: { title: 'LinkedIn', icon: '💼', badge: 'Единая база • Макрорегионы EMEA + Worldwide' },
-      indeed: { title: 'Indeed', icon: '🔍', badge: 'По региональным серверам-витринам • 100% Remote' },
-      glassdoor: { title: 'Glassdoor', icon: '🏢', badge: 'По региональным серверам-витринам • Work From Home' }
+      linkedin: { title: 'LinkedIn', icon: '💼', badge: 'Единая база • Макрорегионы EMEA + Worldwide' }
     };
 
     async function openMacroSettingsModal() {
@@ -3221,9 +3174,7 @@
         steps: [
           { site: 'hirify', enabled: true, hirify_mode: 'feeds', hirify_feed_id: 'all_active', locations: ['Worldwide'], countries: [] },
           { site: 'upwork', enabled: true, locations: ['Worldwide'], countries: [], easy_apply: false },
-          { site: 'linkedin', enabled: true, locations: ['EMEA', 'Worldwide'], countries: [], easy_apply: false },
-          { site: 'indeed', enabled: true, countries: ['uk', 'germany', 'netherlands'], locations: [], easy_apply: false },
-          { site: 'glassdoor', enabled: false, countries: ['uk', 'germany'], locations: [], easy_apply: false }
+          { site: 'linkedin', enabled: true, locations: ['EMEA', 'Worldwide'], countries: [], easy_apply: false }
         ]
       };
 
@@ -3307,10 +3258,7 @@
         const fmt = formatHoursAgoBadge(checkInfo);
         const recHours = (checkInfo && checkInfo.recommended_hours_old) ? checkInfo.recommended_hours_old : (document.getElementById('macroDefaultHoursOld')?.value || 8);
 
-        const isCountrySite = (site === 'indeed' || site === 'glassdoor');
-        const selectedValues = isCountrySite
-          ? (Array.isArray(step.countries) && step.countries.length ? step.countries : ['uk'])
-          : (Array.isArray(step.locations) && step.locations.length ? step.locations : ['EMEA']);
+        const selectedValues = (Array.isArray(step.locations) && step.locations.length ? step.locations : ['EMEA']);
 
         const showLocations = !(site === 'hirify' && (step.hirify_mode || 'feeds') === 'feeds');
 
@@ -3319,7 +3267,7 @@
           const chipCls = isSel
             ? 'px-2.5 py-1 rounded-md text-xs font-semibold bg-violet-600 text-white border border-violet-400 shadow cursor-pointer transition'
             : 'px-2.5 py-1 rounded-md text-xs font-medium bg-slate-900 text-slate-400 border border-slate-700 hover:border-slate-500 hover:text-slate-200 cursor-pointer transition';
-          return `<button type="button" onclick="toggleMacroStepLocation(${idx}, '${escapeJsArg(opt.value)}', ${isCountrySite})" class="${chipCls}">${escapeHtml(opt.label)}</button>`;
+          return `<button type="button" onclick="toggleMacroStepLocation(${idx}, '${escapeJsArg(opt.value)}', false)" class="${chipCls}">${escapeHtml(opt.label)}</button>`;
         }).join('');
 
         return `
@@ -3363,9 +3311,7 @@
             ${showLocations ? `
               <div class="space-y-1.5 pt-1">
                 <div class="text-[11px] text-slate-300">
-                  ${isCountrySite
-                    ? '🌐 <strong>Региональные серверы-витрины</strong> <span class="text-slate-400">(у этой площадки нет единого мирового сайта — скрипт собирает 100% Remote вакансии с выбранных доменов-хабов, а наш фильтр и ИИ оставляют только подходящие для удалёнки из Грузии / EMEA / Worldwide):</span>'
-                    : '🌍 <strong>Охват поиска</strong> <span class="text-slate-400">(достаточно отметить <code>Worldwide</code> и <code>EMEA</code>, чтобы захватить всю глобальную удалёнку):</span>'}
+                  🌍 <strong>Охват поиска</strong> <span class="text-slate-400">(достаточно отметить <code>Worldwide</code> и <code>EMEA</code>, чтобы захватить всю глобальную удалёнку):</span>
                 </div>
                 <div class="flex flex-wrap gap-1.5">
                   ${chipsHtml}

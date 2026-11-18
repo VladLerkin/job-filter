@@ -18,7 +18,7 @@
             agy CLI + Hirify Skill Scorer
           </span>
           <span id="appVersionBadge" class="text-xs font-mono font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-            v1.5.0
+            v1.5.1
           </span>
         </h1>
         <p class="text-xs text-slate-400 mt-0.5" data-i18n="app_subtitle">
@@ -107,7 +107,7 @@
         </div>
       </div>
 
-      <!-- Выбор одного провайдера JobSpy -->
+      <!-- Выбор одного провайдера -->
       <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80 text-xs">
         <div class="flex flex-wrap items-center gap-2">
           <span class="text-slate-400 font-medium mr-1" data-i18n="source_label">🌐 Source (select one):</span>
@@ -115,16 +115,6 @@
             <input type="radio" name="siteProvider" value="linkedin" checked onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
             <span class="text-slate-200 font-medium">LinkedIn</span>
             <span id="lastCheck_linkedin" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/80 font-mono">🕒 —</span>
-          </label>
-          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="Best Remote filter + low rate limits">
-            <input type="radio" name="siteProvider" value="indeed" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
-            <span class="text-slate-200 font-medium">Indeed</span>
-            <span id="lastCheck_indeed" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/80 font-mono">🕒 —</span>
-          </label>
-          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="Great for salary ranges and reviews">
-            <input type="radio" name="siteProvider" value="glassdoor" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />
-            <span class="text-slate-200 font-medium">Glassdoor</span>
-            <span id="lastCheck_glassdoor" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/80 font-mono">🕒 —</span>
           </label>
           <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-indigo-500 cursor-pointer select-none" title="IT & Digital Agent API: remote-first worldwide matching">
             <input type="radio" name="siteProvider" value="hirify" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-indigo-600" />

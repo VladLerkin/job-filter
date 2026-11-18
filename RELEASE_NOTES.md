@@ -1,5 +1,18 @@
 # Release Notes
 
+## v1.5.1
+**Release Date:** November 18, 2026
+
+### Integrations & Scraping
+- **Removed Indeed & Glassdoor Providers:**
+  - Removed `Indeed` and `Glassdoor` from `SUPPORTED_SITES`, `MacroStepConfig`, and macro pipeline defaults (`job_filter/scraping/providers.py`, `job_filter/services/pipeline.py`, `job_filter/api/schemas.py`), focusing discovery on `LinkedIn`, `Upwork`, and `Hirify`.
+  - Updated search aggregator domain checks and validation messages (`job_filter/utils/urls.py`, `job_filter/api/routers/blacklist.py`).
+
+### UI & Maintenance
+- **Dashboard & Tests Cleanup:**
+  - Removed `Indeed` and `Glassdoor` source toggles, badges, and macro step configuration options from `static/index.html` and `static/js/app.js`, and updated `README.md`.
+  - Updated API endpoint and URL tests (`tests/test_api_endpoints.py`, `tests/test_urls.py`).
+
 ## v1.5.0
 **Release Date:** November 9, 2026
 
