@@ -21,6 +21,7 @@ from job_filter.scoring.matrix import get_skill_matrix
 from job_filter.scoring.scorer import score_vacancy_by_skill
 from job_filter.scraping.linkedin import fetch_job_details
 from job_filter.scraping.providers import scrape_site
+from job_filter.utils.dedup import DeduplicationIndex, normalized_title_company_key
 from job_filter.utils.urls import extract_root_domain
 
 logger = logging.getLogger(__name__)
@@ -232,6 +233,7 @@ def fetch_and_filter_jobs(
     on_progress: Callable[[str], None] | None = None,
     hirify_mode: str = "feeds",
     hirify_feed_id: int | str | None = None,
+    freehire_facets: dict[str, Any] | None = None,
     cancel_event: threading.Event | None = None,
 ) -> list[dict]:
     def emit(msg: str) -> None:
@@ -277,6 +279,7 @@ def fetch_and_filter_jobs(
                     target_feeds = active_feeds
 
                 emit(f"🔍 [hirify] Поиск по сохранённым фильтрам ({len(target_feeds)} шт., за последние {hours_old}ч)...")
+                known_hf_ids_in_run = set(processed_ids)
                 for f_info in target_feeds:
                     fid = f_info.get("id")
                     fname = f_info.get("name") or f"Feed #{fid}"
@@ -286,19 +289,52 @@ def fetch_and_filter_jobs(
                         results_wanted=results_wanted,
                         hours_old=hours_old,
                         client=client,
-                        processed_ids=processed_ids,
+                        processed_ids=known_hf_ids_in_run,
                     )
                     site_errors = (df.attrs or {}).get("errors") or {}
                     for err_site, err_msg in site_errors.items():
                         emit(f"    ⚠️ [{err_site}] Сообщение: {err_msg}")
 
                     if not df.empty:
+                        if "id" in df.columns:
+                            known_hf_ids_in_run.update(df["id"].dropna().astype(str).tolist())
                         emit(f"    ↳ Найдено вакансий: {len(df)}")
                         frames.append(df)
                     else:
                         emit(f"    ↳ По фильтру '{fname}' новых вакансий не найдено.")
             except Exception as e:
                 emit(f"  ⚠️ [hirify] Ошибка при сборе по фильтрам: {e}")
+    elif site == "freehire":
+        from job_filter.scraping.freehire_adapter import DEFAULT_FREEHIRE_FACETS, scrape_freehire
+        saved_fh_facets = (
+            freehire_facets
+            if freehire_facets is not None
+            else (get_search_ui_settings(conn).get("freehire_facets") or {})
+        )
+        eff_facets = {**DEFAULT_FREEHIRE_FACETS, **saved_fh_facets}
+        blacklisted_domains = blacklist_repo.list_board_domains(conn)
+        q_part = f" | q='{eff_facets.get('q')}'" if (eff_facets.get("q") or "").strip() else ""
+        emit(f"🔍 [freehire] Фасетный поиск (за последние {hours_old}ч, лимит {results_wanted}){q_part}...")
+        try:
+            df = scrape_freehire(
+                facets=eff_facets,
+                results_wanted=results_wanted,
+                hours_old=hours_old,
+                processed_ids=processed_ids,
+                blacklisted_domains=blacklisted_domains,
+            )
+            site_errors = (df.attrs or {}).get("errors") or {}
+            for err_site, err_msg in site_errors.items():
+                emit(f"  ⚠️ [{err_site}] Сообщение: {err_msg}")
+            total_avail = (df.attrs or {}).get("total_available")
+            if not df.empty:
+                avail_str = f" (всего по срезу: {total_avail})" if total_avail else ""
+                emit(f"  ↳ [freehire] Получено новых карточек: {len(df)}{avail_str}")
+                frames.append(df)
+            else:
+                emit("  ↳ [freehire] Новых вакансий по выбранным фасетам не найдено.")
+        except Exception as e:
+            emit(f"  ⚠️ [freehire] Ошибка при фасетном сборе: {e}")
     else:
         prev_had_rate_limit = False
         known_ids_in_run = set(processed_ids)
@@ -356,11 +392,11 @@ def fetch_and_filter_jobs(
 
         jobs = jobs.drop_duplicates(subset=["id"]).copy()
         after_id_dedup = len(jobs)
-        jobs["_dedup_key"] = (
-            jobs["title"].fillna("").str.strip().str.lower()
-            + "::"
-            + jobs["company"].fillna("").str.strip().str.lower()
-        )
+        jobs["_dedup_key"] = [
+            normalized_title_company_key(t, c)
+            or (f"{str(t or '').strip().lower()}::{str(c or '').strip().lower()}")
+            for t, c in zip(jobs["title"].fillna(""), jobs["company"].fillna(""))
+        ]
         jobs = jobs.drop_duplicates(subset=["_dedup_key"]).drop(columns=["_dedup_key"]).copy()
         unique_total = len(jobs)
         dup_id_count = total_raw - after_id_dedup
@@ -382,20 +418,49 @@ def fetch_and_filter_jobs(
         if skipped_seen:
             emit(f"⏭️ Пропущено уже обработанных ранее вакансий (из БД по ID): {skipped_seen}")
 
-        # Кросс-системная дедупликация по Title+Company против уже сохранённых в БД вакансий
+        # Многоуровневая дедупликация против БД (norm Title+Company, fuzzy Title, apply_url, description)
+        dedup_index = DeduplicationIndex.from_records(jobs_repo.list_dedup_records(conn))
         if not unseen_jobs.empty:
-            db_tc_keys = jobs_repo.get_processed_title_company_keys(conn)
-            if db_tc_keys:
-                tc_series = (
-                    unseen_jobs["title"].fillna("").str.strip().str.lower()
-                    + "::"
-                    + unseen_jobs["company"].fillna("").str.strip().str.lower()
+            kept_indices = []
+            pre_dup_counts: dict[str, int] = {}
+            for row_idx, row in unseen_jobs.iterrows():
+                r_title = str(row.get("title", "") or "")
+                r_company = str(row.get("company", "") or "")
+                raw_direct = row.get("job_url_direct")
+                r_apply_url = str(raw_direct) if pd.notna(raw_direct) and raw_direct else None
+                dup = dedup_index.find_pre_fetch_duplicate(
+                    title=r_title,
+                    company=r_company,
+                    apply_url=r_apply_url,
                 )
-                cross_dup_mask = tc_series.isin(db_tc_keys)
-                cross_dups = int(cross_dup_mask.sum())
-                if cross_dups > 0:
-                    emit(f"⏭️ Пропущено кросс-борд дублей (Title+Company уже есть в БД): {cross_dups}")
-                    unseen_jobs = unseen_jobs[~cross_dup_mask].copy()
+                if dup is not None:
+                    orig_id, dup_reason = dup
+                    pre_dup_counts[dup_reason] = pre_dup_counts.get(dup_reason, 0) + 1
+                    raw_loc = row.get("location")
+                    loc_str = str(raw_loc) if pd.notna(raw_loc) and raw_loc else None
+                    raw_rem = row.get("is_remote")
+                    is_rem_val = bool(raw_rem) if pd.notna(raw_rem) else None
+                    _save_processed_job(
+                        conn,
+                        job_id=str(row.get("id")),
+                        site=str(row.get("site") or "linkedin"),
+                        location=loc_str,
+                        is_remote=is_rem_val,
+                        title=r_title,
+                        company=r_company,
+                        url=str(row.get("job_url", "")),
+                        date_posted=str(row.get("date_posted", "")),
+                        matched=False,
+                        reject_reason=f"duplicate_of:{orig_id}",
+                        apply_url=r_apply_url,
+                    )
+                else:
+                    kept_indices.append(row_idx)
+            total_pre_dups = sum(pre_dup_counts.values())
+            if total_pre_dups > 0:
+                details_str = ", ".join(f"{k}: {v}" for k, v in sorted(pre_dup_counts.items()))
+                emit(f"⏭️ Пропущено кросс-борд дублей до загрузки ({details_str}): {total_pre_dups}")
+                unseen_jobs = unseen_jobs.loc[kept_indices].copy()
 
         if not unseen_jobs.empty:
             exclude_pattern = "|".join(re.escape(w) for w in config.EXCLUDED_TITLE_WORDS)
@@ -488,7 +553,15 @@ def fetch_and_filter_jobs(
                         salary = str(raw_sal) if pd.notna(raw_sal) and raw_sal else None
 
                 reject_reason = None
-                if seniority and seniority.strip().lower() in config.EXCLUDED_SENIORITIES:
+                dup_post = dedup_index.find_pre_fetch_duplicate(
+                    title=title, company=company, apply_url=apply_url
+                ) or dedup_index.find_post_fetch_duplicate(
+                    apply_url=apply_url, description=description
+                )
+                if dup_post is not None:
+                    orig_id, dup_reason = dup_post
+                    reject_reason = f"duplicate_of:{orig_id}"
+                elif seniority and seniority.strip().lower() in config.EXCLUDED_SENIORITIES:
                     reject_reason = f"excluded_seniority:{seniority}"
                 elif industry and industry.strip().lower() in config.EXCLUDED_INDUSTRIES:
                     reject_reason = f"excluded_industry:{industry}"
@@ -518,9 +591,20 @@ def fetch_and_filter_jobs(
                     apply_url=apply_url,
                 )
 
+                if dup_post is None:
+                    dedup_index.add(
+                        job_id=job_id,
+                        title=title,
+                        company=company,
+                        apply_url=apply_url,
+                        description=description,
+                    )
+
                 if is_match:
                     new_matches_count += 1
                     emit(f"  ✅ Прошла базовый фильтр ({seniority or 'N/A'} | {industry or 'N/A'})")
+                elif dup_post is not None:
+                    emit(f"  ⏭️ Дубль ({dup_post[1]} → {dup_post[0]}), пропущено.")
                 else:
                     emit(f"  ➖ Отклонено ({reject_reason}).")
         else:
@@ -531,7 +615,12 @@ def fetch_and_filter_jobs(
     # Фиксируем время успешной проверки источника, если пайплайн не был прерван
     if not (cancel_event and cancel_event.is_set()):
         total_fetched_cards = sum(len(f) for f in frames) if frames else 0
-        loc_display = "feeds" if (site == "hirify" and hirify_mode == "feeds") else location
+        if site == "hirify" and hirify_mode == "feeds":
+            loc_display = "feeds"
+        elif site == "freehire":
+            loc_display = "facets"
+        else:
+            loc_display = location
         record_provider_check(
             conn,
             site=site,
@@ -562,7 +651,23 @@ def fetch_and_filter_jobs(
 
 PROVIDER_CHECKS_META_KEY = "provider_check_timestamps_v1"
 MACRO_SETTINGS_META_KEY = "macro_pipeline_settings_v1"
-ALL_PROVIDERS = ("linkedin", "hirify", "upwork")
+SEARCH_UI_SETTINGS_META_KEY = "search_ui_settings_v1"
+ALL_PROVIDERS = ("linkedin", "hirify", "upwork", "freehire")
+
+DEFAULT_SEARCH_UI_SETTINGS: dict[str, Any] = {
+    "provider": "linkedin",
+    "search_terms": ", ".join(config.DEFAULT_SEARCH_TERMS),
+    "locations_by_provider": {
+        "linkedin": "EMEA",
+        "upwork": "Worldwide",
+        "hirify": "Worldwide",
+    },
+    "llm_limit": 50,
+    "easy_apply": False,
+    "hirify_mode": "feeds",
+    "hirify_feed_id": "all_active",
+    "freehire_facets": None,
+}
 
 DEFAULT_MACRO_SETTINGS: dict[str, Any] = {
     "execution_mode": "per_provider",  # "per_provider" | "batch_all_then_llm"
@@ -579,6 +684,13 @@ DEFAULT_MACRO_SETTINGS: dict[str, Any] = {
             "hirify_feed_id": "all_active",
             "locations": ["Worldwide"],
             "easy_apply": False,
+        },
+        {
+            "site": "freehire",
+            "enabled": True,
+            "locations": ["Worldwide"],
+            "easy_apply": False,
+            "freehire_facets": None,
         },
         {
             "site": "upwork",
@@ -704,6 +816,51 @@ def save_macro_settings(conn: sqlite3.Connection, settings: dict[str, Any]) -> d
     return get_macro_settings(conn)
 
 
+def get_search_ui_settings(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Возвращает сохранённые настройки верхней панели поиска и фасетов FreeHire из app_metadata."""
+    import copy
+    merged = copy.deepcopy(DEFAULT_SEARCH_UI_SETTINGS)
+    stored = jobs_repo.get_app_metadata_json(conn, SEARCH_UI_SETTINGS_META_KEY)
+    if not stored:
+        return merged
+
+    for k in ("provider", "search_terms", "llm_limit", "easy_apply", "hirify_mode", "hirify_feed_id"):
+        if k in stored and stored[k] is not None:
+            merged[k] = stored[k]
+
+    if isinstance(stored.get("locations_by_provider"), dict):
+        merged["locations_by_provider"] = {
+            **merged["locations_by_provider"],
+            **{str(k): str(v) for k, v in stored["locations_by_provider"].items() if v is not None},
+        }
+
+    if isinstance(stored.get("freehire_facets"), dict):
+        merged["freehire_facets"] = stored["freehire_facets"]
+
+    return merged
+
+
+def save_search_ui_settings(conn: sqlite3.Connection, settings: dict[str, Any]) -> dict[str, Any]:
+    """Частично или полностью обновляет настройки верхней панели поиска и фасетов FreeHire в app_metadata."""
+    current = get_search_ui_settings(conn)
+    for k in ("provider", "search_terms", "llm_limit", "easy_apply", "hirify_mode", "hirify_feed_id"):
+        if k in settings and settings[k] is not None:
+            current[k] = settings[k]
+
+    if isinstance(settings.get("locations_by_provider"), dict):
+        current["locations_by_provider"] = {
+            **current.get("locations_by_provider", {}),
+            **{str(k): str(v) for k, v in settings["locations_by_provider"].items() if v is not None},
+        }
+
+    if "freehire_facets" in settings and settings["freehire_facets"] is not None:
+        if isinstance(settings["freehire_facets"], dict):
+            current["freehire_facets"] = settings["freehire_facets"]
+
+    jobs_repo.set_app_metadata_json(conn, SEARCH_UI_SETTINGS_META_KEY, current)
+    return get_search_ui_settings(conn)
+
+
 def run_macro_pipeline(
     settings_override: dict[str, Any] | None = None,
     search_terms: str | list[str] = config.DEFAULT_SEARCH_TERMS,
@@ -786,6 +943,20 @@ def run_macro_pipeline(
                 on_progress=on_progress,
                 hirify_mode="feeds",
                 hirify_feed_id=hirify_feed_id,
+                cancel_event=cancel_event,
+            )
+        elif site == "freehire":
+            fetch_and_filter_jobs(
+                search_terms=search_terms,
+                site_names=["freehire"],
+                location="Worldwide",
+                results_wanted=results_wanted,
+                hours_old=effective_hours,
+                run_llm_enrichment=run_llm_each,
+                llm_model=llm_model,
+                llm_limit=llm_limit,
+                on_progress=on_progress,
+                freehire_facets=step.get("freehire_facets"),
                 cancel_event=cancel_event,
             )
         else:

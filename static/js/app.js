@@ -546,14 +546,357 @@
           { value: "United States", label: "🇺🇸 United States (Заказчики из США на Worldwide)" },
           { value: "United Kingdom", label: "🇬🇧 United Kingdom (Заказчики из UK)" }
         ]
+      },
+      freehire: {
+        label: "Охват (FreeHire Facets)",
+        remoteMechanism: "⚡ FreeHire Public/Agent API • 5M+ прямых ATS-вакансий, живые фасеты и Markdown-описания (без API-ключа)",
+        hint: "FreeHire: поиск по структурированным фасетам (AI Archetype, Category, Seniority, Remote Geo, Skills) с живым счётчиком до запуска",
+        supportsEasyApply: false,
+        options: [
+          { value: "Worldwide", label: "🌐 Worldwide (управляется фасетами)" }
+        ]
       }
     };
 
     const SITE_REMOTE_BADGE_LABELS = {
       linkedin: "🏠 Remote / WFH",
       hirify: "🌐 Agent API • Remote",
-      upwork: "🟢 Upwork • Worldwide Contract"
+      upwork: "🟢 Upwork • Worldwide Contract",
+      freehire: "⚡ FreeHire • ATS Facets"
     };
+
+    // --- FreeHire Facets UI state & live counters ---
+    const FREEHIRE_STORAGE_KEY = 'job_filter_freehire_facets_v1';
+    const FREEHIRE_FACET_OPTIONS = {
+      ai_archetype: [
+        { value: 'agent_builder', label: 'Agent Builder' },
+        { value: 'rag_app_builder', label: 'RAG App' },
+        { value: 'fullstack_ai_engineer', label: 'Fullstack AI' },
+        { value: 'cloud_ml_platform_engineer', label: 'Cloud ML Platform' },
+        { value: 'ml_trainer_researcher', label: 'ML Researcher' },
+        { value: 'devops_infra_engineer', label: 'AI Infra/DevOps' },
+      ],
+      category: [
+        { value: 'ai_engineering', label: 'AI Engineering' },
+        { value: 'backend', label: 'Backend' },
+        { value: 'software_engineering', label: 'Software Eng' },
+        { value: 'ml_ai', label: 'ML / AI' },
+        { value: 'architecture', label: 'Architecture' },
+        { value: 'fullstack', label: 'Fullstack' },
+        { value: 'devops', label: 'DevOps' },
+        { value: 'data_engineering', label: 'Data Eng' },
+        { value: 'sre', label: 'SRE' },
+      ],
+      seniority: [
+        { value: 'senior', label: 'Senior' },
+        { value: 'lead', label: 'Lead' },
+        { value: 'staff', label: 'Staff' },
+        { value: 'principal', label: 'Principal' },
+        { value: 'middle', label: 'Middle' },
+      ],
+      work_mode: [
+        { value: 'remote', label: 'Remote' },
+        { value: 'hybrid', label: 'Hybrid' },
+      ],
+      work_mode_remote_regions: [
+        { value: 'eu', label: 'EU' },
+        { value: 'global', label: 'Global' },
+        { value: 'uk', label: 'UK' },
+        { value: 'cis', label: 'CIS' },
+        { value: 'north_america', label: 'NA' },
+        { value: 'apac', label: 'APAC' },
+        { value: 'latam', label: 'LATAM' },
+        { value: 'mena', label: 'MENA' },
+      ],
+    };
+
+    function getDefaultFreeHireFacets() {
+      return {
+        q: '',
+        ai_archetype: [],
+        category: ['ai_engineering', 'backend', 'software_engineering', 'ml_ai'],
+        seniority: ['senior', 'lead', 'staff', 'principal'],
+        seniority_exclude: ['intern', 'junior'],
+        work_mode: ['remote'],
+        work_mode_remote_anywhere: false,
+        work_mode_remote_regions: [],
+        skills: [],
+        skills_mode: 'or',
+        reality: ['fresh'],
+        posting_language: ['en'],
+        is_tech: ['tech'],
+        equity_exclude: ['equity_only'],
+        via_recruiter: false,
+        requires_clearance: false,
+        exclude_blacklisted_ats: true,
+      };
+    }
+
+    let freehireFacetsState = (function loadSavedFreeHireFacets() {
+      try {
+        const raw = localStorage.getItem(FREEHIRE_STORAGE_KEY);
+        if (raw) return { ...getDefaultFreeHireFacets(), ...JSON.parse(raw) };
+      } catch (_) {}
+      return getDefaultFreeHireFacets();
+    })();
+
+    let freehireLiveCounts = {};
+    let freehireFacetsDebounce = null;
+    let freehireUiInitialized = false;
+
+    let searchUiSettingsState = {
+      provider: 'linkedin',
+      search_terms: null,
+      locations_by_provider: { linkedin: 'EMEA', upwork: 'Worldwide', hirify: 'Worldwide' },
+      llm_limit: 50,
+      easy_apply: false,
+      hirify_mode: 'feeds',
+      hirify_feed_id: 'all_active',
+      freehire_facets: null,
+    };
+    let searchUiSettingsSaveTimer = null;
+    let searchUiSettingsHydrated = false;
+
+    function scheduleSaveSearchUiSettings(immediate = false) {
+      if (!searchUiSettingsHydrated) return;
+      if (searchUiSettingsSaveTimer) clearTimeout(searchUiSettingsSaveTimer);
+      const doSave = async () => {
+        const provider = getSelectedProvider();
+        const locEl = document.getElementById('location');
+        if (locEl && locEl.value && provider !== 'freehire') {
+          searchUiSettingsState.locations_by_provider = {
+            ...(searchUiSettingsState.locations_by_provider || {}),
+            [provider]: locEl.value,
+          };
+        }
+        const modeRadio = document.querySelector('input[name="hirifyModeRadio"]:checked');
+        const feedEl = document.getElementById('hirifyFeedSelect');
+        const termsEl = document.getElementById('searchTerms');
+        const llmLimitEl = document.getElementById('llmLimit');
+        const easyEl = document.getElementById('easyApply');
+
+        const payload = {
+          provider,
+          search_terms: termsEl ? termsEl.value : searchUiSettingsState.search_terms,
+          locations_by_provider: searchUiSettingsState.locations_by_provider,
+          llm_limit: llmLimitEl ? (parseInt(llmLimitEl.value, 10) || 50) : 50,
+          easy_apply: easyEl ? !!easyEl.checked : false,
+          hirify_mode: modeRadio ? modeRadio.value : 'feeds',
+          hirify_feed_id: feedEl ? feedEl.value : 'all_active',
+          freehire_facets: getFreeHireFacetsConfig(),
+        };
+        searchUiSettingsState = { ...searchUiSettingsState, ...payload };
+        try {
+          await fetch('/api/pipeline/search-settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+        } catch (err) {
+          console.warn('Не удалось сохранить настройки поиска в БД:', err);
+        }
+      };
+      if (immediate) {
+        doSave();
+      } else {
+        searchUiSettingsSaveTimer = setTimeout(doSave, 300);
+      }
+    }
+
+    function saveFreeHireFacetsState() {
+      try {
+        localStorage.setItem(FREEHIRE_STORAGE_KEY, JSON.stringify(freehireFacetsState));
+      } catch (_) {}
+      scheduleSaveSearchUiSettings();
+    }
+
+    function getFreeHireFacetsConfig() {
+      return JSON.parse(JSON.stringify(freehireFacetsState));
+    }
+
+    function renderFreeHireFacetChips() {
+      const chipGroups = ['ai_archetype', 'category', 'seniority', 'work_mode', 'work_mode_remote_regions'];
+      chipGroups.forEach(groupKey => {
+        const container = document.getElementById('fhChips_' + groupKey);
+        if (!container) return;
+        const selected = Array.isArray(freehireFacetsState[groupKey]) ? freehireFacetsState[groupKey] : [];
+        const liveMapKey = groupKey === 'work_mode_remote_regions' ? 'regions' : groupKey;
+        const liveMap = freehireLiveCounts[liveMapKey] || {};
+
+        container.innerHTML = (FREEHIRE_FACET_OPTIONS[groupKey] || []).map(opt => {
+          const isSel = selected.includes(opt.value);
+          const cnt = liveMap[opt.value];
+          const cntHtml = (cnt !== undefined && cnt !== null)
+            ? ` <span class="opacity-70 font-mono text-[10px]">${Number(cnt).toLocaleString()}</span>`
+            : '';
+          const cls = isSel
+            ? 'px-2 py-0.5 rounded-md text-[11px] font-medium bg-cyan-600 text-white border border-cyan-400 cursor-pointer transition'
+            : 'px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-900 text-slate-400 border border-slate-700 hover:border-slate-500 hover:text-slate-200 cursor-pointer transition';
+          return `<button type="button" onclick="toggleFreeHireChip('${groupKey}', '${escapeJsArg(opt.value)}')" class="${cls}">${escapeHtml(opt.label)}${cntHtml}</button>`;
+        }).join('');
+      });
+
+      const skillsContainer = document.getElementById('fhSuggestedSkills');
+      if (skillsContainer) {
+        const activeSkills = new Set(freehireFacetsState.skills || []);
+        const topSkills = Object.entries(freehireLiveCounts.skills || {}).slice(0, 18);
+        skillsContainer.innerHTML = topSkills.map(([slug, cnt]) => {
+          const isSel = activeSkills.has(slug);
+          const cls = isSel
+            ? 'px-1.5 py-0.5 rounded text-[10px] font-mono bg-indigo-600 text-white border border-indigo-400 cursor-pointer'
+            : 'px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-900/90 text-slate-400 border border-slate-800 hover:border-slate-600 hover:text-slate-200 cursor-pointer';
+          return `<button type="button" onclick="toggleFreeHireSkillChip('${escapeJsArg(slug)}')" class="${cls}">${escapeHtml(slug)} (${Number(cnt).toLocaleString()})</button>`;
+        }).join('');
+      }
+    }
+
+    function syncFreeHireInputsFromState() {
+      const setChk = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
+      setChk('fhRemoteAnywhere', freehireFacetsState.work_mode_remote_anywhere);
+      setChk('fhRealityFresh', (freehireFacetsState.reality || []).includes('fresh'));
+      setChk('fhLangEn', (freehireFacetsState.posting_language || []).includes('en'));
+      setChk('fhNoRecruiters', freehireFacetsState.via_recruiter === false);
+      setChk('fhNoClearance', freehireFacetsState.requires_clearance === false);
+      setChk('fhExcludeBlacklistedAts', freehireFacetsState.exclude_blacklisted_ats !== false);
+
+      const skillsEl = document.getElementById('fhSkillsInput');
+      if (skillsEl) skillsEl.value = (freehireFacetsState.skills || []).join(', ');
+      const modeEl = document.getElementById('fhSkillsMode');
+      if (modeEl) modeEl.value = freehireFacetsState.skills_mode || 'or';
+      const qEl = document.getElementById('fhQueryInput');
+      if (qEl) qEl.value = freehireFacetsState.q || '';
+
+      renderFreeHireFacetChips();
+    }
+
+    function toggleFreeHireChip(groupKey, value) {
+      const arr = Array.isArray(freehireFacetsState[groupKey]) ? [...freehireFacetsState[groupKey]] : [];
+      const idx = arr.indexOf(value);
+      if (idx >= 0) arr.splice(idx, 1);
+      else arr.push(value);
+      freehireFacetsState[groupKey] = arr;
+      saveFreeHireFacetsState();
+      renderFreeHireFacetChips();
+      scheduleFreeHireFacetsRefresh();
+    }
+
+    function toggleFreeHireSkillChip(slug) {
+      const arr = Array.isArray(freehireFacetsState.skills) ? [...freehireFacetsState.skills] : [];
+      const idx = arr.indexOf(slug);
+      if (idx >= 0) arr.splice(idx, 1);
+      else arr.push(slug);
+      freehireFacetsState.skills = arr;
+      const skillsEl = document.getElementById('fhSkillsInput');
+      if (skillsEl) skillsEl.value = arr.join(', ');
+      saveFreeHireFacetsState();
+      renderFreeHireFacetChips();
+      scheduleFreeHireFacetsRefresh();
+    }
+
+    function onFreeHireFacetInputChange(debounced = false) {
+      const getChk = (id) => { const el = document.getElementById(id); return el ? el.checked : false; };
+      freehireFacetsState.work_mode_remote_anywhere = getChk('fhRemoteAnywhere');
+      freehireFacetsState.reality = getChk('fhRealityFresh') ? ['fresh'] : [];
+      freehireFacetsState.posting_language = getChk('fhLangEn') ? ['en'] : [];
+      freehireFacetsState.via_recruiter = getChk('fhNoRecruiters') ? false : null;
+      freehireFacetsState.requires_clearance = getChk('fhNoClearance') ? false : null;
+      freehireFacetsState.exclude_blacklisted_ats = getChk('fhExcludeBlacklistedAts');
+
+      const skillsRaw = document.getElementById('fhSkillsInput')?.value || '';
+      freehireFacetsState.skills = skillsRaw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      freehireFacetsState.skills_mode = document.getElementById('fhSkillsMode')?.value || 'or';
+      freehireFacetsState.q = (document.getElementById('fhQueryInput')?.value || '').trim();
+
+      saveFreeHireFacetsState();
+      renderFreeHireFacetChips();
+      if (debounced) scheduleFreeHireFacetsRefresh(350);
+      else scheduleFreeHireFacetsRefresh(150);
+    }
+
+    function scheduleFreeHireFacetsRefresh(delayMs = 250) {
+      if (freehireFacetsDebounce) clearTimeout(freehireFacetsDebounce);
+      freehireFacetsDebounce = setTimeout(() => refreshFreeHireFacets(), delayMs);
+    }
+
+    async function refreshFreeHireFacets() {
+      const badge = document.getElementById('fhLiveCountBadge');
+      const atsInfo = document.getElementById('fhExcludedAtsInfo');
+      if (badge) badge.textContent = '⏳ Считаем...';
+      const hoursOld = parseInt(document.getElementById('hoursOld')?.value || '24', 10);
+
+      try {
+        const res = await fetch('/api/freehire/facets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            facets: getFreeHireFacetsConfig(),
+            hours_old: Number.isFinite(hoursOld) && hoursOld > 0 ? hoursOld : 24,
+          }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          if (badge) badge.textContent = '⚠️ Ошибка FreeHire API';
+          return;
+        }
+        freehireLiveCounts = data.facets || {};
+        if (badge) {
+          badge.textContent = `🎯 Найдено в FreeHire: ${Number(data.total || 0).toLocaleString()}`;
+        }
+        if (atsInfo) {
+          const excl = data.excluded_ats_sources || [];
+          if (excl.length > 0) {
+            atsInfo.textContent = `⛔ Исключены ATS: ${excl.join(', ')}`;
+            atsInfo.classList.remove('hidden');
+          } else {
+            atsInfo.classList.add('hidden');
+          }
+        }
+        renderFreeHireFacetChips();
+      } catch (err) {
+        if (badge) badge.textContent = '⚠️ FreeHire недоступен';
+      }
+    }
+
+    async function fillFreeHireSkillsFromProfile() {
+      try {
+        const res = await fetch('/api/freehire/profile-skills');
+        const data = await res.json();
+        if (!data.ok || !data.skills || !data.skills.length) {
+          showToast('Не удалось сопоставить навыки профиля с FreeHire');
+          return;
+        }
+        const slugs = data.skills.slice(0, 10).map(s => s.slug);
+        freehireFacetsState.skills = slugs;
+        syncFreeHireInputsFromState();
+        saveFreeHireFacetsState();
+        scheduleFreeHireFacetsRefresh(100);
+        showToast(`✨ Подставлено ${slugs.length} навыков из матрицы профиля`);
+      } catch (err) {
+        showToast('Ошибка загрузки навыков профиля: ' + err.message);
+      }
+    }
+
+    function resetFreeHireFacets() {
+      freehireFacetsState = getDefaultFreeHireFacets();
+      saveFreeHireFacetsState();
+      syncFreeHireInputsFromState();
+      scheduleFreeHireFacetsRefresh(100);
+      showToast('↺ Фасеты FreeHire сброшены к рекомендуемым');
+    }
+
+    function initFreeHireFacetsUI() {
+      if (!freehireUiInitialized) {
+        freehireUiInitialized = true;
+        const hoursEl = document.getElementById('hoursOld');
+        if (hoursEl) {
+          hoursEl.addEventListener('change', () => {
+            if (getSelectedProvider() === 'freehire') scheduleFreeHireFacetsRefresh(200);
+          });
+        }
+      }
+      syncFreeHireInputsFromState();
+      scheduleFreeHireFacetsRefresh(50);
+    }
 
     function getSelectedProvider() {
       const checked = document.querySelector('input[name="siteProvider"]:checked');
@@ -625,9 +968,13 @@
       }
 
       select.innerHTML = html;
+      const savedFeedId = searchUiSettingsState.hirify_feed_id;
+      if (savedFeedId && Array.from(select.options).some(o => String(o.value) === String(savedFeedId))) {
+        select.value = String(savedFeedId);
+      }
     }
 
-    function onHirifyModeChange() {
+    function onHirifyModeChange(persist = true) {
       const modeRadio = document.querySelector('input[name="hirifyModeRadio"]:checked');
       const mode = modeRadio ? modeRadio.value : 'feeds';
       const feedsWrap = document.getElementById('hirifyFeedsWrap');
@@ -643,9 +990,10 @@
         if (searchTermsWrap) searchTermsWrap.classList.remove('hidden');
         if (locationWrap) locationWrap.classList.remove('hidden');
       }
+      if (persist) scheduleSaveSearchUiSettings();
     }
 
-    function onProviderChange() {
+    function onProviderChange(persist = true) {
       const provider = getSelectedProvider();
       const cfg = PROVIDER_CONFIG[provider] || PROVIDER_CONFIG.linkedin;
       const locSelect = document.getElementById('location');
@@ -656,6 +1004,7 @@
       const easyInput = document.getElementById('easyApply');
       const modeBar = document.getElementById('hirifyModeBar');
       const feedsWrap = document.getElementById('hirifyFeedsWrap');
+      const freehirePanel = document.getElementById('freehireFacetsPanel');
       const searchTermsWrap = document.getElementById('searchTermsWrap');
       const locationWrap = document.getElementById('locationWrap');
 
@@ -667,6 +1016,10 @@
       locSelect.innerHTML = cfg.options
         .map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`)
         .join('');
+      const savedLoc = (searchUiSettingsState.locations_by_provider || {})[provider];
+      if (savedLoc && cfg.options.some(o => o.value === savedLoc)) {
+        locSelect.value = savedLoc;
+      }
 
       if (cfg.supportsEasyApply) {
         easyWrap.classList.remove('opacity-40', 'pointer-events-none');
@@ -677,11 +1030,20 @@
 
       if (provider === 'hirify') {
         if (modeBar) modeBar.classList.remove('hidden');
+        if (freehirePanel) freehirePanel.classList.add('hidden');
         loadHirifyFeeds();
-        onHirifyModeChange();
+        onHirifyModeChange(false);
+      } else if (provider === 'freehire') {
+        if (modeBar) modeBar.classList.add('hidden');
+        if (feedsWrap) feedsWrap.classList.add('hidden');
+        if (searchTermsWrap) searchTermsWrap.classList.add('hidden');
+        if (locationWrap) locationWrap.classList.add('hidden');
+        if (freehirePanel) freehirePanel.classList.remove('hidden');
+        initFreeHireFacetsUI();
       } else {
         if (modeBar) modeBar.classList.add('hidden');
         if (feedsWrap) feedsWrap.classList.add('hidden');
+        if (freehirePanel) freehirePanel.classList.add('hidden');
         if (searchTermsWrap) searchTermsWrap.classList.remove('hidden');
         if (locationWrap) locationWrap.classList.remove('hidden');
       }
@@ -693,6 +1055,7 @@
           hoursEl.value = pInfo.recommended_hours_old;
         }
       }
+      if (persist) scheduleSaveSearchUiSettings();
     }
 
     let toastTimer = null;
@@ -851,14 +1214,14 @@
 
         // Защищенные поисковые агрегаторы и капчи (никогда не считаются ATS)
         const IGNORED_DOMAINS = [
-          'linkedin.com', 'hirify.me', 'upwork.com',
+          'linkedin.com', 'hirify.me', 'upwork.com', 'freehire.me',
           'hcaptcha.com', 'recaptcha.net', 'google.com', 'gstatic.com', 'cloudflare.com',
           'challenges.cloudflare.com', 'arkoselabs.com', 'geetest.com', 'doubleclick.net', 'googletagmanager.com'
         ];
         if (IGNORED_DOMAINS.some(d => host === d || host.endsWith('.' + d))) {
           return '';
         }
-        if (/(^|\.)(linkedin|hirify|upwork)\.[a-z.]+$/.test(host)) {
+        if (/(^|\.)(linkedin|hirify|upwork|freehire)\.[a-z.]+$/.test(host)) {
           return '';
         }
 
@@ -921,7 +1284,7 @@
     async function confirmBadBoardModal() {
       const domain_or_url = document.getElementById('modalBadDomainInput').value.trim();
       const rawDom = (domain_or_url || '').toLowerCase();
-      if (domain_or_url && (/(^|\.)(linkedin|hirify|upwork)\.[a-z.]+$/.test(rawDom) || /hcaptcha\.com|recaptcha\.net/.test(rawDom))) {
+      if (domain_or_url && (/(^|\.)(linkedin|hirify|upwork|freehire)\.[a-z.]+$/.test(rawDom) || /hcaptcha\.com|recaptcha\.net/.test(rawDom))) {
         showToast('Поисковые агрегаторы (LinkedIn, Hirify, Upwork) нельзя блокировать. Заблокируйте только компанию!');
         return;
       }
@@ -996,7 +1359,7 @@
         return;
       }
       const rawDom = domain_or_url.toLowerCase();
-      if (/(^|\.)(linkedin|hirify|upwork)\.[a-z.]+$/.test(rawDom) || /hcaptcha\.com|recaptcha\.net/.test(rawDom)) {
+      if (/(^|\.)(linkedin|hirify|upwork|freehire)\.[a-z.]+$/.test(rawDom) || /hcaptcha\.com|recaptcha\.net/.test(rawDom)) {
         showToast('Поисковые агрегаторы (LinkedIn, Hirify, Upwork) нельзя заносить в чёрный список!');
         return;
       }
@@ -1278,7 +1641,8 @@
           llm_limit: llmLimit,
           enrich_only: enrichOnly,
           hirify_mode: hirifyMode,
-          hirify_feed_id: hirifyFeedId
+          hirify_feed_id: hirifyFeedId,
+          freehire_facets: provider === 'freehire' ? getFreeHireFacetsConfig() : null
         })
       });
 
@@ -3100,7 +3464,7 @@
     }
 
     function renderProviderCheckBadges() {
-      ['linkedin', 'hirify', 'upwork'].forEach(site => {
+      ['linkedin', 'hirify', 'upwork', 'freehire'].forEach(site => {
         const el = document.getElementById('lastCheck_' + site);
         if (!el) return;
         const info = cachedProviderChecks ? cachedProviderChecks[site] : null;
@@ -3161,6 +3525,7 @@
 
     const MACRO_SITE_LABELS = {
       hirify: { title: 'Hirify (IT & Digital Agent API)', icon: '🌐', badge: 'Единая база • Worldwide Remote' },
+      freehire: { title: 'FreeHire (ATS Facets API)', icon: '⚡', badge: '5M+ ATS-вакансий • Фасетный поиск' },
       upwork: { title: 'Upwork (Apify Actor API)', icon: '🟢', badge: 'Глобальный фриланс и контракты • Worldwide' },
       linkedin: { title: 'LinkedIn', icon: '💼', badge: 'Единая база • Макрорегионы EMEA + Worldwide' }
     };
@@ -3192,6 +3557,7 @@
         llm_limit: 50,
         steps: [
           { site: 'hirify', enabled: true, hirify_mode: 'feeds', hirify_feed_id: 'all_active', locations: ['Worldwide'], countries: [] },
+          { site: 'freehire', enabled: true, locations: ['Worldwide'], countries: [], easy_apply: false, freehire_facets: null },
           { site: 'upwork', enabled: true, locations: ['Worldwide'], countries: [], easy_apply: false },
           { site: 'linkedin', enabled: true, locations: ['EMEA', 'Worldwide'], countries: [], easy_apply: false }
         ]
@@ -3279,7 +3645,7 @@
 
         const selectedValues = (Array.isArray(step.locations) && step.locations.length ? step.locations : ['EMEA']);
 
-        const showLocations = !(site === 'hirify' && (step.hirify_mode || 'feeds') === 'feeds');
+        const showLocations = !(site === 'hirify' && (step.hirify_mode || 'feeds') === 'feeds') && site !== 'freehire';
 
         const chipsHtml = (pCfg.options || []).map(opt => {
           const isSel = selectedValues.includes(opt.value);
@@ -3336,6 +3702,10 @@
                   ${chipsHtml}
                 </div>
               </div>
+            ` : site === 'freehire' ? `
+              <div class="text-[11px] text-cyan-300/90 pt-0.5">
+                ⚡ <strong>FreeHire</strong> использует текущие настроенные фасеты из панели FreeHire (AI Archetype, Category, Seniority, Remote Geo, Skills и гигиену).
+              </div>
             ` : `
               <div class="text-[11px] text-emerald-300/90 pt-0.5">
                 🌍 В режиме <strong>Feeds</strong> Hirify сразу ищет глобальную удалёнку по всем вашим сохранённым фильтрам (дополнительные локации выбирать не нужно).
@@ -3349,6 +3719,12 @@
     function collectMacroSettingsFromModal() {
       const execRadio = document.querySelector('input[name="macroExecMode"]:checked');
       const hoursRadio = document.querySelector('input[name="macroHoursMode"]:checked');
+      const steps = draftMacroSteps.map(s => {
+        if (s.site === 'freehire') {
+          return { ...s, freehire_facets: getFreeHireFacetsConfig() };
+        }
+        return s;
+      });
       return {
         execution_mode: execRadio ? execRadio.value : 'per_provider',
         hours_mode: hoursRadio ? hoursRadio.value : 'auto_from_last_run',
@@ -3356,7 +3732,7 @@
         max_auto_hours_old: parseInt(document.getElementById('macroMaxAutoHoursOld')?.value || '72', 10),
         results_wanted: parseInt(document.getElementById('macroResultsWanted')?.value || '50', 10),
         llm_limit: parseInt(document.getElementById('macroLlmLimit')?.value || '50', 10),
-        steps: draftMacroSteps
+        steps: steps
       };
     }
 
@@ -3387,8 +3763,105 @@
       }
     }
 
+    function bindSearchUiSettingsListeners() {
+      const onFieldChange = () => scheduleSaveSearchUiSettings();
+      const locEl = document.getElementById('location');
+      if (locEl) {
+        locEl.addEventListener('change', () => {
+          const provider = getSelectedProvider();
+          if (provider && provider !== 'freehire') {
+            searchUiSettingsState.locations_by_provider = {
+              ...(searchUiSettingsState.locations_by_provider || {}),
+              [provider]: locEl.value,
+            };
+          }
+          scheduleSaveSearchUiSettings();
+        });
+      }
+      const termsEl = document.getElementById('searchTerms');
+      if (termsEl) {
+        termsEl.addEventListener('change', onFieldChange);
+        termsEl.addEventListener('input', onFieldChange);
+      }
+      const llmLimitEl = document.getElementById('llmLimit');
+      if (llmLimitEl) llmLimitEl.addEventListener('change', onFieldChange);
+      const easyEl = document.getElementById('easyApply');
+      if (easyEl) easyEl.addEventListener('change', onFieldChange);
+      const feedEl = document.getElementById('hirifyFeedSelect');
+      if (feedEl) feedEl.addEventListener('change', onFieldChange);
+    }
+
+    async function loadSearchUiSettings() {
+      try {
+        const res = await fetch('/api/pipeline/search-settings');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const s = data.search_settings || {};
+        searchUiSettingsState = {
+          ...searchUiSettingsState,
+          ...s,
+          locations_by_provider: {
+            ...(searchUiSettingsState.locations_by_provider || {}),
+            ...(s.locations_by_provider || {}),
+          },
+        };
+
+        if (s.search_terms) {
+          const termsEl = document.getElementById('searchTerms');
+          if (termsEl) termsEl.value = s.search_terms;
+        }
+        if (s.llm_limit) {
+          const llmLimitEl = document.getElementById('llmLimit');
+          if (llmLimitEl) llmLimitEl.value = s.llm_limit;
+        }
+        if (typeof s.easy_apply === 'boolean') {
+          const easyEl = document.getElementById('easyApply');
+          if (easyEl) easyEl.checked = s.easy_apply;
+        }
+        if (s.hirify_mode) {
+          const modeRadio = document.querySelector(`input[name="hirifyModeRadio"][value="${s.hirify_mode}"]`);
+          if (modeRadio) modeRadio.checked = true;
+        }
+        if (s.provider) {
+          const provRadio = document.querySelector(`input[name="siteProvider"][value="${s.provider}"]`);
+          if (provRadio) provRadio.checked = true;
+        }
+
+        let needMigrateFreeHireToDb = false;
+        if (s.freehire_facets && typeof s.freehire_facets === 'object') {
+          freehireFacetsState = { ...getDefaultFreeHireFacets(), ...s.freehire_facets };
+          try {
+            localStorage.setItem(FREEHIRE_STORAGE_KEY, JSON.stringify(freehireFacetsState));
+          } catch (_) {}
+          if (freehireUiInitialized) {
+            renderFreeHireFacetChips();
+            syncFreeHireNonChipInputs();
+            fetchFreeHireFacetsPreview();
+          }
+        } else {
+          // Однократная миграция сохранённых фасетов FreeHire из localStorage в jobs.db
+          try {
+            if (localStorage.getItem(FREEHIRE_STORAGE_KEY)) {
+              needMigrateFreeHireToDb = true;
+            }
+          } catch (_) {}
+        }
+
+        searchUiSettingsHydrated = true;
+        onProviderChange(false);
+        if (needMigrateFreeHireToDb) {
+          scheduleSaveSearchUiSettings(true);
+        }
+      } catch (err) {
+        console.warn('Не удалось загрузить настройки поиска из БД:', err);
+        searchUiSettingsHydrated = true;
+      }
+    }
+
     applyLanguage();
-    onProviderChange();
+    bindSearchUiSettingsListeners();
+    onProviderChange(false);
+    loadSearchUiSettings();
     loadMacroAndProvidersStatus();
     loadJobs();
     loadSkillsMatrix();

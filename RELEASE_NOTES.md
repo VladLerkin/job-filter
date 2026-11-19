@@ -1,5 +1,37 @@
 # Release Notes
 
+## v1.7.0
+**Release Date:** November 20, 2026
+
+### Features & Architecture
+- **4-Level Deterministic Deduplication (`job_filter/utils/dedup.py`):**
+  - Added `DeduplicationIndex` (no LLM overhead) integrated into both pre-fetch and post-fetch pipeline stages (`job_filter/services/pipeline.py`, `job_filter/repositories/jobs_repo.py`):
+    1. **Normalized `title::company`:** strips punctuation/dashes, `Sr.`→`Senior`, `| REF#...`, `(Remote, ...)`, `| REMOTE`, `(f/m/x)`, and legal suffixes (`Inc.`, `LLC`, `Technologies`, `Sp. z o.o.`, `®`), while ignoring masked/generic companies (`Hirify Employer`, `Confidential`, `Upwork Client`).
+    2. **Soft Fuzzy Title Matching:** matches same-company cross-board title variations (token Jaccard ≥ 0.80, ≥ 3 tokens) with a seniority/track guard (`Senior` vs `Staff`, `Backend` vs `Frontend`, `Java` vs `Python`) to prevent false merges.
+    3. **Normalized `apply_url`:** strips tracking parameters (`utm_*`, `source`, `gh_src`, `ref`, trailing slashes) while preserving job IDs (`gh_jid`, etc.).
+    4. **Description 4-Gram Similarity:** Jaccard ≥ 0.80 post-fetch check to catch multi-location spam and proxy aggregators posting identical descriptions under different company names.
+  - Filtered duplicates are stored with `matched=0, reject_reason='duplicate_of:<orig_id>'` so their IDs are skipped on subsequent runs without re-fetching or spending LLM quota.
+- **Persistent Search & Facet Settings in SQLite:**
+  - Added `GET /api/pipeline/search-settings` and `PUT /api/pipeline/search-settings` (`job_filter/api/routers/pipeline.py`, `job_filter/services/pipeline.py`) storing search panel state (selected provider, per-provider location, `Search Terms`, `AI Limit`, `Easy Apply`, Hirify mode/feed, and `freehire_facets`) in `app_metadata` (`search_ui_settings_v1`).
+  - Automatic one-time migration of existing `localStorage` FreeHire facets into `jobs.db`.
+
+### Integrations & Scraping
+- **FreeHire Provider Integration (`job_filter/scraping/freehire_adapter.py`, `job_filter/api/routers/freehire.py`):**
+  - Added FreeHire Public/Agent API as a first-class job source in `SUPPORTED_SITES` and Macro Pipeline defaults.
+  - Supports rich faceted search (`ai_archetype`, `category`, `seniority`, `work_mode`, `work_mode_remote_regions`, `skills`, `reality`, `posting_language`, ATS blacklist filtering) with live facet count previews.
+- **Hirify Quota Protection:**
+  - Updated multi-feed Hirify collection in `job_filter/services/pipeline.py` to track `known_hf_ids_in_run` across active feeds so the same vacancy does not trigger duplicate `read_vacancy` API calls.
+- **Consolidated LinkedIn Default Search Terms:**
+  - Merged `Agentic Engineer Remote` and `AI Agent Engineer Remote` into a single LinkedIn Boolean query: `("Agentic" OR "AI Agent") Engineer Remote` in `job_filter/config.py`, `job_filter/api/schemas.py`, and `static/index.html`.
+
+### UI & Usability
+- **FreeHire Facets Panel & Persistent Top Search Bar (`static/index.html`, `static/js/app.js`):**
+  - Added interactive FreeHire facets panel with chip toggles, live counts, and skill suggestions.
+  - Top search panel now automatically restores the selected provider, per-provider location (e.g. `Worldwide` for LinkedIn), `Search Terms`, `AI Limit`, `Easy Apply`, and FreeHire facets from `jobs.db` on reload.
+
+### Testing
+- Added `tests/test_dedup.py` (9 unit tests covering all 4 deduplication layers and role/seniority guards), `tests/test_freehire_adapter.py`, and `test_search_ui_settings_persistence` in `tests/test_api_endpoints.py` (93 tests passing).
+
 ## v1.6.0
 **Release Date:** November 18, 2026
 

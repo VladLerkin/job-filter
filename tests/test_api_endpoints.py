@@ -482,7 +482,7 @@ def test_macro_settings_and_provider_checks_and_cross_board_dedup(client, monkey
     assert "provider_checks" in data_get
     assert data_get["macro_settings"]["execution_mode"] == "per_provider"
     assert data_get["macro_settings"]["hours_mode"] == "auto_from_last_run"
-    assert set(data_get["provider_checks"].keys()) == {"linkedin", "hirify", "upwork"}
+    assert set(data_get["provider_checks"].keys()) == {"linkedin", "hirify", "upwork", "freehire"}
 
     # 2. Save updated macro settings
     new_settings = {
@@ -523,7 +523,7 @@ def test_macro_settings_and_provider_checks_and_cross_board_dedup(client, monkey
     assert saved["execution_mode"] == "batch_all_then_llm"
     assert saved["hours_mode"] == "fixed"
     assert saved["default_hours_old"] == 12
-    assert len(saved["steps"]) == 3
+    assert len(saved["steps"]) == 4
     assert len([s for s in saved["steps"] if s["enabled"]]) == 3
 
     # 3. Record provider check and verify status endpoint reflects it
@@ -581,6 +581,40 @@ def test_macro_settings_and_provider_checks_and_cross_board_dedup(client, monkey
     assert ("fetch", "upwork", "Worldwide", False) in calls
     assert ("fetch", "linkedin", "EMEA", False) in calls
     assert ("enrich", 25) in calls
+
+
+def test_search_ui_settings_persistence(client):
+    res_get = client.get("/api/pipeline/search-settings")
+    assert res_get.status_code == 200
+    initial = res_get.json()["search_settings"]
+    assert initial["provider"] == "linkedin"
+    assert "linkedin" in initial["locations_by_provider"]
+
+    payload = {
+        "provider": "linkedin",
+        "search_terms": '("Agentic" OR "AI Agent") Engineer Remote, Software Engineer Remote',
+        "locations_by_provider": {"linkedin": "Worldwide", "upwork": "Europe"},
+        "llm_limit": 35,
+        "easy_apply": True,
+        "freehire_facets": {"ai_archetype": ["agent_builder"], "work_mode": ["remote"]},
+    }
+    res_put = client.put("/api/pipeline/search-settings", json=payload)
+    assert res_put.status_code == 200
+    saved = res_put.json()["search_settings"]
+    assert saved["locations_by_provider"]["linkedin"] == "Worldwide"
+    assert saved["locations_by_provider"]["upwork"] == "Europe"
+    assert saved["llm_limit"] == 35
+    assert saved["easy_apply"] is True
+    assert saved["freehire_facets"]["ai_archetype"] == ["agent_builder"]
+
+    # Partial update preserves other fields (e.g. freehire_facets)
+    res_put2 = client.put("/api/pipeline/search-settings", json={"provider": "freehire"})
+    assert res_put2.status_code == 200
+    reloaded = client.get("/api/pipeline/search-settings").json()["search_settings"]
+    assert reloaded["provider"] == "freehire"
+    assert reloaded["locations_by_provider"]["linkedin"] == "Worldwide"
+    assert reloaded["freehire_facets"]["ai_archetype"] == ["agent_builder"]
+
 
 
 

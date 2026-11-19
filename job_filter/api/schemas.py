@@ -6,11 +6,7 @@ from job_filter import config
 
 
 class RunPipelineRequest(BaseModel):
-    search_terms: list[str] = [
-        "Agentic Engineer Remote",
-        "AI Agent Engineer Remote",
-        "Software Engineer Remote",
-    ]
+    search_terms: list[str] = Field(default_factory=lambda: list(config.DEFAULT_SEARCH_TERMS))
     site_names: list[str] = ["linkedin"]
     location: str = "EMEA"
     country_indeed: str = "uk"
@@ -22,6 +18,7 @@ class RunPipelineRequest(BaseModel):
     enrich_only: bool = False
     hirify_mode: Literal["feeds", "custom"] = "feeds"
     hirify_feed_id: int | str | None = None
+    freehire_facets: dict | None = None
 
 
 class UpdateStatusRequest(BaseModel):
@@ -85,12 +82,13 @@ class AddBlacklistRequest(BaseModel):
 
 
 class MacroStepConfig(BaseModel):
-    site: Literal["hirify", "linkedin", "upwork"]
+    site: Literal["hirify", "freehire", "linkedin", "upwork"]
     enabled: bool = True
     locations: list[str] = Field(default_factory=list)
     countries: list[str] = Field(default_factory=list)
     hirify_mode: Literal["feeds", "custom"] = "feeds"
     hirify_feed_id: int | str | None = None
+    freehire_facets: dict | None = None
     easy_apply: bool = False
 
 
@@ -105,12 +103,19 @@ class MacroSettingsRequest(BaseModel):
 
 
 class RunMacroRequest(BaseModel):
-    search_terms: list[str] = [
-        "Agentic Engineer Remote",
-        "AI Agent Engineer Remote",
-        "Software Engineer Remote",
-    ]
+    search_terms: list[str] = Field(default_factory=lambda: list(config.DEFAULT_SEARCH_TERMS))
     llm_model: str = config.DEFAULT_MODEL
     macro_settings: dict | None = None
+
+
+class SearchUiSettingsRequest(BaseModel):
+    provider: str | None = None
+    search_terms: str | None = None
+    locations_by_provider: dict[str, str] | None = None
+    llm_limit: int | None = None
+    easy_apply: bool | None = None
+    hirify_mode: Literal["feeds", "custom"] | None = None
+    hirify_feed_id: int | str | None = None
+    freehire_facets: dict | None = None
 
 

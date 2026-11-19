@@ -27,6 +27,18 @@ def get_processed_title_company_keys(conn: sqlite3.Connection) -> set[str]:
     return {r[0] for r in rows if r[0] and r[0] != "::"}
 
 
+def list_dedup_records(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Возвращает поля всех не-дубликатных записей для построения многоуровневого индекса дедупликации."""
+    rows = conn.execute(
+        """
+        SELECT job_id, title, company, apply_url, description
+        FROM processed_jobs
+        WHERE reject_reason IS NULL OR reject_reason NOT LIKE 'duplicate_of:%'
+        """
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_app_metadata_json(conn: sqlite3.Connection, key: str) -> dict | None:
     row = conn.execute("SELECT value FROM app_metadata WHERE key = ?", (key,)).fetchone()
     if not row or not row[0]:

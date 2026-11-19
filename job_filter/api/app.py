@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from job_filter import config
-from job_filter.api.routers import blacklist, candidate, hirify, jobs, pipeline, skills, ui
+from job_filter.api.routers import blacklist, candidate, freehire, hirify, jobs, pipeline, skills, ui
 from job_filter.db.connection import init_db
 from job_filter.logging_setup import setup_logging
 
@@ -51,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(candidate.router)
     app.include_router(blacklist.router)
     app.include_router(hirify.router)
+    app.include_router(freehire.router)
 
     return app
 

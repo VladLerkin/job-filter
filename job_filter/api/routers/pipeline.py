@@ -1,11 +1,18 @@
 """Роуты запуска и мониторинга фонового пайплайна поиска и скоринга."""
 from fastapi import APIRouter
-from job_filter.api.schemas import MacroSettingsRequest, RunMacroRequest, RunPipelineRequest
+from job_filter.api.schemas import (
+    MacroSettingsRequest,
+    RunMacroRequest,
+    RunPipelineRequest,
+    SearchUiSettingsRequest,
+)
 from job_filter.db.connection import connect
 from job_filter.services.pipeline import (
     get_macro_settings,
     get_provider_check_status,
+    get_search_ui_settings,
     save_macro_settings,
+    save_search_ui_settings,
 )
 from job_filter.services.pipeline_runner import pipeline_runner
 
@@ -77,6 +84,25 @@ def update_macro_settings(req: MacroSettingsRequest):
             "macro_settings": saved,
             "provider_checks": get_provider_check_status(conn),
         }
+    finally:
+        conn.close()
+
+
+@router.get("/search-settings")
+def read_search_settings():
+    conn = connect()
+    try:
+        return {"search_settings": get_search_ui_settings(conn)}
+    finally:
+        conn.close()
+
+
+@router.put("/search-settings")
+def update_search_settings(req: SearchUiSettingsRequest):
+    conn = connect()
+    try:
+        saved = save_search_ui_settings(conn, req.model_dump(exclude_none=True))
+        return {"status": "saved", "search_settings": saved}
     finally:
         conn.close()
 

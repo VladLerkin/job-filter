@@ -30,7 +30,7 @@ def _load_env_file(path: Path) -> None:
 
 _load_env_file(PROJECT_ROOT / ".env")
 
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.7.0"
 DB_PATH = Path(os.getenv("JOB_FILTER_DB", PROJECT_ROOT / "jobs.db"))
 STATIC_DIR = PROJECT_ROOT / "static"
 
@@ -44,6 +44,10 @@ LLM_ENRICH_WORKERS = max(1, int(os.getenv("JOB_FILTER_LLM_WORKERS", "2")))
 # --- Hirify Agent API ---
 HIRIFY_API_KEY = os.getenv("HIRIFY_API_KEY", "")
 HIRIFY_API_URL = os.getenv("HIRIFY_API_URL", "https://api.hirify.me/api/agent")
+
+# --- FreeHire Public / Agent API ---
+FREEHIRE_API_KEY = os.getenv("FREEHIRE_API_KEY", "")
+FREEHIRE_API_URL = os.getenv("FREEHIRE_API_URL", "https://freehire.me/api/v1")
 
 # --- Apify (Upwork Job Scraper Actors) ---
 APIFY_API_KEY = os.getenv("APIFY_API_KEY") or os.getenv("APIFY_TOKEN") or ""
@@ -71,8 +75,7 @@ EXCLUDED_SENIORITIES = frozenset({"internship", "entry level"})
 EXCLUDED_INDUSTRIES = frozenset({"staffing and recruiting"})
 
 DEFAULT_SEARCH_TERMS = (
-    "Agentic Engineer Remote",
-    "AI Agent Engineer Remote",
+    '("Agentic" OR "AI Agent") Engineer Remote',
     "Software Engineer Remote",
 )
 

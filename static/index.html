@@ -18,7 +18,7 @@
             agy CLI + Hirify Skill Scorer
           </span>
           <span id="appVersionBadge" class="text-xs font-mono font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-            v1.6.0
+            v1.7.0
           </span>
         </h1>
         <p class="text-xs text-slate-400 mt-0.5" data-i18n="app_subtitle">
@@ -41,7 +41,7 @@
       <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
         <div id="searchTermsWrap" class="md:col-span-4">
           <label class="block text-xs text-slate-400 mb-1" data-i18n="search_terms_label">Search Terms (comma-separated)</label>
-          <input id="searchTerms" type="text" value="Agentic Engineer Remote, AI Agent Engineer Remote, Software Engineer Remote"
+          <input id="searchTerms" type="text" value="(&quot;Agentic&quot; OR &quot;AI Agent&quot;) Engineer Remote, Software Engineer Remote"
             class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-white focus:outline-none focus:border-indigo-500" />
         </div>
         <div id="locationWrap" class="md:col-span-2">
@@ -126,6 +126,11 @@
             <span class="text-slate-200 font-medium">Upwork</span>
             <span id="lastCheck_upwork" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/80 font-mono">🕒 —</span>
           </label>
+          <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900 border border-slate-700 hover:border-cyan-500 cursor-pointer select-none" title="FreeHire Public/Agent API: 5M+ direct ATS jobs with live facets & Markdown descriptions (no API key needed)">
+            <input type="radio" name="siteProvider" value="freehire" onchange="onProviderChange()" class="bg-slate-800 border-slate-600 text-cyan-500" />
+            <span class="text-slate-200 font-medium">FreeHire</span>
+            <span id="lastCheck_freehire" class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/80 font-mono">🕒 —</span>
+          </label>
 
           <div id="hirifyModeBar" class="hidden inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-indigo-950/60 border border-indigo-700/60 text-xs">
             <span class="text-indigo-300 font-medium">Режим Hirify:</span>
@@ -147,6 +152,113 @@
             <span id="logStatusDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
             <span id="btnToggleLogText" data-i18n="show_log">Show Log</span>
           </button>
+        </div>
+      </div>
+
+      <!-- Панель фасетов FreeHire (показывается только при выборе FreeHire) -->
+      <div id="freehireFacetsPanel" class="hidden mt-3 p-3.5 rounded-xl bg-slate-950/75 border border-cyan-800/50 space-y-3 text-xs">
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="font-semibold text-cyan-300">⚡ FreeHire Facets</span>
+            <span id="fhLiveCountBadge" class="px-2 py-0.5 rounded-md bg-cyan-950/80 text-cyan-200 border border-cyan-700/60 font-mono text-[11px]">
+              🎯 Считаем...
+            </span>
+            <span id="fhExcludedAtsInfo" class="hidden text-[11px] text-slate-400"></span>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button type="button" onclick="fillFreeHireSkillsFromProfile()" class="px-2.5 py-1 rounded-md bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 border border-indigo-700/60 transition cursor-pointer">
+              ✨ Skills из профиля
+            </button>
+            <button type="button" onclick="resetFreeHireFacets()" class="px-2.5 py-1 rounded-md bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition cursor-pointer">
+              ↺ Сброс
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <!-- AI Archetype -->
+          <div class="space-y-1.5">
+            <div class="text-[11px] font-medium text-slate-400">🤖 AI Archetype</div>
+            <div id="fhChips_ai_archetype" class="flex flex-wrap gap-1"></div>
+          </div>
+
+          <!-- Category -->
+          <div class="space-y-1.5">
+            <div class="text-[11px] font-medium text-slate-400">📂 Category</div>
+            <div id="fhChips_category" class="flex flex-wrap gap-1"></div>
+          </div>
+
+          <!-- Seniority -->
+          <div class="space-y-1.5">
+            <div class="text-[11px] font-medium text-slate-400">🎖️ Seniority</div>
+            <div id="fhChips_seniority" class="flex flex-wrap gap-1"></div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 border-t border-slate-800/60">
+          <!-- Work Mode & Remote Geo -->
+          <div class="space-y-1.5">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-[11px] font-medium text-slate-400">🌍 Work Mode & Remote Geo</span>
+              <label class="inline-flex items-center gap-1 text-[11px] text-emerald-300 cursor-pointer select-none">
+                <input type="checkbox" id="fhRemoteAnywhere" onchange="onFreeHireFacetInputChange()" class="rounded bg-slate-900 border-slate-600 text-cyan-500" />
+                <span>Remote Anywhere</span>
+              </label>
+            </div>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <div id="fhChips_work_mode" class="flex flex-wrap gap-1"></div>
+              <span class="text-slate-600">|</span>
+              <div id="fhChips_work_mode_remote_regions" class="flex flex-wrap gap-1"></div>
+            </div>
+          </div>
+
+          <!-- Skills + optional q -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[11px] font-medium text-slate-400">🛠️ Skills (слаги через запятую)</span>
+              <div class="inline-flex items-center gap-1 text-[11px] text-slate-400">
+                <span>Логика:</span>
+                <select id="fhSkillsMode" onchange="onFreeHireFacetInputChange()" class="bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-[11px] text-slate-200">
+                  <option value="or">OR (любой)</option>
+                  <option value="and">AND (все)</option>
+                </select>
+              </div>
+            </div>
+            <input id="fhSkillsInput" type="text" oninput="onFreeHireFacetInputChange(true)" placeholder="python, llm, rag, agentic-ai, kotlin..."
+              class="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:border-cyan-500 focus:outline-none" />
+            <div id="fhSuggestedSkills" class="flex flex-wrap gap-1 max-h-16 overflow-y-auto"></div>
+          </div>
+        </div>
+
+        <!-- Опциональный текстовый запрос q + гигиенические тогглы -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/60">
+          <div class="flex flex-wrap items-center gap-3 text-[11px] text-slate-300">
+            <label class="inline-flex items-center gap-1 cursor-pointer select-none">
+              <input type="checkbox" id="fhRealityFresh" checked onchange="onFreeHireFacetInputChange()" class="rounded bg-slate-900 border-slate-600 text-cyan-500" />
+              <span>✨ Только свежие (fresh)</span>
+            </label>
+            <label class="inline-flex items-center gap-1 cursor-pointer select-none">
+              <input type="checkbox" id="fhLangEn" checked onchange="onFreeHireFacetInputChange()" class="rounded bg-slate-900 border-slate-600 text-cyan-500" />
+              <span>🇬🇧 Только EN</span>
+            </label>
+            <label class="inline-flex items-center gap-1 cursor-pointer select-none">
+              <input type="checkbox" id="fhNoRecruiters" checked onchange="onFreeHireFacetInputChange()" class="rounded bg-slate-900 border-slate-600 text-cyan-500" />
+              <span>🚫 Без рекрутеров</span>
+            </label>
+            <label class="inline-flex items-center gap-1 cursor-pointer select-none">
+              <input type="checkbox" id="fhNoClearance" checked onchange="onFreeHireFacetInputChange()" class="rounded bg-slate-900 border-slate-600 text-cyan-500" />
+              <span>🚫 Без clearance</span>
+            </label>
+            <label class="inline-flex items-center gap-1 cursor-pointer select-none">
+              <input type="checkbox" id="fhExcludeBlacklistedAts" checked onchange="onFreeHireFacetInputChange()" class="rounded bg-slate-900 border-slate-600 text-cyan-500" />
+              <span>⛔ Исключить ATS из ЧС</span>
+            </label>
+          </div>
+          <div class="flex items-center gap-1.5 min-w-[220px] flex-1 max-w-xs">
+            <span class="text-[11px] text-slate-400 whitespace-nowrap">🔎 q (опц.):</span>
+            <input id="fhQueryInput" type="text" oninput="onFreeHireFacetInputChange(true)" placeholder="Ключевые слова (необязательно)"
+              class="w-full px-2 py-1 rounded-md bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:border-cyan-500 focus:outline-none" />
+          </div>
         </div>
       </div>
 

@@ -1,11 +1,12 @@
-"""Адаптеры поиска вакансий для проверенных площадок (LinkedIn, Hirify, Upwork)."""
+"""Адаптеры поиска вакансий для проверенных площадок (LinkedIn, Hirify, Upwork, FreeHire)."""
 import logging
 import re
+from typing import Any
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SITES = ("linkedin", "hirify", "upwork")
+SUPPORTED_SITES = ("linkedin", "hirify", "upwork", "freehire")
 
 
 def scrape_site(
@@ -19,14 +20,28 @@ def scrape_site(
     linkedin_company_ids: list[int] | None = None,
     hirify_mode: str = "feeds",
     hirify_feed_id: int | str | None = None,
+    freehire_facets: dict[str, Any] | None = None,
+    blacklisted_domains: list[str] | None = None,
     processed_ids: set[str] | None = None,
 ) -> pd.DataFrame:
-    """Вызывает специализированный адаптер для проверенных провайдеров (LinkedIn, Hirify, Upwork)."""
+    """Вызывает специализированный адаптер для проверенных провайдеров (LinkedIn, Hirify, Upwork, FreeHire)."""
     site = (site or "linkedin").strip().lower()
     if site not in SUPPORTED_SITES:
         raise ValueError(f"Неподдерживаемый или заблокированный провайдер '{site}'. Доступны только: {', '.join(SUPPORTED_SITES)}")
 
     clean_term = re.sub(r"\bremote\b", "", term, flags=re.IGNORECASE).strip() or term
+
+    if site == "freehire":
+        from job_filter.scraping.freehire_adapter import scrape_freehire
+
+        return scrape_freehire(
+            facets=freehire_facets,
+            results_wanted=results_wanted,
+            hours_old=hours_old,
+            term=term,
+            processed_ids=processed_ids,
+            blacklisted_domains=blacklisted_domains,
+        )
 
     if site == "upwork":
         from job_filter.scraping.upwork_adapter import scrape_upwork
