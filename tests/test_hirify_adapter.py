@@ -96,6 +96,7 @@ def test_scrape_hirify_mocked_results():
 
     mock_client.read_vacancy.return_value = {
         "vacancy_id": 101,
+        "original_title": "Senior AI Agent Engineer (Original)",
         "description": "Full requirements: Python, LangGraph, LLM Agents.",
     }
 
@@ -107,6 +108,7 @@ def test_scrape_hirify_mocked_results():
     assert row["id"] == "hf-101"
     assert row["site"] == "hirify"
     assert row["title"] == "Senior AI Agent Engineer"
+    assert row["original_title"] == "Senior AI Agent Engineer (Original)"
     assert row["company"] == "Acme AI Corp"
     assert bool(row["is_remote"]) is True
     assert "LangGraph" in row["description"]

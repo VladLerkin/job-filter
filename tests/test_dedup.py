@@ -194,3 +194,32 @@ def test_list_dedup_records_excludes_duplicate_stubs():
     recs = jobs_repo.list_dedup_records(conn)
     assert [r["job_id"] for r in recs] == ["orig-1"]
     conn.close()
+
+
+def test_original_title_bidirectional_cross_board_dedup():
+    # 1. LinkedIn сохранён первым, затем приходит Hirify с переименованным title и точным original_title
+    idx1 = DeduplicationIndex()
+    idx1.add(
+        job_id="li-9001",
+        title="Software Engineer, Core Platform",
+        company="Intetics",
+    )
+    assert idx1.find_pre_fetch_duplicate(
+        title="Senior Backend Developer (Java / AI)",
+        original_title="Software Engineer, Core Platform",
+        company="Intetics",
+    ) == ("li-9001", "original_title")
+
+    # 2. Hirify сохранён первым (с original_title), затем приходит LinkedIn с оригинальным заголовком
+    idx2 = DeduplicationIndex()
+    idx2.add(
+        job_id="hf-1429943",
+        title="Senior Agentic QA Engineer (AI)",
+        original_title="Senior Agentic QA Engineer",
+        company="Intetics",
+    )
+    assert idx2.find_pre_fetch_duplicate(
+        title="Senior Agentic QA Engineer",
+        company="Intetics",
+    ) == ("hf-1429943", "norm_title_company")
+

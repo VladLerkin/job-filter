@@ -176,12 +176,14 @@ def _save_processed_job(
     description: str | None = None,
     apply_url: str | None = None,
     ats_domain: str | None = None,
+    original_title: str | None = None,
 ) -> None:
     cur = jobs_repo.get_job(conn, job_id)
     user_status = (cur.get("user_status") if cur and cur.get("user_status") else "new")
     user_reject_reason = cur.get("user_reject_reason") if cur else None
     existing_apply_url = cur.get("apply_url") if cur else None
     existing_ats_domain = cur.get("ats_domain") if cur else None
+    existing_original_title = cur.get("original_title") if cur else None
 
     final_apply_url = apply_url or existing_apply_url
     final_ats_domain = ats_domain or extract_root_domain(final_apply_url) or existing_ats_domain
@@ -198,6 +200,7 @@ def _save_processed_job(
             "location": location,
             "is_remote": (1 if is_remote else 0) if is_remote is not None else None,
             "title": title,
+            "original_title": original_title or existing_original_title,
             "company": company,
             "url": url,
             "date_posted": date_posted,
@@ -425,6 +428,8 @@ def fetch_and_filter_jobs(
             pre_dup_counts: dict[str, int] = {}
             for row_idx, row in unseen_jobs.iterrows():
                 r_title = str(row.get("title", "") or "")
+                raw_orig_t = row.get("original_title")
+                r_orig_title = str(raw_orig_t).strip() if pd.notna(raw_orig_t) and raw_orig_t else None
                 r_company = str(row.get("company", "") or "")
                 raw_direct = row.get("job_url_direct")
                 r_apply_url = str(raw_direct) if pd.notna(raw_direct) and raw_direct else None
@@ -432,6 +437,7 @@ def fetch_and_filter_jobs(
                     title=r_title,
                     company=r_company,
                     apply_url=r_apply_url,
+                    original_title=r_orig_title,
                 )
                 if dup is not None:
                     orig_id, dup_reason = dup
@@ -447,6 +453,7 @@ def fetch_and_filter_jobs(
                         location=loc_str,
                         is_remote=is_rem_val,
                         title=r_title,
+                        original_title=r_orig_title,
                         company=r_company,
                         url=str(row.get("job_url", "")),
                         date_posted=str(row.get("date_posted", "")),
@@ -510,6 +517,8 @@ def fetch_and_filter_jobs(
                 raw_rem = row.get("is_remote")
                 is_rem_val = bool(raw_rem) if pd.notna(raw_rem) else None
                 title = str(row.get("title", ""))
+                raw_orig_t = row.get("original_title")
+                original_title = str(raw_orig_t).strip() if pd.notna(raw_orig_t) and raw_orig_t else None
                 company = str(row.get("company", ""))
                 job_url = str(row.get("job_url", ""))
                 date_posted = str(row.get("date_posted", ""))
@@ -554,7 +563,10 @@ def fetch_and_filter_jobs(
 
                 reject_reason = None
                 dup_post = dedup_index.find_pre_fetch_duplicate(
-                    title=title, company=company, apply_url=apply_url
+                    title=title,
+                    company=company,
+                    apply_url=apply_url,
+                    original_title=original_title,
                 ) or dedup_index.find_post_fetch_duplicate(
                     apply_url=apply_url, description=description
                 )
@@ -577,6 +589,7 @@ def fetch_and_filter_jobs(
                     location=loc_str,
                     is_remote=is_rem_val,
                     title=title,
+                    original_title=original_title,
                     company=company,
                     url=job_url,
                     date_posted=date_posted,
@@ -595,6 +608,7 @@ def fetch_and_filter_jobs(
                     dedup_index.add(
                         job_id=job_id,
                         title=title,
+                        original_title=original_title,
                         company=company,
                         apply_url=apply_url,
                         description=description,

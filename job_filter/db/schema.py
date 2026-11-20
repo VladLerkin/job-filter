@@ -18,6 +18,7 @@ _DDL = (
         job_id TEXT PRIMARY KEY,
         site TEXT DEFAULT 'linkedin',
         title TEXT,
+        original_title TEXT,
         company TEXT,
         url TEXT,
         date_posted TEXT,
@@ -101,6 +102,7 @@ _DDL = (
 # Колонки, добавленные в processed_jobs после первой версии схемы
 _PROCESSED_JOBS_MIGRATIONS = {
     "site": "TEXT DEFAULT 'linkedin'",
+    "original_title": "TEXT",
     "location": "TEXT",
     "is_remote": "INTEGER",
     "seniority_level": "TEXT",

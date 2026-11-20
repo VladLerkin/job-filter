@@ -132,7 +132,7 @@ def _format_salary(salary_obj: Any) -> str | None:
 
 
 DF_COLS = [
-    "id", "site", "job_url", "job_url_direct", "title", "company",
+    "id", "site", "job_url", "job_url_direct", "title", "original_title", "company",
     "location", "date_posted", "salary", "description", "is_remote",
     "job_level", "job_type",
 ]
@@ -226,12 +226,16 @@ def _cards_to_dataframe(
             logger.info("Пропуск вакансии Hirify #%s: дата публикации %s старше лимита %sч (%s)", vac_id, pub_dt, hours_old, cutoff)
             continue
 
+        raw_orig_title = detail.get("original_title") or card.get("original_title")
+        original_title = str(raw_orig_title).strip() if raw_orig_title else None
+
         matched_rows.append({
             "id": job_key,
             "site": "hirify",
             "job_url": job_url,
             "job_url_direct": None,
             "title": title,
+            "original_title": original_title,
             "company": company,
             "location": loc_display,
             "date_posted": pub_dt.strftime("%Y-%m-%d") if pub_dt else now.strftime("%Y-%m-%d"),

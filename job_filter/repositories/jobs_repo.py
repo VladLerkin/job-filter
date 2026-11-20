@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 _JOB_COLUMNS = (
-    "job_id", "site", "location", "is_remote", "title", "company", "url", "date_posted",
+    "job_id", "site", "location", "is_remote", "title", "original_title", "company", "url", "date_posted",
     "seniority_level", "employment_type", "job_function", "industry", "salary",
     "description", "matched", "reject_reason", "processed_at",
     "enrichment_json", "score", "tier", "score_details_json", "user_status",
@@ -31,7 +31,7 @@ def list_dedup_records(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """Возвращает поля всех не-дубликатных записей для построения многоуровневого индекса дедупликации."""
     rows = conn.execute(
         """
-        SELECT job_id, title, company, apply_url, description
+        SELECT job_id, title, original_title, company, apply_url, description
         FROM processed_jobs
         WHERE reject_reason IS NULL OR reject_reason NOT LIKE 'duplicate_of:%'
         """

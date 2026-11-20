@@ -318,6 +318,7 @@ class DeduplicationIndex:
             idx.add(
                 job_id=str(rec["job_id"]),
                 title=rec.get("title"),
+                original_title=rec.get("original_title"),
                 company=rec.get("company"),
                 apply_url=rec.get("apply_url"),
                 description=rec.get("description"),
@@ -331,15 +332,23 @@ class DeduplicationIndex:
         company: str | None = None,
         apply_url: str | None = None,
         description: str | None = None,
+        original_title: str | None = None,
     ) -> None:
         nc = normalize_company(company)
         if not is_generic_company(nc):
-            nt = normalize_title(title)
-            if nt:
-                self._tc_keys.setdefault(f"{nt}::{nc}", job_id)
-            toks = title_tokens(title)
-            if len(toks) >= FUZZY_TITLE_MIN_TOKENS:
-                self._company_titles.setdefault(nc, []).append((job_id, toks))
+            seen_nt: set[str] = set()
+            seen_toks: set[frozenset[str]] = set()
+            for t_val in (title, original_title):
+                if not t_val:
+                    continue
+                nt = normalize_title(t_val)
+                if nt and nt not in seen_nt:
+                    seen_nt.add(nt)
+                    self._tc_keys.setdefault(f"{nt}::{nc}", job_id)
+                toks = title_tokens(t_val)
+                if len(toks) >= FUZZY_TITLE_MIN_TOKENS and toks not in seen_toks:
+                    seen_toks.add(toks)
+                    self._company_titles.setdefault(nc, []).append((job_id, toks))
 
         norm_url = normalize_apply_url(apply_url)
         if norm_url:
@@ -354,11 +363,12 @@ class DeduplicationIndex:
         title: str | None,
         company: str | None,
         apply_url: str | None = None,
+        original_title: str | None = None,
     ) -> tuple[str, str] | None:
         """
         Проверяет дубль ДО загрузки описания карточки:
         1) Нормализованный `apply_url` (если уже известен).
-        2) Нормализованный ключ `title::company`.
+        2) Нормализованный ключ `title::company` (по `title` и `original_title`).
         3) Мягкий матч заголовков внутри одной компании (token Jaccard >= 0.80).
 
         Возвращает `(original_job_id, match_reason)` или `None`.
@@ -369,19 +379,28 @@ class DeduplicationIndex:
 
         nc = normalize_company(company)
         if not is_generic_company(nc):
-            nt = normalize_title(title)
-            if nt:
-                tc_key = f"{nt}::{nc}"
-                if tc_key in self._tc_keys:
-                    return self._tc_keys[tc_key], "norm_title_company"
+            title_variants: list[tuple[str, str]] = []
+            if title:
+                title_variants.append((title, "norm_title_company"))
+            if original_title and original_title.strip().lower() != (title or "").strip().lower():
+                title_variants.append((original_title, "original_title"))
 
-            toks = title_tokens(title)
-            if len(toks) >= FUZZY_TITLE_MIN_TOKENS:
-                candidates = self._company_titles.get(nc)
-                if candidates:
+            for t_val, exact_reason in title_variants:
+                nt = normalize_title(t_val)
+                if nt:
+                    tc_key = f"{nt}::{nc}"
+                    if tc_key in self._tc_keys:
+                        return self._tc_keys[tc_key], exact_reason
+
+            candidates = self._company_titles.get(nc)
+            if candidates:
+                thr = self.fuzzy_title_threshold
+                for t_val, _ in title_variants:
+                    toks = title_tokens(t_val)
+                    if len(toks) < FUZZY_TITLE_MIN_TOKENS:
+                        continue
                     t_len = len(toks)
                     t_roles = toks & _DISTINCT_ROLE_TOKENS
-                    thr = self.fuzzy_title_threshold
                     for orig_id, orig_toks in candidates:
                         o_len = len(orig_toks)
                         # Быстрая отсечка по размерам множеств

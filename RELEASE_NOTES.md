@@ -1,5 +1,17 @@
 # Release Notes
 
+## v1.7.1
+**Release Date:** November 20, 2026
+
+### Features & Integrations
+- **Hirify `original_title` Support for Cross-Board Deduplication:**
+  - Added extraction of `original_title` from Hirify API vacancy details (`/vacancies/{id}`) in `job_filter/scraping/hirify_adapter.py`.
+  - Added `original_title` column migration to `processed_jobs` (`job_filter/db/schema.py`, `job_filter/repositories/jobs_repo.py`).
+  - Updated `DeduplicationIndex` (`job_filter/utils/dedup.py`) and `job_filter/services/pipeline.py` to index and match both `title` and `original_title`, enabling bidirectional duplicate detection between Hirify and LinkedIn/FreeHire even when Hirify renames titles.
+
+### Testing
+- Added unit tests for `original_title` extraction and bidirectional cross-board deduplication in `tests/test_hirify_adapter.py` and `tests/test_dedup.py` (94 tests passing).
+
 ## v1.7.0
 **Release Date:** November 20, 2026
 
